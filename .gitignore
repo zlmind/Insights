@@ -10,6 +10,7 @@ venv/
 *.md
 !CLAUDE.md
 !docs/superpowers/specs/*.md
+!docs/superpowers/plans/*.md
 uploads/
 downloads/
 *.log

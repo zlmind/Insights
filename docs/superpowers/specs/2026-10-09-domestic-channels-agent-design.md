@@ -80,7 +80,8 @@ compose 页生成的文章可以一键推进 公众号 / 知乎 / 头条号 等 
 CREATE TABLE agent_jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kind TEXT NOT NULL DEFAULT 'article_sync',   -- article_sync | video_publish（预留）
-    payload TEXT NOT NULL,        -- JSON: {title, html, targets: ["weixin","zhihu"], article_id}
+    payload TEXT NOT NULL,        -- JSON: {title, items: [{target, content}], article_id}
+                                  -- content 为该平台的定制文案（markdown/纯文本），不是一稿多发
     status TEXT DEFAULT 'pending',-- pending|claimed|succeeded|partial|failed|expired
     run_after TEXT,               -- 定时 / 退避重试的时间门
     attempts INTEGER DEFAULT 0,
@@ -123,8 +124,10 @@ MVP 目标粒度是**平台**不是账号（wechatsync 每平台一个浏览器�
 | `/agent/heartbeat` | POST | 版本、工具可用性、各平台登录态。服务器缓存最近心跳；**60 秒无心跳 → compose 国内目标置灰** |
 | `/agent/jobs/claim` | POST | 原子认领：`UPDATE ... WHERE id = (SELECT id FROM agent_jobs WHERE status='pending' AND run_after <= now ORDER BY id LIMIT 1) RETURNING *`；无任务 204 |
 | `/agent/jobs/<id>/events` | POST | 执行事件与最终结果 |
-| `/agent/jobs/<id>` | GET | 单任务状态（compose 页轮询渲染结果用） |
-| `/agent/jobs` | GET | 队列与历史（`/agent-jobs` 页面用） |
+| `/agent-jobs/<id>.json` | GET | 单任务状态（**登录态**；compose 页轮询渲染结果用） |
+| `/agent-jobs` | GET | 队列与历史页面（登录态） |
+
+UI 轮询端点走登录态而不是 agent Token：它们是页面的一部分；agent 面只有上面三个 Token 端点。
 
 ### 事件协议
 
@@ -134,7 +137,7 @@ MVP 目标粒度是**平台**不是账号（wechatsync 每平台一个浏览器�
 
 // done —— 最终结果，形状对齐 social_publisher._result() + 草稿语义
 {"type": "done", "status": "partial", "results": [
-  {"platform": "weixin",  "success": true,  "draft": true, "detail": "已保存到公众号草稿箱"},
+  {"platform": "wechat",  "success": true,  "draft": true, "detail": "已保存到公众号草稿箱"},
   {"platform": "zhihu",   "success": true,  "draft": true, "detail": "已保存到知乎草稿箱"},
   {"platform": "toutiao", "success": false, "draft": false,
    "error": "头条号未登录", "code": "needs_login"}
@@ -191,9 +194,14 @@ class Driver(Protocol):
   `agent_jobs`（`run_after=定时时间`），在 `/agent-jobs` 队列面板展示。海外定时流不动。
 - **离线降级**：心跳超 60 秒 → compose 国内分组置灰 + 「本机代理离线，请启动 agent」；
   已入队任务不受影响，agent 上线后照常领取
-- **平台名映射**：weixin→公众号、zhihu→知乎、toutiao→头条号、juejin→掘金、csdn→CSDN、
-  weibo→微博、xiaohongshu→小红书、douyin→抖音图文、bilibili→B站专栏、baijiahao→百家号
-  （以 wechatsync 平台 ID 表为准）
+- **平台名映射**：仓库平台 ID 沿用工作区现状（`wechat`/`xiaohongshu`/`douyin`，新增
+  `zhihu`/`toutiao`），显示名 wechat→公众号、zhihu→知乎、toutiao→头条号。驱动层维护
+  仓库 ID → wechatsync ID 的映射（`wechat→weixin`，其余同名），以 wechatsync 平台表为准
+- **工作区锚点（未提交改动已预留）**：`COMPOSE_PLATFORMS = ('xiaohongshu', 'douyin',
+  'wechat')`；`DRAFT_ONLY_PLATFORMS` 三平台在卡片上保留发布占位按钮（文案「一键发布
+  即将支持」）；compose 页渠道说明写明「将接入开源发布工具」。本期兑现 wechat/zhihu/
+  toutiao 的占位按钮为真实推送；xiaohongshu/douyin 维持手动复制（笔记/短文案不是
+  wechatsync 文章链路的形态，留给二期）
 
 ## 8. 错误处理与安全
 
