@@ -69,13 +69,16 @@
                                 {% endif %}
                                 {# Publishing and scheduling are per platform, so they hang off a
                                    menu of the ticked platforms rather than a button each.
-                                   Draft-only platforms (no posting API) are left out of both
-                                   menus and of the all-accounts counts. A card aimed only at
-                                   draft-only platforms keeps a publish button as a reserved
-                                   placeholder: one-click publishing arrives with the
-                                   open-source publisher, until then the copy button is the
-                                   way out. #}
-                                {% set publishable = group.platforms | rejectattr('platform', 'in', DRAFT_ONLY_PLATFORMS) | list %}
+                                   Draft-only platforms (no posting API) and the domestic
+                                   article platforms are left out of both menus and of the
+                                   all-accounts counts — the article ones publish by push
+                                   below, not through the social queue. A card aimed only at
+                                   platforms with neither path keeps a publish button as a
+                                   reserved placeholder: the copy button is the way out until
+                                   those are wired too. #}
+                                {% set publishable = group.platforms
+                                    | rejectattr('platform', 'in', DRAFT_ONLY_PLATFORMS)
+                                    | rejectattr('platform', 'in', push_platforms) | list %}
                                 {% if publishable %}
                                 <button type="button" class="btn btn-outline-info dropdown-toggle" data-bs-toggle="dropdown" data-bs-boundary="viewport" aria-expanded="false" title="Post now">
                                     🚀
@@ -109,12 +112,32 @@
                                     </button></li>
                                     {% endif %}
                                 </ul>
-                                {% else %}
+                                {% elif not (group.platforms | selectattr('platform', 'in', push_platforms) | list) %}
                                 <button type="button" class="btn btn-outline-info" disabled
                                         title="一键发布即将支持：将接入开源发布工具，当前请用复制按钮手动发布">
                                     🚀
                                 </button>
                                 {% endif %}
+                                {# Domestic article platforms push through the
+                                   local agent; the button says why whenever it
+                                   cannot be used right now. #}
+                                {% for entry in group.platforms %}
+                                    {% if entry.platform in push_platforms %}
+                                    <button type="button"
+                                            class="btn btn-sm btn-success btn-agent-push"
+                                            data-post-id="{{ entry.id }}"
+                                            data-platform="{{ entry.platform }}"
+                                            {% if not agent_online %}disabled
+                                                title="本机代理离线：请在本机运行 python -m agent"
+                                            {% elif platform_login.get(entry.platform) is false %}disabled
+                                                title="{{ push_platforms[entry.platform].label }}在本机浏览器未登录，请先登录一次"
+                                            {% endif %}>
+                                        {% if platform_login.get(entry.platform) is false %}⚠ {% endif %}📤 推送到{{ push_platforms[entry.platform].label }}草稿箱
+                                    </button>
+                                    <span class="agent-push-result ms-2 small"
+                                          data-post-id="{{ entry.id }}"></span>
+                                    {% endif %}
+                                {% endfor %}
                                 <button class="btn btn-outline-danger" onclick="deletePost({{ group.id }}, this)" title="Delete this post everywhere">
                                     🗑️
                                 </button>
@@ -144,8 +167,10 @@
                                 </button>
                                 {% if entry %}
                                 {# Draft-only platforms have no posting API, so there is no
-                                   queue to join — the copy button is the way out for now. #}
-                                {% if platform not in DRAFT_ONLY_PLATFORMS %}
+                                   queue to join — the copy button is the way out for now.
+                                   The domestic article platforms do publish on their own,
+                                   but by push (the card's 📤 button), not the social queue. #}
+                                {% if platform not in DRAFT_ONLY_PLATFORMS and platform not in push_platforms %}
                                 <button type="button" class="chip-queue {% if entry.queued %}is-queued{% endif %}"
                                         data-queued="{{ 'true' if entry.queued else 'false' }}"
                                         onclick="toggleChipQueue(this)"

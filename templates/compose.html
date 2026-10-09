@@ -929,7 +929,9 @@
                         📰 头条号
                     </label>
                 </div>
-                <div class="form-text">公众号 / 知乎 / 头条号支持一键推送草稿箱（需本机运行 agent），推送后请到各平台确认发布；小红书 / 抖音生成后复制文案手动发布。</div>
+                <div class="form-text">公众号 / 知乎 / 头条号支持一键推送草稿箱（需本机运行 agent），推送后请到各平台确认发布；小红书 / 抖音生成后复制文案手动发布。
+                    <a href="/agent-jobs" class="small ms-2">发布队列</a>
+                </div>
                 {# Accounts, only where a platform has more than one. The copy is
                    written once per platform whatever is ticked here; the ticks
                    decide how many accounts that one piece of copy is saved for,
@@ -8177,5 +8179,53 @@ function importFile() {
         }
     };
 })();
+</script>
+
+<script>
+// Domestic draft push: POST to the route, then poll the job until it leaves
+// the queue. The chip carries the per-platform truth, including drafts.
+document.addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('.btn-agent-push');
+    if (!btn || btn.disabled) return;
+    const postId = btn.dataset.postId;
+    const chip = document.querySelector(`.agent-push-result[data-post-id="${postId}"]`);
+    btn.disabled = true;
+    chip.textContent = '推送中…';
+    try {
+        const form = new FormData();
+        form.set('target', btn.dataset.platform);
+        const r = await fetch(`/compose/post/${postId}/push`, {method: 'POST', body: form});
+        const body = await r.json();
+        if (!r.ok) { chip.textContent = body.error || '推送失败'; btn.disabled = false; return; }
+        if (body.already) chip.textContent = '已在队列中…';
+        await pollPushJob(body.job_id, chip, btn);
+    } catch (e) {
+        chip.textContent = '网络错误：' + e;
+        btn.disabled = false;
+    }
+});
+
+async function pollPushJob(jobId, chip, btn, tries = 80) {
+    for (let i = 0; i < tries; i++) {
+        await new Promise(res => setTimeout(res, 3000));
+        const r = await fetch(`/agent-jobs/${jobId}.json`);
+        if (!r.ok) continue;
+        const job = await r.json();
+        if (['pending', 'claimed', 'running'].includes(job.status)) continue;
+        renderPushResults(job, chip);
+        btn.disabled = false;
+        return;
+    }
+    chip.textContent = '仍在执行，稍后可在发布队列页查看';
+    btn.disabled = false;
+}
+
+function renderPushResults(job, chip) {
+    const results = JSON.parse(job.result || '[]');
+    if (!results.length) { chip.textContent = job.status === 'succeeded' ? '已完成' : '失败'; return; }
+    chip.textContent = results.map(r =>
+        `${r.success ? '✅' : '❌'} ${r.success ? '已推入草稿，请到平台确认发布' : (r.error || '失败')}`
+    ).join('　');
+}
 </script>
 {% endblock %}

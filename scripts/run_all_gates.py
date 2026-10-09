@@ -65,6 +65,8 @@ AGENT_GATES = [
      "the wechatsync driver preflights login, classifies failures and cleans temp files"),
     ("check_agent_push.py", "AGENT_PUSH_OK",
      "the compose push route queues through the hub and the new platforms render"),
+    ("check_agent_ui.py", "AGENT_UI_OK",
+     "the push button renders with its disabled reasons and results show per platform"),
 ]
 
 # The Compose page's gates. Several scripts hold more than one gate and pick one

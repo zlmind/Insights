@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}发布队列 | Insights{% endblock %}
+{% block header %}发布队列{% endblock %}
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex align-items-center mb-3">
+        <h1 class="h3 mb-0">发布队列</h1>
+        <span class="ms-3 small {{ 'text-success' if agent_online else 'text-danger' }}">
+            {{ '本机代理在线' if agent_online else '本机代理离线' }}
+        </span>
+    </div>
+    <table class="table table-sm align-middle">
+        <thead><tr><th>#</th><th>标题</th><th>平台</th><th>状态</th><th>结果</th><th>时间</th></tr></thead>
+        <tbody>
+        {% for job in jobs %}
+        <tr>
+            <td>{{ job.id }}</td>
+            <td>{{ job.title }}</td>
+            <td>{{ job.targets }}</td>
+            <td><span class="badge bg-secondary">{{ job.status }}</span></td>
+            <td class="small">
+                {% for r in job.results %}
+                    {{ '✅' if r.success else '❌' }} {{ r.detail or r.error }}<br>
+                {% endfor %}
+            </td>
+            <td class="small text-muted">{{ job.updated_at or job.created_at }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

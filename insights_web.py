@@ -5906,15 +5906,23 @@ def _publish_target_options():
 
 @app.context_processor
 def _inject_publish_targets():
-    """Hand every card render the targets it can offer.
+    """Hand every card render the targets it can offer, and the push state.
 
     Cards are rendered from several places (the page, a card refresh, a partial
     after a tick), so the target list comes from the environment rather than
-    each caller remembering to pass it.
+    each caller remembering to pass it. The push button on a card reads the
+    same way: whether the local agent is online and which of its platforms are
+    logged in is a property of this moment, not of the route that rendered.
     """
     return {'PUBLISH_TARGETS': _publish_target_options(),
             'DRAFT_ONLY_PLATFORMS': DRAFT_ONLY_PLATFORMS,
-            'IG_MAX_COLLABORATORS': MAX_COLLABORATORS}
+            'IG_MAX_COLLABORATORS': MAX_COLLABORATORS,
+            'push_platforms': {
+                p: {"label": domestic_publisher.display_name(p),
+                    "enabled": p in domestic_publisher.enabled_platforms()}
+                for p in ("wechat", "zhihu", "toutiao")},
+            'agent_online': agent_hub.agent_online(),
+            'platform_login': agent_hub.platform_login_states()}
 
 
 def _row_account_label(row):
@@ -10185,6 +10193,26 @@ def agent_job_json(job_id: int):
     if not job:
         return jsonify({"error": "not found"}), 404
     return jsonify(job)
+
+
+@app.route('/agent-jobs')
+def agent_jobs_page():
+    """The queue, readably: what was pushed where, and what came of it.
+
+    The payload and the result are stored as JSON, so the page is where they
+    are turned back into words — the platforms a job was for carry their
+    display names, and each platform's own outcome stands on its own line.
+    """
+    jobs = database.list_agent_jobs(limit=100)
+    for job in jobs:
+        payload = json.loads(job['payload'] or '{}')
+        job['targets'] = '、'.join(
+            domestic_publisher.display_name(i.get('target', ''))
+            for i in payload.get('items') or [])
+        job['title'] = payload.get('title') or ''
+        job['results'] = json.loads(job['result'] or '[]')
+    return render_template('agent_jobs.html', jobs=jobs,
+                           agent_online=agent_hub.agent_online())
 
 
 def _publish_social_post(post_id, platform):
