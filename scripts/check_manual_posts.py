@@ -121,7 +121,7 @@ def section_route():
           f"a Western platform in targets must be refused by name: {west_t.get_json()}")
     west_p = client.post("/compose/post/create", data={"content": "x", "platforms": "twitter,instagram"})
     check(west_p.status_code == 400
-          and west_p.get_json()["error"] == "Invalid platform. Must be one of: xiaohongshu, douyin, wechat",
+          and west_p.get_json()["error"] == "Invalid platform. Must be one of: xiaohongshu, douyin, wechat, zhihu, toutiao",
           f"a Western platform in the platform list must be refused with the offer: {west_p.get_json()}")
     check(len(database.list_standalone_posts(db_path=database.DB_PATH)) == before,
           "a refused request must not write any row")
@@ -281,12 +281,12 @@ def section_targets():
         return manualPostTargets();
     })));
     """)
-    # The page can only tick what it offers, and it offers the trio and nothing
-    # else: a Western platform must not come back from tickedPlatforms() only for
-    # the server to refuse the save.
+    # The page can only tick what it offers, and it offers the domestic set and
+    # nothing else: a Western platform must not come back from tickedPlatforms()
+    # only for the server to refuse the save.
     offered = re.findall(r'<input type="checkbox"[^>]*value="([a-z]+)" id="platform-[a-z]+"', html)
-    check(sorted(offered) == ["douyin", "wechat", "xiaohongshu"],
-          f"the composer must offer exactly the three draft-only platforms, got {offered}")
+    check(sorted(offered) == ["douyin", "toutiao", "wechat", "xiaohongshu", "zhihu"],
+          f"the composer must offer exactly the domestic draft platforms, got {offered}")
 
     cases = [
         # two Xiaohongshu accounts and Douyin: accounts named, Douyin bare

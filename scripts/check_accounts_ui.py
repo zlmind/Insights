@@ -97,8 +97,8 @@ check("body.append('all', '1')" in compose,
 check("body.append('account_id', accountId)" in compose,
       "publishing a single chip does not name its account")
 
-# The chips a card draws are the targets on offer (the domestic trio). Legacy
-# rows ride along in the card's ids and menus, not as chips of their own.
+# The chips a card draws are the targets on offer (the domestic platforms).
+# Legacy rows ride along in the card's ids and menus, not as chips of their own.
 card_start = compose.index('<div class="post-item"')
 card_html = compose[card_start:compose.index('class="post-content-wrapper"', card_start)]
 chips = re.findall(r'<span class="platform-chip[^"]*"\s*data-platform="(\w+)"\s*'
@@ -106,8 +106,8 @@ chips = re.findall(r'<span class="platform-chip[^"]*"\s*data-platform="(\w+)"\s*
 ticked = re.findall(r'<span class="platform-chip is-on"\s*data-platform="(\w+)"\s*'
                     r'data-account-id="(\d*)"', card_html)
 offered = {p for p, _ in chips}
-check(offered == {"xiaohongshu", "douyin", "wechat"},
-      f"the card offers chips beyond the domestic trio: {sorted(offered)}")
+check(offered == {"xiaohongshu", "douyin", "wechat", "zhihu", "toutiao"},
+      f"the card offers chips beyond the domestic set: {sorted(offered)}")
 check(not ticked,
       f"a legacy card ticked chips for targets it was never aimed at: {ticked}")
 
@@ -116,8 +116,8 @@ new_post = re.search(r'id="new-post-platforms"(.*?)</div>', compose, re.S)
 check(new_post is not None, "the manual composer lost its target chips")
 manual_chips = re.findall(r'data-platform="(\w+)" data-account-id="(\d*)"',
                           new_post.group(1))
-check({p for p, _ in manual_chips} == {"xiaohongshu", "douyin", "wechat"},
-      f"the manual composer offers chips beyond the domestic trio: {manual_chips}")
+check({p for p, _ in manual_chips} == {"xiaohongshu", "douyin", "wechat", "zhihu", "toutiao"},
+      f"the manual composer offers chips beyond the domestic set: {manual_chips}")
 check("function newPostTargets" in compose,
       "the manual composer does not collect per-account targets")
 

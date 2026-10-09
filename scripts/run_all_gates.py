@@ -63,6 +63,8 @@ AGENT_GATES = [
      "the local agent claims over real HTTP, reports honestly and survives errors"),
     ("check_agent_drivers.py", "AGENT_DRIVERS_OK",
      "the wechatsync driver preflights login, classifies failures and cleans temp files"),
+    ("check_agent_push.py", "AGENT_PUSH_OK",
+     "the compose push route queues through the hub and the new platforms render"),
 ]
 
 # The Compose page's gates. Several scripts hold more than one gate and pick one

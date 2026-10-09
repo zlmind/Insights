@@ -53,7 +53,13 @@ def _payload_for(row) -> dict:
 
 
 def enqueue_card_push(row, *, run_after=None, created_by=None, db_path=None):
-    """Queue one card row for the agent; idempotent while a job is in flight."""
+    """Queue one card row for the agent; idempotent while a job is in flight.
+
+    Idempotence is per lane: an immediate push and a scheduled push of the
+    same card are different requests, so a 9:30 schedule never satisfies a
+    "push it now" click (and the other way round). Two clicks on the same
+    lane of the same card still queue once.
+    """
     kwargs = {} if db_path is None else {"db_path": db_path}
     payload = json.dumps(_payload_for(row), ensure_ascii=False)
     with database.sqlite3.connect(kwargs.get("db_path", database.DB_PATH)) as conn:
@@ -62,9 +68,10 @@ def enqueue_card_push(row, *, run_after=None, created_by=None, db_path=None):
             SELECT id FROM agent_jobs
             WHERE kind = 'article_sync' AND payload = ?
               AND status IN ('pending', 'claimed', 'running')
+              AND run_after IS ?  -- same lane: immediate vs scheduled
             ORDER BY id DESC LIMIT 1
             """,
-            (payload,),
+            (payload, run_after),
         ).fetchone()
     if existing:
         return {"job_id": existing[0], "already": True}

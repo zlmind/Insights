@@ -80,6 +80,8 @@
     .platform-checkbox-box[data-platform="xiaohongshu"] { --platform-color: #FF2442; --platform-bg: #FF2442; }
     .platform-checkbox-box[data-platform="douyin"] { --platform-color: #FE2C55; --platform-bg: #FE2C55; }
     .platform-checkbox-box[data-platform="wechat"] { --platform-color: #07C160; --platform-bg: #07C160; }
+    .platform-checkbox-box[data-platform="zhihu"] { --platform-color: #0084FF; --platform-bg: #0084FF; }
+    .platform-checkbox-box[data-platform="toutiao"] { --platform-color: #ED1C24; --platform-bg: #ED1C24; }
     .platform-checkbox-box[data-platform="linkedin"] { --platform-color: #0077B5; --platform-bg: #0077B5; }
     .platform-checkbox-box[data-platform="threads"] { --platform-color: #000; --platform-bg: #000; }
     .platform-checkbox-box[data-platform="twitter"] { --platform-color: #1DA1F2; --platform-bg: #1DA1F2; }
@@ -916,8 +918,18 @@
                         <input type="checkbox" class="d-none" value="wechat" id="platform-wechat" checked>
                         💬 公众号
                     </label>
+                    <label class="platform-checkbox-box selected" data-platform="zhihu" title="生成知乎文章草稿（中文），可一键推送草稿箱">
+                        <span class="check-indicator"></span>
+                        <input type="checkbox" class="d-none" value="zhihu" id="platform-zhihu" checked>
+                        📖 知乎
+                    </label>
+                    <label class="platform-checkbox-box selected" data-platform="toutiao" title="生成头条号文章草稿（中文），可一键推送草稿箱">
+                        <span class="check-indicator"></span>
+                        <input type="checkbox" class="d-none" value="toutiao" id="platform-toutiao" checked>
+                        📰 头条号
+                    </label>
                 </div>
-                <div class="form-text">三个渠道均为草稿模式：一键发布即将支持（将接入开源发布工具），当前生成后复制文案手动发布。</div>
+                <div class="form-text">公众号 / 知乎 / 头条号支持一键推送草稿箱（需本机运行 agent），推送后请到各平台确认发布；小红书 / 抖音生成后复制文案手动发布。</div>
                 {# Accounts, only where a platform has more than one. The copy is
                    written once per platform whatever is ticked here; the ticks
                    decide how many accounts that one piece of copy is saved for,
@@ -7548,6 +7560,8 @@ const platformCharLimits = {
     xiaohongshu: 1000,
     douyin: 1000,
     wechat: 20000,
+    zhihu: 20000,
+    toutiao: 20000,
     twitter: 280,
     threads: 500,
     linkedin: 3000,

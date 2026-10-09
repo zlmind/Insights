@@ -45,7 +45,7 @@ import cloudinary.uploader
 import re
 import feedparser
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import time
 from html import unescape
 from bs4 import BeautifulSoup
@@ -53,6 +53,7 @@ from urllib.parse import urlparse
 from flasgger import Swagger
 import usage_meter
 import agent_hub
+import domestic_publisher
 import database
 import content_library
 import media_probe
@@ -5685,7 +5686,7 @@ POSTS_MAX_BATCH = 100
 # platforms (linkedin, threads, twitter, facebook, instagram) stay wired up —
 # their clients, accounts and queued posts keep working — but nothing in the
 # UI offers them any more.
-COMPOSE_PLATFORMS = ('xiaohongshu', 'douyin', 'wechat')
+COMPOSE_PLATFORMS = ('xiaohongshu', 'douyin', 'wechat', 'zhihu', 'toutiao')
 
 # Platforms with no posting API yet: content is generated and saved as
 # reviewable drafts, and the card's publish button is a reserved placeholder —
@@ -6084,6 +6085,12 @@ def compose_page():
         post_groups=post_groups,
         group_total=len(groups),
         compose_platforms=list(COMPOSE_PLATFORMS),
+        push_platforms={
+            p: {"label": domestic_publisher.display_name(p),
+                "enabled": p in domestic_publisher.enabled_platforms()}
+            for p in ("wechat", "zhihu", "toutiao")},
+        agent_online=agent_hub.agent_online(),
+        platform_login=agent_hub.platform_login_states(),
         page_size=POSTS_PAGE_SIZE,
         max_batch=POSTS_MAX_BATCH,
         brief_filter_options=brief_filter_options,
@@ -10139,6 +10146,45 @@ def _compose_publish_one(post_id, platform):
             "Publish to %s failed for post %s: %s", platform, post_id, result['error'],
         )
     return _publish_response(result)
+
+
+@app.route('/compose/post/<int:post_id>/push', methods=['POST'])
+def compose_push_post(post_id: int):
+    """Queue one domestic article card for the local agent.
+
+    The agent, not this process, does the pushing, so an offline agent is a
+    409 with the way out — not a queued job that would sit until someone
+    starts the agent and nobody remembers why. A ``run_at`` flips that: a
+    scheduled push queues regardless of the agent, because waiting for the
+    agent to come online is exactly what the schedule is for.
+    """
+    post = get_standalone_post(post_id)
+    if not post:
+        return jsonify({"error": "Post not found"}), 404
+    target = (request.form.get('target') or '').strip().lower()
+    if target not in domestic_publisher.DOMESTIC_ARTICLE_PLATFORMS:
+        return jsonify({"error": f"{target or '该平台'} 不支持草稿推送"}), 400
+    run_after = None
+    run_at = (request.form.get('run_at') or '').strip()
+    if run_at:
+        try:
+            run_after = datetime.fromisoformat(run_at).astimezone(
+                timezone.utc).isoformat(timespec='seconds')
+        except ValueError:
+            return jsonify({"error": "时间格式不对"}), 400
+    elif not agent_hub.agent_online():
+        return jsonify({"error": "本机代理离线：请在本机启动 agent（python -m agent）"}), 409
+    outcome = domestic_publisher.enqueue_card_push(post, run_after=run_after)
+    return jsonify({"job_id": outcome["job_id"], "already": outcome["already"],
+                    "platform": target})
+
+
+@app.route('/agent-jobs/<int:job_id>.json')
+def agent_job_json(job_id: int):
+    job = database.get_agent_job(job_id)
+    if not job:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(job)
 
 
 def _publish_social_post(post_id, platform):

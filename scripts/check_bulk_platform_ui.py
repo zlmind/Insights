@@ -43,8 +43,8 @@ def rig(with_posts=True):
     ids["work"] = connect(database, "linkedin", "li-work", "Work")
     ids["studio"] = connect(database, "linkedin", "li-studio", "Studio")
     ids["threads"] = connect(database, "threads", "th-1", "brandco")
-    # The app is Chinese-first: the modal must offer only the trio, none of it
-    # connected (the domestic platforms have no OAuth yet), and none of the
+    # The app is Chinese-first: the modal must offer only the domestic set, none
+    # of it connected (the domestic platforms have no OAuth yet), and none of the
     # legacy Western accounts above, however connected they are.
     if with_posts:
         for i in range(2):
@@ -95,8 +95,8 @@ def section_wiring():
     modal_chips = re.findall(r'<span class="platform-chip[^"]*"[^>]*>', chips_html)
     composer_chips = re.findall(r'<span class="platform-chip[^"]*"[^>]*>', composer_html)
     offered = list(web.COMPOSE_PLATFORMS)
-    check(offered == ["xiaohongshu", "douyin", "wechat"],
-          f"the app's offered platforms are not the Chinese trio: {offered}")
+    check(offered == ["xiaohongshu", "douyin", "wechat", "zhihu", "toutiao"],
+          f"the app's offered platforms are not the domestic set: {offered}")
     check(len(modal_chips) == len(composer_chips) == len(offered),
           f"the modal offers {len(modal_chips)} targets, the composer {len(composer_chips)}, "
           f"the app offers {len(offered)}: the three lists have drifted apart")
@@ -107,24 +107,27 @@ def section_wiring():
     check(not hidden & set(chip_platforms),
           f"a hidden Western platform is still offered by the modal: "
           f"{sorted(hidden & set(chip_platforms))}")
-    # The trio's labels on screen: xiaohongshu, douyin, wechat. Built from
-    # codepoints so this file stays ASCII and a console on a non-UTF-8 codepage
-    # cannot choke on a failure message.
-    trio_labels = sorted((chr(0x5c0f) + chr(0x7ea2) + chr(0x4e66),   # xiaohongshu
-                          chr(0x6296) + chr(0x97f3),                 # douyin
-                          chr(0x516c) + chr(0x4f17) + chr(0x53f7)))  # wechat
+    # The domestic labels on screen: xiaohongshu, douyin, wechat, zhihu,
+    # toutiao. Built from codepoints so this file stays ASCII and a console on a
+    # non-UTF-8 codepage cannot choke on a failure message.
+    domestic_labels = sorted((
+        chr(0x5c0f) + chr(0x7ea2) + chr(0x4e66),             # xiaohongshu
+        chr(0x6296) + chr(0x97f3),                           # douyin
+        chr(0x516c) + chr(0x4f17) + chr(0x53f7),             # wechat
+        chr(0x77e5) + chr(0x4e4e),                           # zhihu
+        chr(0x5934) + chr(0x6761) + chr(0x53f7)))            # toutiao
     labels = re.findall(r'data-label="([^"]*)"', chips_html)
-    check(sorted(labels) == trio_labels,
-          f"the modal's chips are not labelled for the trio, got {len(labels)} labels")
+    check(sorted(labels) == domestic_labels,
+          f"the modal's chips are not labelled for the domestic set, got {len(labels)} labels")
     check(not any("Work" in label or "Studio" in label or "brandco" in label for label in labels),
           f"a legacy Western account is still offered by name: {labels}")
     account_ids = re.findall(r'data-account-id="([^"]*)"', chips_html)
     check(set(account_ids) == {""},
-          "trio chips must not claim an account - the trio has no logins: "
+          "domestic chips must not claim an account - the set has no logins: "
           f"{account_ids}")
     connected = re.findall(r'data-connected="([^"]*)"', chips_html)
     check(set(connected) == {"false"},
-          f"every trio chip is an unconnected one, got connected flags {connected}")
+          f"every domestic chip is an unconnected one, got connected flags {connected}")
     check(chips_html.count("bulk-chip-note") == len(offered),
           "an unconnected chip does not say so")
     check(re.search(r'id="bulk-platform-queue"[^>]*checked', html),

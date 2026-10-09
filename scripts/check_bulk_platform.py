@@ -196,12 +196,12 @@ def section_guard():
     check(len(rig.rows_for("Guarded card")) == 3, "a refused tick still wrote a row")
 
     # -- a hidden Western platform is refused, adding and removing alike. The
-    #    offered trio is the whole gate, so a legacy row can be queued but never
+    #    offered set is the whole gate, so a legacy row can be queued but never
     #    unticked: the route refuses the platform before it reads the action.
     res = rig.client.post(f"/compose/post/{li}/platform", data={
         "platform": "linkedin", "action": "add", "post_ids": card_ids})
     check(res.status_code == 400
-          and res.get_json()["error"] == "Invalid platform. Must be one of: xiaohongshu, douyin, wechat",
+          and res.get_json()["error"] == "Invalid platform. Must be one of: xiaohongshu, douyin, wechat, zhihu, toutiao",
           f"a hidden platform was not refused in the server's words: {res.status_code} {trim(res.get_json())}")
     res = rig.client.post(f"/compose/post/{li}/platform", data={
         "platform": "twitter", "action": "remove", "post_ids": card_ids})
