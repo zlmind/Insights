@@ -51,6 +51,12 @@ SETTINGS_GATES = [
      "settings saved on /settings beat .env, secrets never echo back, and the retired platforms group stays hidden while its keys still save"),
 ]
 
+# The domestic-article agent: queue semantics on the server side.
+AGENT_GATES = [
+    ("check_agent_jobs.py", "AGENT_JOBS_OK",
+     "the agent job queue claims once, retries with backoff and reclaims stale claims"),
+]
+
 # The Compose page's gates. Several scripts hold more than one gate and pick one
 # by argument, each printing its own token, so one file appears once per section.
 # Two of them run the page's JavaScript through node, so CI installs it.
@@ -263,8 +269,8 @@ IG_PEOPLE_GATES = [
 NOT_GATES = {}
 
 ALL_GATES = (ACCOUNT_GATES + ACCOUNT_JS_GATES + LIBRARY_GATES + SETTINGS_GATES
-             + COMPOSE_GATES + VIDEO_GATES + MANUAL_POST_GATES + QUEUE_GATES
-             + PAGING_GATES + IG_PEOPLE_GATES)
+             + AGENT_GATES + COMPOSE_GATES + VIDEO_GATES + MANUAL_POST_GATES
+             + QUEUE_GATES + PAGING_GATES + IG_PEOPLE_GATES)
 
 
 def _unpack(entry):

@@ -10,7 +10,7 @@ import json
 import secrets
 import sqlite3
 from typing import Dict, Iterable, Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 
 DB_PATH = "insights.db"
 
@@ -786,6 +786,31 @@ def init_db(db_path: str = DB_PATH) -> None:
             "ON social_accounts(platform, is_default DESC, id)",
         ):
             conn.execute(stmt)
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL DEFAULT 'article_sync',
+                payload TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                run_after TEXT,
+                attempts INTEGER DEFAULT 0,
+                max_attempts INTEGER DEFAULT 5,
+                result TEXT,
+                claimed_by TEXT,
+                claimed_at TEXT,
+                article_id INTEGER,
+                created_by INTEGER,
+                created_at TEXT,
+                updated_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_agent_jobs_queue "
+            "ON agent_jobs(status, run_after, id)"
+        )
 
         # Link every token table to the account it authenticates, and give the
         # post/queue tables the target account they publish as.
@@ -6559,3 +6584,160 @@ def count_social_accounts(platform: str | None = None, db_path: str = DB_PATH) -
                 "SELECT COUNT(*) FROM social_accounts WHERE status != 'removed'"
             )
         return cur.fetchone()[0]
+
+
+# ---------------------------------------------------------------------------
+# Agent jobs: the queue the local publishing agent drains over HTTPS.
+# ---------------------------------------------------------------------------
+
+_BACKOFF_SECONDS = (60, 300, 900, 3600)
+
+
+def enqueue_agent_job(kind, payload, *, run_after=None, max_attempts=5,
+                      article_id=None, created_by=None, db_path=DB_PATH):
+    """Queue one job for the local agent; ``payload`` is a JSON string."""
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO agent_jobs (kind, payload, status, run_after,
+                                    max_attempts, article_id, created_by,
+                                    created_at, updated_at)
+            VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?)
+            """,
+            (kind, payload, run_after, max_attempts, article_id, created_by,
+             now, now),
+        )
+    return cur.lastrowid
+
+
+def claim_agent_job(*, kinds=("article_sync",), agent="", stale_minutes=15,
+                    db_path=DB_PATH):
+    """Hand the oldest due job to one agent, exactly once.
+
+    A claim older than ``stale_minutes`` is recycled first, so a killed agent
+    cannot pin a job forever. BEGIN IMMEDIATE keeps two pollers from taking
+    the same row even on SQLite builds without RETURNING.
+    """
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    marks = ",".join("?" for _ in kinds)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute(
+                """
+                UPDATE agent_jobs SET status = 'pending', claimed_by = NULL,
+                       claimed_at = NULL, updated_at = ?
+                WHERE status = 'claimed'
+                  AND claimed_at IS NOT NULL
+                  AND claimed_at < ?
+                """,
+                (now,
+                 (datetime.utcnow()
+                  - timedelta(minutes=stale_minutes)).isoformat(timespec="seconds")),
+            )
+            row = conn.execute(
+                f"""
+                SELECT id FROM agent_jobs
+                WHERE status = 'pending' AND kind IN ({marks})
+                  AND (run_after IS NULL OR run_after <= ?)
+                ORDER BY id LIMIT 1
+                """,
+                (*kinds, now),
+            ).fetchone()
+            if not row:
+                conn.rollback()
+                return None
+            conn.execute(
+                """
+                UPDATE agent_jobs SET status = 'claimed', claimed_by = ?,
+                       claimed_at = ?, updated_at = ? WHERE id = ?
+                """,
+                (agent, now, now, row[0]),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+    return get_agent_job(row[0], db_path=db_path)
+
+
+def record_agent_job_event(job_id, event, *, db_path=DB_PATH):
+    """Apply one agent event (started/done/failed) to a job; returns the row.
+
+    ``done`` carries per-platform ``results``; all-success is succeeded, any
+    success with any failure is partial. ``failed`` requeues only when the
+    event says ``retryable`` and attempts remain.
+    """
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    etype = (event or {}).get("type")
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM agent_jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+        if not row:
+            raise ValueError(f"agent job {job_id} does not exist")
+        attempts = row["attempts"] or 0
+        max_attempts = row["max_attempts"] or 5
+
+        if etype == "started":
+            status, run_after, result = "running", row["run_after"], row["result"]
+        elif etype == "done":
+            results = event.get("results") or []
+            ok = [r for r in results if r.get("success")]
+            if results and len(ok) == len(results):
+                status = "succeeded"
+            elif ok:
+                status = "partial"
+            else:
+                status = "failed"
+            run_after = row["run_after"]
+            result = json.dumps(results, ensure_ascii=False)
+        elif etype == "failed":
+            result = json.dumps(
+                [{"error": event.get("error", "unknown"),
+                  "code": event.get("code"), "retryable": bool(event.get("retryable"))}],
+                ensure_ascii=False)
+            # Every retryable failure burns an attempt; the job goes back in the
+            # queue only while attempts remain, otherwise it lands as terminal.
+            if event.get("retryable"):
+                attempts += 1
+            if event.get("retryable") and attempts < max_attempts:
+                status = "pending"
+                delay = _BACKOFF_SECONDS[min(attempts - 1, len(_BACKOFF_SECONDS) - 1)]
+                run_after = (datetime.utcnow()
+                             + timedelta(seconds=delay)).isoformat(timespec="seconds")
+            else:
+                status, run_after = "failed", row["run_after"]
+        else:
+            raise ValueError(f"unknown agent job event type: {etype!r}")
+
+        conn.execute(
+            """
+            UPDATE agent_jobs SET status = ?, attempts = ?, run_after = ?,
+                   result = COALESCE(?, result), updated_at = ? WHERE id = ?
+            """,
+            (status, attempts, run_after, result, now, job_id),
+        )
+    return get_agent_job(job_id, db_path=db_path)
+
+
+def get_agent_job(job_id, *, db_path=DB_PATH):
+    """One agent job row as a dict, or None."""
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM agent_jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def list_agent_jobs(*, limit=100, db_path=DB_PATH):
+    """Agent jobs, newest first."""
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM agent_jobs ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [dict(r) for r in rows]
