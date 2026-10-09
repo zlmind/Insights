@@ -278,7 +278,9 @@ IG_PEOPLE_GATES = [
 
 # check_*.py files that are deliberately not gates, with the reason. Empty is the
 # healthy state: a script that is not a gate should not carry the check_ prefix.
-NOT_GATES = {}
+NOT_GATES = {
+    "check_agent_e2e.py": "needs a local wechatsync login; run manually with INSIGHTS_AGENT_E2E=1",
+}
 
 ALL_GATES = (ACCOUNT_GATES + ACCOUNT_JS_GATES + LIBRARY_GATES + SETTINGS_GATES
              + AGENT_GATES + COMPOSE_GATES + VIDEO_GATES + MANUAL_POST_GATES

@@ -97,6 +97,8 @@ CREATE TABLE agent_jobs (
 - 文章 HTML 内嵌在 payload（文本量级几十 KB），MVP 不做签名下载 URL；视频 job 后续需要
   media URL + agent 下载
 - `partial` 是一等状态：N 个目标成功 M 个（M<N）就是 partial，逐平台结果说话
+- 入队幂等按 lane 判定：`enqueue_card_push` 只拦同 payload、仍在途（`pending|claimed|running`）
+  且 `run_after IS ?` 同车道的重复推送——立即推送与定时推送互不去重；job 结束后可再次推送
 
 ### 设置项（appconfig.py 注册表，新分组「国内渠道」）
 
@@ -122,7 +124,7 @@ MVP 目标粒度是**平台**不是账号（wechatsync 每平台一个浏览器�
 | 端点 | 方法 | 作用 |
 |------|------|------|
 | `/agent/heartbeat` | POST | 版本、工具可用性、各平台登录态。服务器缓存最近心跳；**60 秒无心跳 → compose 国内目标置灰** |
-| `/agent/jobs/claim` | POST | 原子认领：`UPDATE ... WHERE id = (SELECT id FROM agent_jobs WHERE status='pending' AND run_after <= now ORDER BY id LIMIT 1) RETURNING *`；无任务 204 |
+| `/agent/jobs/claim` | POST | 原子认领：`BEGIN IMMEDIATE` 事务内先回收超时 `claimed`，再 `SELECT id ... ORDER BY id LIMIT 1` + `UPDATE ... SET status='claimed'` 两步完成（不依赖 SQLite 的 `RETURNING`）；无任务 204 |
 | `/agent/jobs/<id>/events` | POST | 执行事件与最终结果 |
 | `/agent-jobs/<id>.json` | GET | 单任务状态（**登录态**；compose 页轮询渲染结果用） |
 | `/agent-jobs` | GET | 队列与历史页面（登录态） |
