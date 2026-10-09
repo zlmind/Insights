@@ -6616,8 +6616,12 @@ def claim_agent_job(*, kinds=("article_sync",), agent="", stale_minutes=15,
     """Hand the oldest due job to one agent, exactly once.
 
     A claim older than ``stale_minutes`` is recycled first, so a killed agent
-    cannot pin a job forever. BEGIN IMMEDIATE keeps two pollers from taking
-    the same row even on SQLite builds without RETURNING.
+    cannot pin a job forever. The same rule covers ``running`` rows:
+    ``claimed_at`` survives the started event, and a run past the deadline is
+    a dead agent too — the window (15 minutes) is comfortably longer than the
+    longest a live agent can hold a job (~330s of wechatsync sync). BEGIN
+    IMMEDIATE keeps two pollers from taking the same row even on SQLite
+    builds without RETURNING.
     """
     now = datetime.utcnow().isoformat(timespec="seconds")
     marks = ",".join("?" for _ in kinds)
@@ -6628,7 +6632,7 @@ def claim_agent_job(*, kinds=("article_sync",), agent="", stale_minutes=15,
                 """
                 UPDATE agent_jobs SET status = 'pending', claimed_by = NULL,
                        claimed_at = NULL, updated_at = ?
-                WHERE status = 'claimed'
+                WHERE status IN ('claimed', 'running')
                   AND claimed_at IS NOT NULL
                   AND claimed_at < ?
                 """,
@@ -6668,9 +6672,17 @@ def record_agent_job_event(job_id, event, *, db_path=DB_PATH):
     ``done`` carries per-platform ``results``; all-success is succeeded, any
     success with any failure is partial. ``failed`` requeues only when the
     event says ``retryable`` and attempts remain.
+
+    An event of an unknown type is a protocol error and is refused wherever
+    the job stands. But a job already in a terminal state (``succeeded``,
+    ``partial``, ``failed``) answers every well-formed late event with the
+    row unchanged: after a reclaim the old and the new agent may both report,
+    and double-reporting is not an error a reporter can fix.
     """
     now = datetime.utcnow().isoformat(timespec="seconds")
     etype = (event or {}).get("type")
+    if etype not in ("started", "done", "failed"):
+        raise ValueError(f"unknown agent job event type: {etype!r}")
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
@@ -6678,6 +6690,8 @@ def record_agent_job_event(job_id, event, *, db_path=DB_PATH):
         ).fetchone()
         if not row:
             raise ValueError(f"agent job {job_id} does not exist")
+        if row["status"] in ("succeeded", "partial", "failed"):
+            return get_agent_job(job_id, db_path=db_path)
         attempts = row["attempts"] or 0
         max_attempts = row["max_attempts"] or 5
 
@@ -6710,8 +6724,6 @@ def record_agent_job_event(job_id, event, *, db_path=DB_PATH):
                              + timedelta(seconds=delay)).isoformat(timespec="seconds")
             else:
                 status, run_after = "failed", row["run_after"]
-        else:
-            raise ValueError(f"unknown agent job event type: {etype!r}")
 
         conn.execute(
             """

@@ -10172,13 +10172,23 @@ def compose_push_post(post_id: int):
     target = (request.form.get('target') or '').strip().lower()
     if target not in domestic_publisher.DOMESTIC_ARTICLE_PLATFORMS:
         return jsonify({"error": f"{target or '该平台'} 不支持草稿推送"}), 400
+    if target != post['platform']:
+        return jsonify({"error": "该卡片不是这个平台的内容"}), 400
+    if target not in domestic_publisher.enabled_platforms():
+        return jsonify({"error": "平台未在设置页启用"}), 400
     run_after = None
     run_at = (request.form.get('run_at') or '').strip()
     if run_at:
+        # The browser sends datetime-local's wall time plus its own offset
+        # from UTC in minutes (UTC+8 -> -480), so a schedule means what the
+        # user's clock says, not what the server's timezone does. Absent
+        # offset keeps the value as submitted.
+        tz_offset = request.form.get('tz_offset', type=int) or 0
         try:
-            run_after = datetime.fromisoformat(run_at).astimezone(
-                timezone.utc).isoformat(timespec='seconds')
-        except ValueError:
+            run_after = (datetime.fromisoformat(run_at)
+                         + timedelta(minutes=tz_offset)).replace(
+                tzinfo=timezone.utc).isoformat(timespec='seconds')
+        except (ValueError, OverflowError):
             return jsonify({"error": "时间格式不对"}), 400
     elif not agent_hub.agent_online():
         return jsonify({"error": "本机代理离线：请在本机启动 agent（python -m agent）"}), 409
@@ -10373,6 +10383,8 @@ def agent_job_events(job_id: int):
     if not agent_hub.check_agent_auth():
         return jsonify({"error": "unauthorized"}), 401
     event = request.get_json(silent=True) or {}
+    if not isinstance(event, dict):
+        return jsonify({"error": "event must be an object"}), 400
     try:
         job = database.record_agent_job_event(job_id, event)
     except ValueError as exc:

@@ -101,10 +101,8 @@ SETTINGS: Dict[str, dict] = {
     # ── 国内渠道（文章推送）──
     "AGENT_TOKEN": {
         "group": "domestic", "label": "Agent 共享密钥", "secret": True,
-        "help": "本机 agent 与服务器之间的 Bearer Token，两侧必须一致。",
-    },
-    "AGENT_POLL_SECONDS": {
-        "group": "domestic", "label": "Agent 轮询间隔（秒）", "default": "5",
+        "help": "本机 agent 与服务器之间的 Bearer Token，两侧必须一致。"
+                "用 python -c \"import secrets; print(secrets.token_urlsafe(32))\" 生成。",
     },
     "WECHATSYNC_ENABLED_PLATFORMS": {
         "group": "domestic", "label": "启用推送的平台",

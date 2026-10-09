@@ -84,11 +84,47 @@ def main():
     check(revived and revived["id"] == j4,
           "a claim older than stale_minutes is handed out again")
 
+    # --- a running job whose agent died is reclaimed too ---
+    # claimed_at survives the started event, so the same staleness rule that
+    # recovers a killed claim recovers a killed run; otherwise the row would
+    # sit running forever and its dedupe lane would block every re-push.
+    j6 = database.enqueue_agent_job("article_sync", json.dumps({"items": []}))
+    check(database.claim_agent_job(agent="a1")["id"] == j6,
+          "the fresh job is the one claimed")
+    database.record_agent_job_event(j6, {"type": "started"})
+    check(database.get_agent_job(j6)["status"] == "running",
+          "started moves the job to running")
+    with sqlite3.connect(database.DB_PATH) as conn:
+        conn.execute("UPDATE agent_jobs SET claimed_at = ? WHERE id = ?",
+                     ("2000-01-01T00:00:00", j6))
+    revived = database.claim_agent_job(agent="a4", stale_minutes=15)
+    check(revived and revived["id"] == j6 and revived["status"] == "claimed",
+          "a running job past its claim deadline is handed out again")
+
+    # --- a terminal job ignores late events ---
+    # After a reclaim the old and the new agent may both report; a finished
+    # row must not move again, and the reporter is not told off for it.
+    before = database.get_agent_job(jid)          # partial, from the done above
+    after = database.record_agent_job_event(jid, {"type": "started"})
+    check(dict(after) == dict(before),
+          "a late started on a terminal job changes nothing")
+    before = database.get_agent_job(j3)           # failed, terminal
+    after = database.record_agent_job_event(
+        j3, {"type": "failed", "error": "late", "retryable": True})
+    check(dict(after) == dict(before),
+          "a late failed on a terminal job changes nothing")
+
     # --- run_after gates claiming ---
     j5 = database.enqueue_agent_job("article_sync", json.dumps({"items": []}),
                                     run_after="2099-01-01T00:00:00")
     check(database.claim_agent_job(agent="a1") is None,
           "a future run_after is not claimable yet")
+
+    # --- the events door refuses a body that is not an object ---
+    database.set_setting("AGENT_TOKEN", "gate-token", db_path=database.DB_PATH)
+    r = client.post(f"/agent/jobs/{j6}/events", json=["not", "an", "object"],
+                    headers={"Authorization": "Bearer gate-token"})
+    check(r.status_code == 400, "a non-object event body is a 400, not a 500")
 
     # --- list ---
     jobs = database.list_agent_jobs(limit=10)

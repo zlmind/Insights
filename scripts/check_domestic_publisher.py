@@ -57,6 +57,21 @@ def main():
     check(b["already"] is False and b["job_id"] != a["job_id"],
           "edited copy queues as a new job")
 
+    # Lanes are classes, not strings: immediate stays apart from scheduled,
+    # while two pushes of the same class dedupe even when their run_after
+    # strings differ in shape — a server retry rewrites the stored value in
+    # its own format, and that must not split the lane in two.
+    row3 = _seed_post(database)
+    scheduled = dp.enqueue_card_push(row3, run_after="2099-01-01T01:30:00+00:00")
+    check(scheduled["already"] is False, "a scheduled push queues")
+    again = dp.enqueue_card_push(row3, run_after="2099-01-01T01:30:00")
+    check(again["already"] is True and again["job_id"] == scheduled["job_id"],
+          "same-lane pushes dedupe across run_after string formats")
+    immediate = dp.enqueue_card_push(row3)
+    check(immediate["already"] is False
+          and immediate["job_id"] != scheduled["job_id"],
+          "an immediate push does not dedupe against a scheduled one")
+
     print("DOMESTIC_PUBLISHER_OK")
 
 

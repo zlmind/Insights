@@ -1259,6 +1259,8 @@
                 <option value="xiaohongshu">📕 小红书</option>
                 <option value="douyin">🎵 抖音</option>
                 <option value="wechat">💬 公众号</option>
+                <option value="zhihu">📖 知乎</option>
+                <option value="toutiao">📰 头条号</option>
             </select>
             <select class="form-select form-select-sm" style="width: auto;" id="filter-image" onchange="applyPostFilters()">
                 <option value="">All Images</option>
@@ -8241,6 +8243,10 @@ document.addEventListener('click', async (ev) => {
         const form = new FormData();
         form.set('target', row.dataset.platform);
         form.set('run_at', at);
+        // The input's wall time is browser-local: send this machine's offset
+        // from UTC in minutes (UTC+8 -> -480) so the server stores the right
+        // instant however its own timezone is set.
+        form.set('tz_offset', String(new Date().getTimezoneOffset()));
         const r = await fetch(`/compose/post/${row.dataset.postId}/push`,
                               {method: 'POST', body: form});
         const body = await r.json();

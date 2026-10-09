@@ -22,7 +22,7 @@
     'facebook':  {'label': 'Facebook',  'icon': '📘', 'color': '#1877F2', 'tint': 'rgba(24, 119, 242, 0.08)'},
     'instagram': {'label': 'Instagram', 'icon': '📷', 'color': '#E4405F', 'tint': 'rgba(228, 64, 95, 0.08)'},
 } %}
-{% set PLATFORM_ORDER = ['xiaohongshu', 'douyin', 'wechat', 'linkedin', 'threads', 'twitter', 'facebook', 'instagram'] %}
+{% set PLATFORM_ORDER = ['xiaohongshu', 'douyin', 'wechat', 'zhihu', 'toutiao', 'linkedin', 'threads', 'twitter', 'facebook', 'instagram'] %}
 
 {% macro render_post_item(group) %}
 {# Destinations are keyed by platform AND account, because a platform can hold
@@ -123,12 +123,18 @@
                                    cannot be used right now. #}
                                 {% for entry in group.platforms %}
                                     {% if entry.platform in push_platforms %}
+                                    {# The button says why it cannot be used,
+                                       one reason at a time: offline first,
+                                       then the settings-page switch, then
+                                       the platform's login state. #}
                                     <button type="button"
                                             class="btn btn-sm btn-success btn-agent-push"
                                             data-post-id="{{ entry.id }}"
                                             data-platform="{{ entry.platform }}"
                                             {% if not agent_online %}disabled
                                                 title="本机代理离线：请在本机运行 python -m agent"
+                                            {% elif not push_platforms[entry.platform].enabled %}disabled
+                                                title="该平台未在设置页启用"
                                             {% elif platform_login.get(entry.platform) is false %}disabled
                                                 title="{{ push_platforms[entry.platform].label }}在本机浏览器未登录，请先登录一次"
                                             {% endif %}>

@@ -98,17 +98,20 @@ CREATE TABLE agent_jobs (
   media URL + agent 下载
 - `partial` 是一等状态：N 个目标成功 M 个（M<N）就是 partial，逐平台结果说话
 - 入队幂等按 lane 判定：`enqueue_card_push` 只拦同 payload、仍在途（`pending|claimed|running`）
-  且 `run_after IS ?` 同车道的重复推送——立即推送与定时推送互不去重；job 结束后可再次推送
+  且车道类别相同（`run_after IS NULL` 与否一致，不比较字符串）的重复推送——立即推送与
+  定时推送互不去重，同类的两次点击只排一次；job 结束后可再次推送
 
 ### 设置项（appconfig.py 注册表，新分组「国内渠道」）
 
 | 键 | 说明 |
 |---|---|
 | `AGENT_TOKEN` | agent↔服务器共享密钥（`secret: True`，设置页掩码） |
-| `AGENT_POLL_SECONDS` | agent 轮询间隔，默认 5 |
-| `WECHATSYNC_ENABLED_PLATFORMS` | 启用的文章平台，默认 `weixin,zhihu,toutiao` |
+| `WECHATSYNC_ENABLED_PLATFORMS` | 启用的文章平台，默认 `wechat,zhihu,toutiao`；未保存时按默认全启用 |
+
+（agent 轮询间隔不在服务器设置里：agent 只读自己的环境变量，见下。）
 
 agent 侧环境变量：`INSIGHTS_SERVER_URL`、`INSIGHTS_AGENT_TOKEN`（与服务器一致）、
+可选 `AGENT_POLL_SECONDS`（轮询间隔，默认 5）、
 可选 `WECHATSYNC_TOKEN`（缺省继承 wechatsync CLI 自己的环境）。
 
 ### 不建国内账号模型
@@ -182,18 +185,21 @@ class Driver(Protocol):
 ### 执行纪律
 
 - 同一时刻只跑一个 job（平台风控敏感，串行最稳）
-- agent 无状态：崩溃重启后重新 poll；`claimed` 超 15 分钟无结果由服务器回收为 pending
+- agent 无状态：崩溃重启后重新 poll；`claimed`/`running` 超 15 分钟无结果由服务器回收为
+  pending（`claimed_at` 在 started 后保留，所以同一时钟覆盖两种状态）
 - 不追工具上游：部署时锁定 wechatsync 版本（sau 尤其如此）
 
 ## 7. 与现有链路的整合
 
 - **compose 页**：目标选择器新增「国内文章」分组（绿点=已登录，来自心跳）。点「立即发布」：
-  海外目标照旧 `publish_targets()` 同步返回；国内目标入队（`run_after=now`），页面拿
-  job id 轮询 `/agent/jobs/<id>` 渲染逐平台结果。一个按钮后面两条路径，用户不感知分叉。
-  结果文案：「✓ 已推入公众号草稿箱，请到微信公众平台确认发布」
+  海外目标照旧 `publish_targets()` 同步返回；国内目标入队（`run_after=None`，立即车道），
+  页面拿 job id 轮询 `/agent/jobs/<id>` 渲染逐平台结果。一个按钮后面两条路径，用户不感知
+  分叉。结果文案：「✓ 已推入公众号草稿箱，请到微信公众平台确认发布」
 - **定时发布**：国内目标**不进** `scheduled_posts` 表（混入 weixin 会让
   `scheduled_post_worker` 撞上 "cannot be published to"）。定时创建国内目标直接写
-  `agent_jobs`（`run_after=定时时间`），在 `/agent-jobs` 队列面板展示。海外定时流不动。
+  `agent_jobs`（`run_after=定时时间`），在 `/agent-jobs` 队列面板展示。`run_at` 按
+  **浏览器时区**解释：表单把 `datetime-local` 的本地墙钟连同 `getTimezoneOffset()`
+  的分钟偏移一起提交，服务器据此换算成 UTC 存储，不受服务器自身时区影响。海外定时流不动。
 - **离线降级**：心跳超 60 秒 → compose 国内分组置灰 + 「本机代理离线，请启动 agent」；
   已入队任务不受影响，agent 上线后照常领取
 - **平台名映射**：仓库平台 ID 沿用工作区现状（`wechat`/`xiaohongshu`/`douyin`，新增
@@ -221,7 +227,9 @@ class Driver(Protocol):
 ### 服务器侧重试
 
 `failed` 且 retryable → `attempts+1`，退避 `1m→5m→15m→60m`，`max_attempts=5` 后标
-`failed` 留档；`claimed` 超 15 分钟回收为 pending（agent 崩溃自愈）。
+`failed` 留档；`claimed`/`running` 超 15 分钟回收为 pending（agent 崩溃自愈）。已终态
+（`succeeded|partial|failed`）的 job 不再被迟到事件改动——回收后新旧 agent 重复上报是
+幂等空操作，不报错。
 
 ### 安全边界
 

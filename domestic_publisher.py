@@ -34,11 +34,18 @@ def display_name(platform: str) -> str:
 
 
 def enabled_platforms(db_path=None) -> list[str]:
-    """The platforms the admin switched on, in registry order."""
+    """The platforms the admin switched on, in registry order.
+
+    Until the admin saves the setting, every article platform is on — the
+    same default the settings page offers. A fresh install must not have to
+    visit /settings before its first push works.
+    """
     raw = database.get_setting("WECHATSYNC_ENABLED_PLATFORMS", "") \
         if db_path is None else database.get_setting(
             "WECHATSYNC_ENABLED_PLATFORMS", "", db_path=db_path)
     picked = [p.strip() for p in (raw or "").split(",") if p.strip()]
+    if not picked:
+        picked = list(DOMESTIC_ARTICLE_PLATFORMS)
     return [p for p in DOMESTIC_ARTICLE_PLATFORMS if p in picked]
 
 
@@ -55,10 +62,12 @@ def _payload_for(row) -> dict:
 def enqueue_card_push(row, *, run_after=None, created_by=None, db_path=None):
     """Queue one card row for the agent; idempotent while a job is in flight.
 
-    Idempotence is per lane: an immediate push and a scheduled push of the
-    same card are different requests, so a 9:30 schedule never satisfies a
-    "push it now" click (and the other way round). Two clicks on the same
-    lane of the same card still queue once.
+    Idempotence is per lane class: an immediate push and a scheduled push of
+    the same card are different requests, so a 9:30 schedule never satisfies
+    a "push it now" click (and the other way round). Two clicks on the same
+    class still queue once. The class is a NULL test, not a string compare:
+    a server retry rewrites a stored run_after in its own format, and an
+    exact match would then split one lane in two.
     """
     kwargs = {} if db_path is None else {"db_path": db_path}
     payload = json.dumps(_payload_for(row), ensure_ascii=False)
@@ -68,7 +77,7 @@ def enqueue_card_push(row, *, run_after=None, created_by=None, db_path=None):
             SELECT id FROM agent_jobs
             WHERE kind = 'article_sync' AND payload = ?
               AND status IN ('pending', 'claimed', 'running')
-              AND run_after IS ?  -- same lane: immediate vs scheduled
+              AND (run_after IS NULL) = (? IS NULL)  -- same lane class
             ORDER BY id DESC LIMIT 1
             """,
             (payload, run_after),
