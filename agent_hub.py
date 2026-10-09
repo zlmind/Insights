@@ -38,7 +38,11 @@ def check_agent_auth() -> bool:
     header = request.headers.get("Authorization", "")
     if not header.startswith("Bearer "):
         return False
-    return hmac.compare_digest(header[len("Bearer "):], expected)
+    # compare_digest is bytes-only: a header is decoded as latin-1, so any
+    # non-ASCII byte in it would raise TypeError and turn the rejection into
+    # a 500 unless both sides are compared as utf-8.
+    return hmac.compare_digest(header[len("Bearer "):].encode("utf-8"),
+                               expected.encode("utf-8"))
 
 
 def record_heartbeat(payload: dict) -> None:

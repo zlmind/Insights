@@ -461,7 +461,8 @@ PUBLIC_ENDPOINTS = {"login", "signup", "logout", "health",
 # Auto-tracking writes a row for every non-GET request, but we suppress
 # rows for these endpoints because they're either covered by an explicit
 # log_event() call or aren't interesting in the audit log.
-SKIP_TRACK_ENDPOINTS = {"login", "logout", "signup", "health"}
+SKIP_TRACK_ENDPOINTS = {"login", "logout", "signup", "health",
+                        "agent_heartbeat", "agent_claim", "agent_job_events"}
 
 
 def _is_static_endpoint(endpoint: str | None) -> bool:
