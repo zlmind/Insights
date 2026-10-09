@@ -26,6 +26,7 @@ import database
 SETTING_GROUPS: List[tuple] = [
     ("ai", "AI service"),
     ("platforms", "Platform apps (OAuth credentials)"),
+    ("domestic", "国内渠道（文章推送）"),
     ("media", "Image hosting & stock photos"),
     ("search", "Web search"),
     ("jira", "JIRA"),
@@ -96,6 +97,19 @@ SETTINGS: Dict[str, dict] = {
     "INSTAGRAM_APP_SECRET": {
         "group": "platforms", "label": "Instagram app secret", "secret": True,
         "help": "Use the Instagram product's own ID/secret, not the Meta app's.",
+    },
+    # ── 国内渠道（文章推送）──
+    "AGENT_TOKEN": {
+        "group": "domestic", "label": "Agent 共享密钥", "secret": True,
+        "help": "本机 agent 与服务器之间的 Bearer Token，两侧必须一致。",
+    },
+    "AGENT_POLL_SECONDS": {
+        "group": "domestic", "label": "Agent 轮询间隔（秒）", "default": "5",
+    },
+    "WECHATSYNC_ENABLED_PLATFORMS": {
+        "group": "domestic", "label": "启用推送的平台",
+        "default": "wechat,zhihu,toutiao",
+        "help": "逗号分隔；可推送 = 平台在列且本机 agent 在线。",
     },
     # ── Image hosting & stock photos ──
     "CLOUDINARY_CLOUD_NAME": {

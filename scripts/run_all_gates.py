@@ -55,6 +55,8 @@ SETTINGS_GATES = [
 AGENT_GATES = [
     ("check_agent_jobs.py", "AGENT_JOBS_OK",
      "the agent job queue claims once, retries with backoff and reclaims stale claims"),
+    ("check_domestic_publisher.py", "DOMESTIC_PUBLISHER_OK",
+     "card pushes enqueue verbatim copy and dedupe while a job is in flight"),
 ]
 
 # The Compose page's gates. Several scripts hold more than one gate and pick one
