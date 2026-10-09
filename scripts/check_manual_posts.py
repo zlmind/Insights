@@ -6,8 +6,17 @@
     python scripts/check_manual_posts.py video     MANUAL_POSTS_VIDEO_OK
     python scripts/check_manual_posts.py llm       LLM_ADAPTERS_OK
 
+The composer is Chinese-platform-first: the platforms it offers are the three
+draft-only ones, xiaohongshu, douyin and wechat. They have no posting API, so a
+saved row is a draft the user copies and publishes by hand; the schedule route
+and the card queue refuse one with exactly that way out, and no queueing path
+takes a slot for it. The Western platforms
+(linkedin, threads, twitter, facebook, instagram) are not offered any more, and
+creation refuses them by name rather than quietly retargeting the post.
+
 ``route`` drives the real /compose/post/create endpoint with the same targets the
-composer sends and checks the rows it writes. ``wiring`` renders the real
+composer sends, checks the rows it writes, pins the refusal of a Western
+platform and of queueing a draft-only row. ``wiring`` renders the real
 /compose page and checks the manual tab is first, is the default, hides what only
 a model needs, and is bound to that endpoint. ``targets`` runs the composer's
 target-building JavaScript under node. ``video`` runs the tab's video handlers
@@ -29,7 +38,22 @@ import sys
 import types
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _accounts_gate import isolated_app, connect, check  # noqa: E402
+from _accounts_gate import isolated_app, check  # noqa: E402
+
+
+def connect_draft_account(database, platform, external_id, label):
+    """Connect one draft-only account, returning its id.
+
+    The draft-only platforms have no OAuth and no token store, so an account is
+    just a row in social_accounts naming where a draft is aimed (the Western
+    token tables behind ``_accounts_gate.connect`` do not cover them). The first
+    account a platform gets becomes its default, which is what a bare platform
+    target resolves to.
+    """
+    account_id = database.upsert_social_account(
+        platform, external_id, display_name=label, label=label)
+    assert account_id, f"connecting {platform}:{external_id} made no account"
+    return account_id
 
 
 def rig():
@@ -38,9 +62,10 @@ def rig():
     # real Cloudinary when the repo .env is found; a gate must not.
     web._maybe_attach_link_image = lambda *a, **k: None
     ids = {
-        "work": connect(database, "linkedin", "li-work", "Work"),
-        "studio": connect(database, "linkedin", "li-studio", "Studio"),
-        "threads": connect(database, "threads", "th-1", "brandco"),
+        "xhs_work": connect_draft_account(database, "xiaohongshu", "xhs-work", "Work"),
+        "xhs_studio": connect_draft_account(database, "xiaohongshu", "xhs-studio", "Studio"),
+        "douyin": connect_draft_account(database, "douyin", "dy-1", "Douyin"),
+        "wechat": connect_draft_account(database, "wechat", "wx-1", "WeChat"),
     }
     return database, web, client, ids
 
@@ -57,7 +82,8 @@ def post(client, targets, content="A post written by hand", image=None):
 def section_route():
     database, web, client, ids = rig()
     image = "https://example.test/pic.jpg"
-    response = post(client, [f"linkedin:{ids['work']}", f"linkedin:{ids['studio']}", "threads"],
+    response = post(client, [f"xiaohongshu:{ids['xhs_work']}", f"xiaohongshu:{ids['xhs_studio']}",
+                             "douyin"],
                     image=image)
     body = response.get_json()
     check(response.status_code == 200 and body.get("success"), f"create failed: {body}")
@@ -67,11 +93,11 @@ def section_route():
     check({r["source_type"] for r in rows} == {"manual"}, "a hand-written post must be source_type 'manual'")
     check({r["content"] for r in rows} == {"A post written by hand"}, "every row must carry the same copy")
     check({r["image_url"] for r in rows} == {image}, "every row must carry the chosen image")
-    li = sorted(r["account_id"] for r in rows if r["platform"] == "linkedin")
-    check(li == sorted([ids["work"], ids["studio"]]),
-          f"both LinkedIn accounts must get their own row, got {li}")
-    th = [r for r in rows if r["platform"] == "threads"]
-    check(len(th) == 1 and th[0]["account_id"] == ids["threads"],
+    xhs = sorted(r["account_id"] for r in rows if r["platform"] == "xiaohongshu")
+    check(xhs == sorted([ids["xhs_work"], ids["xhs_studio"]]),
+          f"both Xiaohongshu accounts must get their own row, got {xhs}")
+    dy = [r for r in rows if r["platform"] == "douyin"]
+    check(len(dy) == 1 and dy[0]["account_id"] == ids["douyin"],
           "a bare platform name must land on that platform's default account")
 
     groups = web._group_standalone_posts(
@@ -80,20 +106,55 @@ def section_route():
 
     # Rejections: each must say why and write nothing.
     before = len(database.list_standalone_posts(db_path=database.DB_PATH))
-    empty = post(client, ["threads"], content="   ")
+    empty = post(client, ["douyin"], content="   ")
     check(empty.status_code == 400 and "Content" in empty.get_json()["error"],
           "blank copy must be refused")
-    wrong = post(client, [f"threads:{ids['work']}"])
+    wrong = post(client, [f"douyin:{ids['xhs_work']}"])
     check(wrong.status_code == 400, "an account belonging to another platform must be refused")
     none = client.post("/compose/post/create", data={"content": "x"})
     check(none.status_code == 400, "a post with no platform must be refused")
+    # The Western platforms are not offered any more, and a request that names
+    # one is refused by name rather than quietly retargeted — as a target and
+    # as a bare platform list alike.
+    west_t = post(client, ["linkedin"])
+    check(west_t.status_code == 400 and west_t.get_json()["error"] == "Invalid platform: linkedin",
+          f"a Western platform in targets must be refused by name: {west_t.get_json()}")
+    west_p = client.post("/compose/post/create", data={"content": "x", "platforms": "twitter,instagram"})
+    check(west_p.status_code == 400
+          and west_p.get_json()["error"] == "Invalid platform. Must be one of: xiaohongshu, douyin, wechat",
+          f"a Western platform in the platform list must be refused with the offer: {west_p.get_json()}")
     check(len(database.list_standalone_posts(db_path=database.DB_PATH)) == before,
           "a refused request must not write any row")
+
+    # The trio is draft-only: there is no posting API to queue into, so every
+    # queueing path refuses instead of taking a slot — with the way out where it
+    # speaks for the trio.
+    first = body["post_ids"][0]
+    scheduled = client.post("/schedule/add", data={
+        "post_type": "social", "social_post_id": first,
+        "platform": "xiaohongshu", "scheduled_for": "2099-01-01T00:00:00"})
+    check(scheduled.status_code == 400
+          and scheduled.get_json()["error"] == "xiaohongshu is draft-only: copy the post and publish it manually.",
+          f"scheduling a draft-only post must be refused with the way out: {scheduled.get_json()}")
+    queued = client.post("/compose/posts/bulk-add-platform",
+                         json={"post_ids": body["post_ids"], "targets": ["xiaohongshu", "douyin"],
+                               "queue": True})
+    qbody = queued.get_json() or {}
+    reasons = {s["platform"]: s["reason"] for s in qbody.get("skipped", [])}
+    check(queued.status_code == 200 and qbody.get("queued") == 0 and len(reasons) == 2
+          and reasons == {platform: f"{platform} is draft-only: copy the post and publish it manually."
+                          for platform in ("xiaohongshu", "douyin")},
+          f"queueing the card must skip every draft-only row with the way out: {qbody}")
+    one = client.post(f"/compose/post/{first}/queue",
+                      data={"platform": "xiaohongshu", "scheduled_for": "2099-01-01T00:00:00"})
+    check(one.status_code == 400 and not database.list_scheduled_posts(db_path=database.DB_PATH),
+          f"the single-post queue route must not take a draft-only row either: {one.get_json()}")
 
     # The Recent Prompts list is built from freeform source_content only.
     check(not database.list_recent_prompts(db_path=database.DB_PATH),
           "hand-written posts leaked into the recent-prompts list")
-    print("manual create: one row per ticked account, one card, refusals write nothing")
+    print("manual create: one row per ticked account, one card, Western platforms refused, "
+          "draft-only rows cannot be queued")
     print("MANUAL_POSTS_ROUTE_OK")
 
 
@@ -220,28 +281,35 @@ def section_targets():
         return manualPostTargets();
     })));
     """)
+    # The page can only tick what it offers, and it offers the trio and nothing
+    # else: a Western platform must not come back from tickedPlatforms() only for
+    # the server to refuse the save.
+    offered = re.findall(r'<input type="checkbox"[^>]*value="([a-z]+)" id="platform-[a-z]+"', html)
+    check(sorted(offered) == ["douyin", "wechat", "xiaohongshu"],
+          f"the composer must offer exactly the three draft-only platforms, got {offered}")
+
     cases = [
-        # two LinkedIn accounts and Threads: accounts named, Threads bare
-        {"accounts": ["linkedin:1", "linkedin:2"], "ticked": ["linkedin", "threads"],
-         "want": ["linkedin:1", "linkedin:2", "threads"]},
+        # two Xiaohongshu accounts and Douyin: accounts named, Douyin bare
+        {"accounts": ["xiaohongshu:1", "xiaohongshu:2"], "ticked": ["xiaohongshu", "douyin"],
+         "want": ["xiaohongshu:1", "xiaohongshu:2", "douyin"]},
         # a single-account platform has no account buttons: it goes bare
-        {"accounts": [], "ticked": ["twitter"], "want": ["twitter"]},
+        {"accounts": [], "ticked": ["wechat"], "want": ["wechat"]},
         # one of two accounts ticked
-        {"accounts": ["linkedin:2"], "ticked": ["linkedin"], "want": ["linkedin:2"]},
+        {"accounts": ["xiaohongshu:2"], "ticked": ["xiaohongshu"], "want": ["xiaohongshu:2"]},
         # every account of a platform unticked: default account, so bare
-        {"accounts": [], "ticked": ["linkedin", "threads"], "want": ["linkedin", "threads"]},
+        {"accounts": [], "ticked": ["xiaohongshu", "wechat"], "want": ["xiaohongshu", "wechat"]},
         # nothing ticked: nothing to save
         {"accounts": [], "ticked": [], "want": []},
     ]
     import json
-    result = subprocess.run([node, "-e", script, json.dumps(cases)], capture_output=True, text=True)
+    result = subprocess.run([node, "-e", script, json.dumps(cases)], capture_output=True, text=True, encoding='utf-8', errors='replace')
     check(result.returncode == 0, f"node failed:\n{result.stderr.strip()[:600]}")
     got = json.loads(result.stdout.strip().splitlines()[-1])
     for case, actual in zip(cases, got):
         check(actual == case["want"], f"{case['ticked']} + {case['accounts']} -> {actual}, wanted {case['want']}")
 
     # And the server accepts exactly what that produced, end to end.
-    good = post(client, [f"linkedin:{ids['work']}", "threads", "twitter"])
+    good = post(client, [f"xiaohongshu:{ids['xhs_work']}", "douyin", "wechat"])
     check(good.status_code == 200 and len(good.get_json()["post_ids"]) == 3,
           f"the server refused targets the composer builds: {good.get_json()}")
     print(f"target building: {len(cases)} cases, and the server accepts what they produce")
@@ -279,13 +347,13 @@ const document = { getElementById: (id) => els[id] };
 const showToast = (m, t) => toasts.push([t, m]);
 const alert = (m) => alerts.push(m);
 const confirm = () => true;
-const platformCharLimits = { linkedin: 3000, threads: 500, twitter: 280, facebook: 5000, instagram: 2200 };
-const PLATFORM_LABELS = { linkedin: 'LinkedIn', threads: 'Threads', twitter: 'X', facebook: 'Facebook', instagram: 'Instagram' };
+const platformCharLimits = { xiaohongshu: 1000, douyin: 1000, wechat: 20000 };
+const PLATFORM_LABELS = { xiaohongshu: '小红书', douyin: '抖音', wechat: '公众号' };
 const counts = [];
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 let updateManualComposerCount = () => counts.push(1);
 let selectedAccountTargets = () => [];
-let tickedPlatforms = () => ['linkedin', 'threads'];
+let tickedPlatforms = () => ['xiaohongshu', 'douyin'];
 let reloaded = 0;
 const location = { reload: () => { reloaded++; } };
 const setTimeout = (fn) => fn();
@@ -392,7 +460,7 @@ def section_video():
   console.log(JSON.stringify(out));
 })();
 """
-    result = subprocess.run([node, "-e", script], capture_output=True, text=True)
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding='utf-8', errors='replace')
     check(result.returncode == 0, f"node failed:\n{result.stderr.strip()[:800]}")
     out = json.loads(result.stdout.strip().splitlines()[-1])
 
@@ -420,7 +488,7 @@ def section_video():
     check(["video_url", "https://cdn.test/y.mp4"] in fields, f"the URL was not sent trimmed: {fields}")
     check(not any(k in ("image_url", "video") for k, _ in fields),
           f"a video post must not also send an image or a file: {fields}")
-    check(["targets", "linkedin"] in fields and ["targets", "threads"] in fields
+    check(["targets", "xiaohongshu"] in fields and ["targets", "douyin"] in fields
           and ["content", "A post with a clip"] in fields, f"targets/content missing: {fields}")
     check(out["saveUrl"]["reloaded"] == 1, "the page should reload after a successful save")
 
@@ -455,6 +523,21 @@ def section_video():
     check(len(web._group_standalone_posts(database.list_standalone_posts(db_path=database.DB_PATH))) == 1,
           "the video post should be one card")
     check(not created, "a post with a video must not go looking for a link image")
+
+    # The composer no longer writes Western rows, but the ones saved before the
+    # switch are still rows, and attaching a video is row-level, not per
+    # platform: the attach route has to keep serving them.
+    legacy_id = database.add_standalone_post(
+        source_type="manual", source_content="Manual post", platform="linkedin",
+        content="A legacy Western draft", db_path=database.DB_PATH)
+    attach = client.post(f"/compose/post/{legacy_id}/video",
+                         data={"video_url": "http://93.184.216.34/old.mp4"})
+    attach_body = attach.get_json()
+    check(attach.status_code == 200 and attach_body.get("updated_ids") == [legacy_id]
+          and attach_body.get("video_url") == "http://93.184.216.34/old.mp4",
+          f"a legacy Western row must still take a video at the row level: {attach_body}")
+    check(dict(database.get_standalone_post(legacy_id, db_path=database.DB_PATH))["video_url"]
+          == "http://93.184.216.34/old.mp4", "the attached video must land on the row")
     print("video: the tab validates, excludes file/URL, sends the video instead of the image, and the route takes it")
     print("MANUAL_POSTS_VIDEO_OK")
 
@@ -493,11 +576,10 @@ def section_llm():
     httpx = _sdk_http_library("openai")
 
     # --- defaults and dropdown ------------------------------------------------
-    check(insights.MODEL_CHOICES["openai"][0] == "gpt-6.1-sol", "OpenAI list should lead with gpt-6.1-sol")
-    check("claude-opus-5-5" in insights.MODEL_CHOICES["anthropic"], "Opus 5.5 missing from the Claude list")
-    for provider, stale in (("openai", ("gpt-4o", "gpt-4.1")), ("anthropic", ("claude-opus-4", "claude-sonnet-4"))):
-        for model in insights.MODEL_CHOICES[provider]:
-            check(not model.startswith(stale), f"{model} is an old model in the {provider} dropdown")
+    check(insights.MODEL_CHOICES["openai"] == ["glm-5.3"], "the OpenAI dropdown should offer only glm-5.3")
+    check("anthropic" not in insights.MODEL_CHOICES, "Anthropic should not be offered in the dropdown")
+    for model in insights.MODEL_CHOICES.get("openai", []):
+        check(not model.startswith(("gpt-4o", "gpt-4.1")), f"{model} is an old model in the OpenAI dropdown")
     for provider, models in insights.provider_model_options()["models"].items():
         check(len(set(models)) == len(models), f"{provider} dropdown lists a model twice: {models}")
 
@@ -557,6 +639,67 @@ def section_llm():
     fake, _ = run("gpt-4o", temperature=0.8, max_tokens=3000)
     check(fake.calls[0] == {"model": "gpt-4o", "messages": [], "temperature": 0.8, "max_tokens": 3000},
           f"a non-reasoning model's request must pass through untouched, got {fake.calls[0]}")
+
+    fake, _ = run("glm-5.3", temperature=0.8, max_tokens=160)
+    sent = fake.calls[0]
+    check(sent.get("max_tokens") == 160 + insights.REASONING_TOKEN_HEADROOM and sent.get("temperature") == 0.8,
+          f"GLM thinks inside the max_tokens budget: keep sampling, add headroom, got {sent}")
+
+    # --- platform-language split (en / zh) -------------------------------------
+    groups = insights._group_platforms_by_lang(["linkedin", "xiaohongshu", "twitter"])
+    check(groups == {"en": ["linkedin", "twitter"], "zh": ["xiaohongshu"]},
+          f"platforms should split into en/zh groups in order, got {groups}")
+
+    zh_fmt = __import__("prompts_zh").build_format_instruction(["xiaohongshu"], 2)
+    check('"xiaohongshu"' in zh_fmt and "只回复一个 JSON 对象" in zh_fmt,
+          "the Chinese format instruction must keep the JSON contract")
+
+    real_client_factory = insights._get_llm_client
+
+    class RecordingClient:
+        def __init__(self):
+            self.calls = []
+            self.chat = types.SimpleNamespace(
+                completions=types.SimpleNamespace(create=self._create))
+
+        def _create(self, *, model, messages=None, **kwargs):
+            self.calls.append({"model": model, "messages": messages})
+            return types.SimpleNamespace(
+                choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="{}"))],
+                usage=types.SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+                model=model)
+
+    try:
+        recorder = RecordingClient()
+        insights._get_llm_client = lambda *a, **k: (recorder, "glm-5.3", "openai")
+        generated = insights.generate_posts_from_prompt(
+            prompt="AI security news", platforms=["twitter", "xiaohongshu"],
+            posts_per_platform=1)
+    finally:
+        insights._get_llm_client = real_client_factory
+
+    check(len(recorder.calls) == 2,
+          f"a mixed en/zh selection should run one call per language, got {len(recorder.calls)}")
+    en_msgs = [c for c in recorder.calls
+               if any("Create social media posts" in str(m.get("messages")) for m in [c])]
+    zh_msgs = [c for c in recorder.calls
+               if "根据下面的主题/提示创作社交媒体帖子" in str(c.get("messages"))]
+    check(len(en_msgs) == 1 and len(zh_msgs) == 1,
+          "one call must use the English prompt set and one the Chinese set")
+    check(set(generated.keys()) == {"twitter", "xiaohongshu"},
+          f"merged results must cover every platform, got {sorted(generated)}")
+
+    recorder2 = RecordingClient()
+    insights._get_llm_client = lambda *a, **k: (recorder2, "glm-5.3", "openai")
+    try:
+        insights.summarize_text("some text", lang="zh")
+        zh_summary = str(recorder2.calls[0]["messages"])
+        insights.summarize_text("some text")
+        en_summary = str(recorder2.calls[1]["messages"])
+    finally:
+        insights._get_llm_client = real_client_factory
+    check("总结下面的文字" in zh_summary and "Summarize the following text" in en_summary,
+          "summarize_text should switch prompt sets by lang")
 
     fake, result = run("brand-new-model", reject=[("unsupported_value", "temperature")],
                        temperature=0.2, max_tokens=50)

@@ -13,24 +13,53 @@ import types
 from typing import List
 from urllib.parse import urlparse, parse_qs
 
+import prompts_zh
+
+import appconfig
+
 # Which cloud LLM backend to use for text/vision generation: "openai" or "anthropic".
 # Defaults to OpenAI so existing deployments are unaffected. Local generation is
 # selected per-call via ``use_local`` and always uses the Ollama (OpenAI-compatible)
 # path regardless of this setting.
-LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "openai").strip().lower()
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-6.1-sol")
-ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5-5")
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_VISION_MODEL = os.environ.get("OLLAMA_VISION_MODEL", "llama3.2-vision")
-OLLAMA_TEXT_MODEL = os.environ.get("OLLAMA_TEXT_MODEL", "llama3.2")
+#
+# The provider/model settings used to be module constants read from the
+# environment at import, which froze them for the life of the process. They
+# resolve per access now (module __getattr__ below → appconfig: saved setting,
+# then environment, then default), so an admin can change them on /settings
+# without restarting the server.
+_LIVE_SETTINGS = {
+    "LLM_PROVIDER", "OPENAI_MODEL", "ANTHROPIC_MODEL",
+    "OLLAMA_BASE_URL", "OLLAMA_VISION_MODEL", "OLLAMA_TEXT_MODEL",
+    "OPENAI_REASONING_EFFORT", "ANTHROPIC_EFFORT",
+}
+# Settings the old code lower-cased on read; keep that normalisation.
+_LOWERCASED_SETTINGS = {"LLM_PROVIDER", "OPENAI_REASONING_EFFORT", "ANTHROPIC_EFFORT"}
 
-# Selectable models per cloud provider, surfaced in the compose UI's model
-# dropdown. The configured default (OPENAI_MODEL / ANTHROPIC_MODEL) is always
-# offered too, even when it is not listed here. Local (Ollama) models are
-# discovered separately by the browser via the Ollama status endpoint.
+
+def __getattr__(name: str):
+    """Resolve the LLM settings on access (PEP 562)."""
+    if name in _LIVE_SETTINGS:
+        value = appconfig.get(name)
+        if name in _LOWERCASED_SETTINGS and value:
+            return value.strip().lower()
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _live(name: str):
+    """One setting for code inside this module (module __getattr__ only
+    serves accesses like ``insights.OPENAI_MODEL`` from outside)."""
+    value = appconfig.get(name)
+    if name in _LOWERCASED_SETTINGS and value:
+        return value.strip().lower()
+    return value
+
+# Selectable models surfaced in the compose UI's model dropdown. The configured
+# default (OPENAI_MODEL) is always offered too, even when it is not listed here.
+# Local (Ollama) models are discovered separately by the browser via the Ollama
+# status endpoint.
 MODEL_CHOICES = {
-    "openai": ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna"],
-    "anthropic": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-haiku-4-5"],
+    "openai": ["glm-5.3"],
 }
 
 # The newest models of both providers reason before they answer, and those
@@ -40,8 +69,6 @@ MODEL_CHOICES = {
 # asked for, and asks for the lowest effort every model of the family accepts:
 # routine post/summary copy gains nothing from deep reasoning, and it is billed.
 REASONING_TOKEN_HEADROOM = 4096
-OPENAI_REASONING_EFFORT = os.environ.get("OPENAI_REASONING_EFFORT", "low").strip().lower()
-ANTHROPIC_EFFORT = os.environ.get("ANTHROPIC_EFFORT", "low").strip().lower()
 
 # Claude models that think by default and cannot have thinking switched off
 # (Fable, Opus 5.x, Sonnet 5.x). They take the ``effort`` control and the
@@ -51,6 +78,12 @@ _CLAUDE_THINKS_BY_DEFAULT = re.compile(r"^claude-(fable|mythos|opus-5|sonnet-5)"
 _CLAUDE_HAS_REFUSAL_FALLBACK = re.compile(r"^claude-(fable|mythos|opus-5|sonnet-5-5)")
 # OpenAI models that reason: GPT-5 and later, and the o-series.
 _OPENAI_REASONING_MODEL = re.compile(r"^(gpt-(?:[5-9]|\d{2,})|o\d)")
+# GLM models served through an OpenAI-compatible gateway. They think by default
+# with no switch to turn it off (the gateway ignores ``thinking: disabled``) and
+# draw the thinking tokens from the same ``max_tokens`` budget as the answer, so
+# the caller's budget is enlarged in place; unlike GPT-5 they still accept
+# temperature and max_tokens as-is.
+_GLM_REASONING_MODEL = re.compile(r"^glm-")
 
 logger = logging.getLogger(__name__)
 
@@ -60,27 +93,26 @@ def provider_model_options() -> dict:
 
     Shape::
 
-        {"default_provider": "openai"|"anthropic",
-         "defaults": {"openai": <model>, "anthropic": <model>, "local": <model>},
-         "models": {"openai": [...], "anthropic": [...]}}
+        {"default_provider": "openai",
+         "defaults": {"openai": <model>, "local": <model>},
+         "models": {"openai": [...]}}
 
-    Each cloud provider's configured default model is kept first in its list so a
-    custom ``OPENAI_MODEL`` / ``ANTHROPIC_MODEL`` is always selectable.
+    The configured default model (``OPENAI_MODEL``) is kept first in the list so
+    a custom value is always selectable. A provider appears here only when it
+    has models configured; the compose UI hides its toggle otherwise.
     """
     def _with_default(provider: str, default_model: str) -> list:
         listed = MODEL_CHOICES.get(provider, [])
         return [default_model] + [m for m in listed if m != default_model]
 
     return {
-        "default_provider": "anthropic" if LLM_PROVIDER == "anthropic" else "openai",
+        "default_provider": "openai",
         "defaults": {
-            "openai": OPENAI_MODEL,
-            "anthropic": ANTHROPIC_MODEL,
-            "local": OLLAMA_TEXT_MODEL,
+            "openai": _live("OPENAI_MODEL"),
+            "local": _live("OLLAMA_TEXT_MODEL"),
         },
         "models": {
-            "openai": _with_default("openai", OPENAI_MODEL),
-            "anthropic": _with_default("anthropic", ANTHROPIC_MODEL),
+            "openai": _with_default("openai", _live("OPENAI_MODEL")),
         },
     }
 
@@ -106,6 +138,26 @@ PLATFORM_GUIDELINES = {
         "on their own lines. Links in captions are not clickable, so keep at most "
         "one short URL and lead with the message, not the link"
     ),
+    # Domestic platforms: generated in Chinese. These English fallbacks only
+    # show if something ever renders the guidelines outside the zh prompt set.
+    "xiaohongshu": (
+        "Xiaohongshu note: the first line is the title (max 20 characters, 1-2 "
+        "emoji welcome), then a blank line and a 600-1000 character casual, "
+        "first-person body with emoji and short paragraphs; end with 3-6 "
+        "hashtags on their own line; no links in the body (they are not clickable)"
+    ),
+    "douyin": (
+        "Douyin copy: the first line is the hook that stops the scroll (max 20 "
+        "characters), then a 200-500 character spoken-style body with short "
+        "paragraphs and emoji; end with 3-5 trending hashtags; no links (they "
+        "are not clickable)"
+    ),
+    "wechat": (
+        "WeChat official-account post: an attention-holding title (max 30 "
+        "characters), then a 800-2000 character article with short paragraphs, "
+        "subheads and a closing call to follow; 0-3 hashtags at most; no links "
+        "outside the article body"
+    ),
 }
 
 NO_EM_DASH_RULE = (
@@ -113,6 +165,24 @@ NO_EM_DASH_RULE = (
     "Use commas, periods, parentheses, or rephrase the sentence instead. "
     "Do not use en dashes either; only use a normal hyphen when joining words."
 )
+
+# The language each platform's generated content is written in. Domestic
+# (Chinese) platforms write 中文 with the prompts_zh set; every other platform
+# defaults to English. Registering a new platform's language here is all a
+# generator needs: mixed selections are split into one LLM call per language.
+PLATFORM_LANGS = {"xiaohongshu": "zh", "douyin": "zh", "wechat": "zh"}
+
+
+def _platform_lang(platform: str) -> str:
+    return PLATFORM_LANGS.get((platform or "").strip().lower(), "en")
+
+
+def _group_platforms_by_lang(platforms: List[str]) -> dict:
+    """Split a platform list into ``{lang: [platforms]}`` groups, order kept."""
+    groups: dict = {}
+    for p in platforms:
+        groups.setdefault(_platform_lang(p), []).append(p)
+    return groups
 
 # ── Shared LLM helpers ────────────────────────────────────────────────────
 
@@ -213,7 +283,7 @@ class _AnthropicChatClient:
 
         if _CLAUDE_THINKS_BY_DEFAULT.match(model):
             kwargs["max_tokens"] += REASONING_TOKEN_HEADROOM
-            kwargs["output_config"] = {"effort": ANTHROPIC_EFFORT}
+            kwargs["output_config"] = {"effort": _live("ANTHROPIC_EFFORT")}
 
         if self._fallback_enabled and _CLAUDE_HAS_REFUSAL_FALLBACK.match(model):
             message = self._client.beta.messages.create(
@@ -289,7 +359,11 @@ class _OpenAIChatClient:
                 kwargs.pop(name, None)
             if kwargs.get("max_tokens") is not None:
                 kwargs["max_completion_tokens"] = kwargs.pop("max_tokens") + REASONING_TOKEN_HEADROOM
-            kwargs.setdefault("reasoning_effort", OPENAI_REASONING_EFFORT)
+            kwargs.setdefault("reasoning_effort", _live("OPENAI_REASONING_EFFORT"))
+        elif _GLM_REASONING_MODEL.match(model):
+            # The caller's budget must survive GLM's thinking intact.
+            if kwargs.get("max_tokens") is not None:
+                kwargs["max_tokens"] += REASONING_TOKEN_HEADROOM
 
         for _attempt in range(len(kwargs) + 1):
             try:
@@ -329,18 +403,18 @@ def _get_llm_client(use_local: bool = False, vision: bool = False,
         use_local = True
 
     if use_local:
-        m = model or (OLLAMA_VISION_MODEL if vision else OLLAMA_TEXT_MODEL)
-        return OpenAI(base_url=f"{OLLAMA_BASE_URL}/v1", api_key="ollama"), m, "ollama"
+        m = model or (_live("OLLAMA_VISION_MODEL") if vision else _live("OLLAMA_TEXT_MODEL"))
+        return OpenAI(base_url=f"{_live('OLLAMA_BASE_URL')}/v1", api_key="ollama"), m, "ollama"
 
-    resolved = provider or LLM_PROVIDER
+    resolved = provider or _live("LLM_PROVIDER")
     if resolved == "anthropic":
-        m = model if (model and model.startswith("claude")) else ANTHROPIC_MODEL
-        return _AnthropicChatClient(os.getenv("ANTHROPIC_API_KEY")), m, "anthropic"
+        m = model if (model and model.startswith("claude")) else _live("ANTHROPIC_MODEL")
+        return _AnthropicChatClient(appconfig.get("ANTHROPIC_API_KEY")), m, "anthropic"
 
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = OpenAI(api_key=appconfig.get("OPENAI_API_KEY"))
     if not client.api_key:
         raise RuntimeError("OPENAI_API_KEY is not configured")
-    m = model if (model and not model.startswith("claude")) else OPENAI_MODEL
+    m = model if (model and not model.startswith("claude")) else _live("OPENAI_MODEL")
     return _OpenAIChatClient(client), m, "openai"
 
 
@@ -447,11 +521,11 @@ def check_ollama_status() -> dict:
         "available": False,
         "models": [],
         "text_models": [],
-        "configured_model": OLLAMA_VISION_MODEL,
-        "configured_text_model": OLLAMA_TEXT_MODEL,
+        "configured_model": _live("OLLAMA_VISION_MODEL"),
+        "configured_text_model": _live("OLLAMA_TEXT_MODEL"),
     }
     try:
-        req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/tags", method="GET")
+        req = urllib.request.Request(f"{_live('OLLAMA_BASE_URL')}/api/tags", method="GET")
         with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read().decode())
         all_models = [m["name"] for m in data.get("models", [])]
@@ -465,7 +539,7 @@ def check_ollama_status() -> dict:
         ]
         result["available"] = True
     except Exception:
-        logger.debug("Ollama not reachable at %s", OLLAMA_BASE_URL)
+        logger.debug("Ollama not reachable at %s", _live("OLLAMA_BASE_URL"))
     return result
 
 
@@ -700,10 +774,10 @@ def transcribe_audio(audio_path: str) -> str:
         logger.warning("faster-whisper failed: %s, trying OpenAI API", exc)
     
     # Fall back to OpenAI Whisper API (costs money but always works)
-    if os.getenv("OPENAI_API_KEY"):
+    if appconfig.get("OPENAI_API_KEY"):
         try:
             from openai import OpenAI
-            client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            client = OpenAI(api_key=appconfig.get("OPENAI_API_KEY"))
             
             logger.info("Using OpenAI Whisper API for transcription")
             with open(audio_path, "rb") as audio_file:
@@ -727,17 +801,25 @@ def transcribe_audio(audio_path: str) -> str:
     )
 
 
-def summarize_text(text: str) -> str:
-    """Summarize ``text`` using the configured LLM provider."""
+def summarize_text(text: str, lang: str = "en") -> str:
+    """Summarize ``text`` using the configured LLM provider.
+
+    ``lang="zh"`` writes the summary in Chinese; ``lang="en"`` (the default)
+    sends the original English prompt.
+    """
 
     try:
         client, model, provider = _get_llm_client()
 
         logger.debug("Requesting summary from %s", provider)
         # Ask the language model for a short summary of the transcript
+        if lang == "zh":
+            messages = prompts_zh.summarize_messages(text)
+        else:
+            messages = [{"role": "user", "content": f"Summarize the following text. {NO_EM_DASH_RULE}\n\n{text}"}]
         response = client.chat.completions.create(
             model=model,
-            messages=[{"role": "user", "content": f"Summarize the following text. {NO_EM_DASH_RULE}\n\n{text}"}],
+            messages=messages,
             temperature=0.2,
         )
         summary = response.choices[0].message.content.strip()
@@ -750,7 +832,7 @@ def summarize_text(text: str) -> str:
         raise RuntimeError("Failed to summarize text") from exc
 
 
-def extract_action_items(text: str) -> List[str]:
+def extract_action_items(text: str, lang: str = "en") -> List[str]:
     """Extract action items from ``text`` using the configured LLM provider."""
 
     try:
@@ -759,9 +841,10 @@ def extract_action_items(text: str) -> List[str]:
 
         logger.debug("Requesting action items from %s", provider)
         # Ask the language model for a plain list of actions without extra text
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
+        if lang == "zh":
+            messages = prompts_zh.action_items_messages(text)
+        else:
+            messages = [
                 {
                     "role": "user",
                     "content": (
@@ -770,7 +853,10 @@ def extract_action_items(text: str) -> List[str]:
                         "and no additional commentary. " + NO_EM_DASH_RULE + "\n" + text
                     ),
                 }
-            ],
+            ]
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
             temperature=0.2,
         )
         # Normalise each returned line into a bare task string
@@ -794,6 +880,7 @@ def generate_article(
     style: str = "blog",
     extra_context: str | None = None,
     is_text_source: bool = False,
+    lang: str = "en",
 ) -> str:
     """Generate an article about a specific topic based on podcast or article content.
 
@@ -815,6 +902,9 @@ def generate_article(
         Optional additional context or instructions from the user.
     is_text_source: bool
         True if the source is a text article, False if it's a podcast.
+    lang: str
+        Output language: "en" (default, the original prompts) or "zh" for a
+        Chinese article via the prompts_zh set.
 
     Returns
     -------
@@ -867,9 +957,14 @@ def generate_article(
             )
 
         logger.debug("Generating article about: %s", topic)
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
+        if lang == "zh":
+            messages = prompts_zh.article_messages(
+                transcript=transcript, summary=summary, topic=topic,
+                podcast_title=podcast_title, episode_title=episode_title,
+                style=style, extra_context=extra_context,
+                is_text_source=is_text_source)
+        else:
+            messages = [
                 {
                     "role": "system",
                     "content": (
@@ -899,7 +994,10 @@ def generate_article(
                         f"{credit_instruction}"
                     ),
                 },
-            ],
+            ]
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
             temperature=0.7,
             max_tokens=4000,
         )
@@ -922,6 +1020,8 @@ def generate_social_copy(
 ) -> dict:
     """Generate social media promotional copy with hashtags for different platforms.
 
+    Platforms are generated per language group (``PLATFORM_LANGS``).
+
     Parameters
     ----------
     article_content: str
@@ -938,15 +1038,28 @@ def generate_social_copy(
     Returns
     -------
     dict
-        Dictionary with platform names as keys. Values are lists of posts if 
+        Dictionary with platform names as keys. Values are lists of posts if
         posts_per_platform > 1, otherwise single strings for backward compatibility.
     """
     if platforms is None:
         platforms = ["twitter", "linkedin", "facebook", "threads"]
-    
+
     # Clamp posts_per_platform to reasonable range
     posts_per_platform = max(1, min(posts_per_platform, 21))
 
+    merged: dict = {}
+    for lang, group in _group_platforms_by_lang(platforms).items():
+        result = _generate_social_copy(
+            article_content, article_topic, group, posts_per_platform,
+            extra_context, lang)
+        if result:
+            merged.update(result)
+    return {p: merged.get(p, "") for p in platforms}
+
+
+def _generate_social_copy(article_content, article_topic, platforms,
+                          posts_per_platform, extra_context, lang: str) -> dict:
+    """One language group of :func:`generate_social_copy`."""
     try:
         client, model, provider = _get_llm_client()
 
@@ -986,10 +1099,14 @@ def generate_social_copy(
                 '{"twitter": "Your tweet here #hashtag", "linkedin": "Your LinkedIn post here"}'
             )
 
-        logger.debug("Generating %d social media post(s) per platform for: %s", posts_per_platform, article_topic)
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
+        if lang == "zh":
+            messages = prompts_zh.social_copy_messages(
+                topic=article_topic, excerpt=article_content,
+                extra_context=extra_context,
+                platform_list=prompts_zh.platform_list(platforms),
+                posts_per_platform=posts_per_platform)
+        else:
+            messages = [
                 {
                     "role": "system",
                     "content": (
@@ -1017,7 +1134,12 @@ def generate_social_copy(
                         f"{multi_post_instruction}"
                     ),
                 },
-            ],
+            ]
+
+        logger.debug("Generating %d social media post(s) per platform for: %s", posts_per_platform, article_topic)
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
             temperature=0.8,  # Slightly higher for more variety in multiple posts
             max_tokens=3000 if posts_per_platform > 1 else 2000,
         )
@@ -1032,7 +1154,7 @@ def generate_social_copy(
             if content.startswith("json"):
                 content = content[4:]
             content = content.strip()
-        
+
         result = json.loads(content)
         logger.debug("Social media copy generated for %d platforms", len(result))
         return result
@@ -1048,6 +1170,7 @@ def refine_article(
     current_content: str,
     user_feedback: str,
     article_topic: str,
+    lang: str = "en",
 ) -> str:
     """Refine an article based on user feedback using AI.
 
@@ -1069,9 +1192,12 @@ def refine_article(
         client, model, provider = _get_llm_client()
 
         logger.debug("Refining article based on feedback: %s", user_feedback[:100])
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
+        if lang == "zh":
+            messages = prompts_zh.refine_messages(
+                current_content=current_content, user_feedback=user_feedback,
+                article_topic=article_topic)
+        else:
+            messages = [
                 {
                     "role": "system",
                     "content": (
@@ -1094,7 +1220,10 @@ def refine_article(
                         "Keep the same tone and style unless instructed otherwise."
                     ),
                 },
-            ],
+            ]
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
             temperature=0.7,
             max_tokens=4000,
         )
@@ -1118,15 +1247,38 @@ def generate_posts_from_prompt(
     provider: str | None = None,
     model: str | None = None,
 ) -> dict:
-    """Generate social media posts from a freeform prompt/topic."""
+    """Generate social media posts from a freeform prompt/topic.
+
+    Platforms are generated per language group (``PLATFORM_LANGS``): a mixed
+    selection runs one call per language, each in that language's prompt set,
+    and the results merge back into one ``{platform: posts}`` dict.
+    """
     if platforms is None:
         platforms = ["linkedin", "threads", "twitter"]
 
     posts_per_platform = max(1, min(posts_per_platform, 10))
 
+    merged: dict = {}
+    for lang, group in _group_platforms_by_lang(platforms).items():
+        result = _generate_posts_from_prompt(
+            prompt, group, tone, posts_per_platform,
+            extra_context, use_local, provider, model, lang)
+        if result:
+            merged.update(result)
+    return {p: merged.get(p, "") for p in platforms}
+
+
+def _generate_posts_from_prompt(prompt, platforms, tone, posts_per_platform,
+                                extra_context, use_local, provider, model,
+                                lang: str) -> dict:
+    """One language group of :func:`generate_posts_from_prompt`."""
     try:
         client, model, provider = _get_llm_client(use_local, provider=provider, model=model)
         tone_instruction = TONE_GUIDES.get(tone, TONE_GUIDES["professional"])
+        if lang == "zh":
+            zh_platform_list = prompts_zh.platform_list(platforms)
+        else:
+            zh_platform_list = None
 
         platform_list = "\n".join([
             f"- {p.upper()}: {PLATFORM_GUIDELINES.get(p, 'Standard social media post with hashtags')}"
@@ -1134,6 +1286,10 @@ def generate_posts_from_prompt(
         ])
 
         def _messages(plats, n):
+            if lang == "zh":
+                return prompts_zh.posts_from_prompt_messages(
+                    prompt=prompt, tone=tone, extra_context=extra_context,
+                    platform_list=zh_platform_list, platforms=plats, n=n)
             return [
                 {
                     "role": "system",
@@ -1187,7 +1343,12 @@ def generate_posts_from_url(
     provider: str | None = None,
     model: str | None = None,
 ) -> dict:
-    """Generate social media posts based on content from a URL."""
+    """Generate social media posts based on content from a URL.
+
+    Like the other post generators, a mixed platform selection is split into
+    per-language groups (``PLATFORM_LANGS``); each group generates in its own
+    language and the posts merge back into one dict.
+    """
     import re
     import trafilatura
 
@@ -1269,15 +1430,43 @@ def generate_posts_from_url(
     # ── Generate posts ─────────────────────────────────────────────────
     posts_per_platform = max(1, min(posts_per_platform, 10))
 
+    merged: dict = {}
+    condense_meta: dict = {}
+    for lang, group in _group_platforms_by_lang(platforms).items():
+        posts, meta = _generate_posts_from_url(
+            url, group, tone, posts_per_platform, extra_context,
+            use_local, provider, model, lang)
+        if posts:
+            merged.update(posts)
+        if meta:
+            condense_meta = meta
+    return {"posts": {p: merged.get(p, "") for p in platforms},
+            "source_data": source_data, "condense_meta": condense_meta}
+
+
+def _generate_posts_from_url(url, platforms, tone, posts_per_platform,
+                             extra_context, use_local, provider, model,
+                             lang: str):
+    """One language group of :func:`generate_posts_from_url`.
+
+    Returns ``(posts, condense_meta)``. ``posts`` maps each platform to its
+    post text (or "" when the generation came back empty).
+    """
     try:
         client, model, provider = _get_llm_client(use_local, provider=provider, model=model)
         tone_instruction = TONE_GUIDES.get(tone, TONE_GUIDES["professional"])
+        if lang == "zh":
+            zh_platform_list = prompts_zh.platform_list(platforms)
+        else:
+            zh_platform_list = None
 
         # Condense long article bodies (map-reduce) rather than sending the full
         # text, so a very long page doesn't blow up the prompt and the whole
-        # article still informs the posts.
+        # article still informs the posts. Each language group condenses in its
+        # own language, so a mixed selection digests the page twice.
         condensed_body, condense_meta = condense_document_text(
             body_content, provider=provider, model=model, use_local=use_local,
+            lang=lang,
         )
         extracted_content = f"TITLE: {title}\n\nDESCRIPTION: {description}\n\nCONTENT: {condensed_body}"
 
@@ -1287,6 +1476,11 @@ def generate_posts_from_url(
         ])
 
         def _messages(plats, n):
+            if lang == "zh":
+                return prompts_zh.posts_from_url_messages(
+                    url=url, extracted_content=extracted_content, tone=tone,
+                    extra_context=extra_context, platform_list=zh_platform_list,
+                    platforms=plats, n=n)
             return [
                 {
                     "role": "system",
@@ -1326,10 +1520,10 @@ def generate_posts_from_url(
                                  posts_per_platform, use_local, provider)
         if result:
             logger.debug("Generated posts for %d platforms from URL", len(result))
-            return {"posts": result, "source_data": source_data, "condense_meta": condense_meta}
+            return result, condense_meta
 
         logger.warning("Could not extract JSON from URL generation")
-        return {"posts": {p: "" for p in platforms}, "source_data": source_data, "condense_meta": condense_meta}
+        return {p: "" for p in platforms}, condense_meta
     except Exception as exc:
         logger.exception("Post generation from URL failed")
         raise RuntimeError("Failed to generate posts from URL") from exc
@@ -1382,24 +1576,28 @@ def _split_text_into_chunks(text: str, chunk_size: int, overlap: int) -> list[st
     return [c for c in chunks if c]
 
 
-def _summarize_chunk(client, model, chunk: str, use_local: bool, provider: str) -> str:
+def _summarize_chunk(client, model, chunk: str, use_local: bool, provider: str,
+                     lang: str = "en") -> str:
     """Extract the key points from one chunk as a tight bulleted list."""
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You extract the key facts, insights, statistics, quotes, and takeaways "
-                "from an excerpt of a longer document. Reply with a tight bulleted list. "
-                "Preserve concrete details (numbers, names, findings, direct quotes) that "
-                "would make strong social media content. Do not add commentary, intros, or "
-                "conclusions — only the extracted points."
-            ),
-        },
-        {
-            "role": "user",
-            "content": f"Extract the key points from this excerpt:\n\n{chunk}",
-        },
-    ]
+    if lang == "zh":
+        messages = prompts_zh.condense_chunk_messages(chunk)
+    else:
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You extract the key facts, insights, statistics, quotes, and takeaways "
+                    "from an excerpt of a longer document. Reply with a tight bulleted list. "
+                    "Preserve concrete details (numbers, names, findings, direct quotes) that "
+                    "would make strong social media content. Do not add commentary, intros, or "
+                    "conclusions — only the extracted points."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Extract the key points from this excerpt:\n\n{chunk}",
+            },
+        ]
     params = {"temperature": 0.2, "max_tokens": CONDENSE_SUMMARY_MAX_TOKENS}
     resp = client.chat.completions.create(model=model, messages=messages, **params)
     _meter("record_chat", resp, category="document_condense",
@@ -1412,12 +1610,16 @@ def condense_document_text(
     provider: str | None = None,
     model: str | None = None,
     use_local: bool = False,
+    lang: str = "en",
 ) -> tuple[str, dict]:
     """Condense a long document into a prompt-sized digest via map-reduce.
 
     Short inputs (<= ``CONDENSE_THRESHOLD``) are returned unchanged. Longer text
     is chunked and each chunk is summarized (map); if the merged summary is still
     too long it is condensed again (reduce), up to ``CONDENSE_MAX_REDUCE_PASSES``.
+
+    ``lang="zh"`` writes the digest in Chinese so downstream zh generation works
+    from zh source notes.
 
     Returns ``(digest, meta)`` where ``meta`` records what happened. Per-chunk LLM
     failures are tolerated (that chunk is skipped); only if *every* chunk fails do
@@ -1448,7 +1650,8 @@ def condense_document_text(
         out = []
         for piece in pieces:
             try:
-                summary = _summarize_chunk(client, model, piece, use_local, provider)
+                summary = _summarize_chunk(client, model, piece, use_local,
+                                           provider, lang=lang)
                 if summary:
                     out.append(summary)
             except Exception:
@@ -1508,16 +1711,35 @@ def generate_posts_from_text(
 
     If ``source_url`` is provided, the generator is instructed to include that
     URL verbatim in every post (used for saved URL sources and similar flows
-    where the text was extracted from a webpage).
+    where the text was extracted from a webpage). Platforms are generated per
+    language group (``PLATFORM_LANGS``).
     """
     if platforms is None:
         platforms = ["linkedin", "threads", "twitter"]
 
     posts_per_platform = max(1, min(posts_per_platform, 10))
 
+    merged: dict = {}
+    for lang, group in _group_platforms_by_lang(platforms).items():
+        result = _generate_posts_from_text(
+            text, group, tone, topic, posts_per_platform, extra_context,
+            use_local, source_url, provider, model, lang)
+        if result:
+            merged.update(result)
+    return {p: merged.get(p, "") for p in platforms}
+
+
+def _generate_posts_from_text(text, platforms, tone, topic, posts_per_platform,
+                              extra_context, use_local, source_url, provider,
+                              model, lang: str) -> dict:
+    """One language group of :func:`generate_posts_from_text`."""
     try:
         client, model, provider = _get_llm_client(use_local, provider=provider, model=model)
         tone_instruction = TONE_GUIDES.get(tone, TONE_GUIDES["professional"])
+        if lang == "zh":
+            zh_platform_list = prompts_zh.platform_list(platforms)
+        else:
+            zh_platform_list = None
 
         platform_list = "\n".join([
             f"- {p.upper()}: {PLATFORM_GUIDELINES.get(p, 'Standard social media post with hashtags')}"
@@ -1550,6 +1772,11 @@ def generate_posts_from_text(
             )
 
         def _messages(plats, n):
+            if lang == "zh":
+                return prompts_zh.posts_from_text_messages(
+                    text=text, topic=topic, source_url=source_url, tone=tone,
+                    extra_context=extra_context, platform_list=zh_platform_list,
+                    platforms=plats, n=n)
             return [
                 {
                     "role": "system",
@@ -1700,13 +1927,28 @@ def generate_posts_from_images(
 
     Images uses vision=True so the vision model is selected for local.
     Batch generation is NOT used here because image payloads are large
-    and re-sending them multiple times is wasteful -- a single call is made.
+    and re-sending them multiple times is wasteful -- a single call is made
+    per language group (``PLATFORM_LANGS``).
     """
     if platforms is None:
         platforms = ["linkedin", "threads", "twitter"]
 
     posts_per_platform = max(1, min(posts_per_platform, 10))
 
+    merged: dict = {}
+    for lang, group in _group_platforms_by_lang(platforms).items():
+        result = _generate_posts_from_images(
+            images, prompt, group, tone, posts_per_platform,
+            extra_context, use_local, provider, model, lang)
+        if result:
+            merged.update(result)
+    return {p: merged.get(p, "") for p in platforms}
+
+
+def _generate_posts_from_images(images, prompt, platforms, tone,
+                                posts_per_platform, extra_context, use_local,
+                                provider, model, lang: str) -> dict:
+    """One language group of :func:`generate_posts_from_images`."""
     try:
         client, model, provider = _get_llm_client(use_local, vision=True, provider=provider, model=model)
         params = _get_llm_params(use_local, num_platforms=len(platforms),
@@ -1721,22 +1963,40 @@ def generate_posts_from_images(
         prompt_section = f"FOCUS: {prompt}\n" if prompt else ""
         extra_section = f"CONTEXT: {extra_context}\n" if extra_context else ""
 
-        user_content: list[dict] = [
-            {
-                "type": "text",
-                "text": (
-                    f"Look at the image and write social media posts about it.\n"
-                    f"{prompt_section}"
-                    f"{extra_section}"
-                    f"Tone: {tone_instruction}\n"
-                    f"Platforms: {platform_list}\n\n"
-                    + _build_format_instruction(platforms, posts_per_platform)
-                ),
-            }
-        ]
+        if lang == "zh":
+            messages = prompts_zh.posts_from_images_messages(
+                focus=prompt, context=extra_context, tone=tone,
+                platform_list=prompts_zh.platform_list(platforms),
+                platforms=platforms, n=posts_per_platform)
+        else:
+            user_content: list[dict] = [
+                {
+                    "type": "text",
+                    "text": (
+                        f"Look at the image and write social media posts about it.\n"
+                        f"{prompt_section}"
+                        f"{extra_section}"
+                        f"Tone: {tone_instruction}\n"
+                        f"Platforms: {platform_list}\n\n"
+                        + _build_format_instruction(platforms, posts_per_platform)
+                    ),
+                }
+            ]
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a social media content creator. "
+                        "You write engaging posts about images. "
+                        + NO_EM_DASH_RULE + " "
+                        "You ALWAYS reply with valid JSON only."
+                    ),
+                },
+                {"role": "user", "content": user_content},
+            ]
 
         for img in images:
-            user_content.append({
+            messages[1]["content"].append({
                 "type": "image_url",
                 "image_url": {
                     "url": f"data:{img['mime_type']};base64,{img['base64']}",
@@ -1750,18 +2010,7 @@ def generate_posts_from_images(
         )
         response = client.chat.completions.create(
             model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a social media content creator. "
-                        "You write engaging posts about images. "
-                        + NO_EM_DASH_RULE + " "
-                        "You ALWAYS reply with valid JSON only."
-                    ),
-                },
-                {"role": "user", "content": user_content},
-            ],
+            messages=messages,
             **params,
         )
         _meter("record_chat", response, category="vision_posts",
@@ -2117,7 +2366,7 @@ def generate_youtube_thumbnail(
             with open(img_path, "rb") as f:
                 image_base64 = base64.b64encode(f.read()).decode("utf-8")
     else:
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = appconfig.get("OPENAI_API_KEY")
         if not api_key:
             raise RuntimeError(
                 "Set OPENAI_API_KEY for thumbnail generation, or set ASI_GENERATE_IMAGE "

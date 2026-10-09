@@ -51,14 +51,26 @@ check(re.search(r'onclick="makeAccountDefault\(\d+', accounts_html),
       "the make-default button is not wired to a specific account")
 
 nav = client.get("/compose").get_data(as_text=True)
-check('href="/accounts"' in nav, "no navigation link reaches the accounts page")
+# The Western platforms are hidden from the UI, so the accounts page is off the
+# navigation — it stays served for managing the logins that already exist.
+check('href="/accounts"' not in nav,
+      "the accounts page is still offered in the navigation")
+check(client.get("/accounts").status_code == 200,
+      "the accounts page is not served at its own URL any more")
 
 # --- the composer offers per-account targets ------------------------------
-created = client.post("/compose/post/create", data={
-    "targets": [f"linkedin:{work}", f"linkedin:{studio}", f"threads:{threads}"],
-    "content": "Ready to go out everywhere",
-}).get_json()
-ids = created["post_ids"]
+# Seeded like legacy rows: the create API now refuses the hidden platforms.
+ids = [
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="linkedin",
+        content="Ready to go out everywhere", account_id=work, db_path=P),
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="linkedin",
+        content="Ready to go out everywhere", account_id=studio, db_path=P),
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="threads",
+        content="Ready to go out everywhere", account_id=threads, db_path=P),
+]
 
 compose = client.get("/compose").get_data(as_text=True)
 for name, token in (
@@ -72,6 +84,8 @@ for name, token in (
 ):
     check(token in compose, f"the composer is missing its {name}")
 
+# The legacy rows are not offered targets any more, but they are still
+# publishable rows: the card's menus keep reaching them.
 check("Post to all 3 accounts" in compose,
       "the card does not offer publishing to every account at once")
 check("Queue all 3 accounts" in compose,
@@ -83,35 +97,34 @@ check("body.append('all', '1')" in compose,
 check("body.append('account_id', accountId)" in compose,
       "publishing a single chip does not name its account")
 
-# The chips the saved card draws must cover every target it has, one each.
+# The chips a card draws are the targets on offer (the domestic trio). Legacy
+# rows ride along in the card's ids and menus, not as chips of their own.
 card_start = compose.index('<div class="post-item"')
 card_html = compose[card_start:compose.index('class="post-content-wrapper"', card_start)]
 chips = re.findall(r'<span class="platform-chip[^"]*"\s*data-platform="(\w+)"\s*'
                    r'data-account-id="(\d*)"', card_html)
 ticked = re.findall(r'<span class="platform-chip is-on"\s*data-platform="(\w+)"\s*'
                     r'data-account-id="(\d*)"', card_html)
-check(len(chips) >= 6,
-      f"expected a chip per connectable target on the card, found {len(chips)}")
-check(len(ticked) == 3,
-      f"expected 3 ticked chips for a 3-target card, found {len(ticked)}: {ticked}")
-check((("linkedin", str(work)) in ticked and ("linkedin", str(studio)) in ticked),
-      f"both LinkedIn accounts are not ticked on the card: {ticked}")
+offered = {p for p, _ in chips}
+check(offered == {"xiaohongshu", "douyin", "wechat"},
+      f"the card offers chips beyond the domestic trio: {sorted(offered)}")
+check(not ticked,
+      f"a legacy card ticked chips for targets it was never aimed at: {ticked}")
 
 # The "write a new post" composer offers the same targets.
 new_post = re.search(r'id="new-post-platforms"(.*?)</div>', compose, re.S)
 check(new_post is not None, "the manual composer lost its target chips")
 manual_chips = re.findall(r'data-platform="(\w+)" data-account-id="(\d*)"',
                           new_post.group(1))
-check(len(manual_chips) >= 6,
-      f"the manual composer offers {len(manual_chips)} targets, expected one per account")
+check({p for p, _ in manual_chips} == {"xiaohongshu", "douyin", "wechat"},
+      f"the manual composer offers chips beyond the domestic trio: {manual_chips}")
 check("function newPostTargets" in compose,
       "the manual composer does not collect per-account targets")
 
 # --- the target chips actually move rows, not just styling ----------------
 before = len(database.list_standalone_posts(db_path=P))
-twitter = connect(database, "twitter", "tw-1", "brandco")
 added = client.post(f"/compose/post/{ids[0]}/platform", data={
-    "platform": "twitter", "account_id": str(twitter), "action": "add",
+    "platform": "wechat", "action": "add",
     "post_ids": ",".join(str(i) for i in ids),
 }).get_json()
 check(added and added.get("success"), f"ticking a target failed: {added}")

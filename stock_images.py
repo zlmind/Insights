@@ -1,6 +1,8 @@
 """Stock image fetching from free APIs (Unsplash, Pexels, Pixabay)."""
 
 import os
+
+import appconfig
 import re
 import logging
 import requests
@@ -9,9 +11,16 @@ from typing import Optional, List, Dict, Any
 logger = logging.getLogger(__name__)
 
 # API Keys from environment
-UNSPLASH_ACCESS_KEY = os.environ.get("UNSPLASH_ACCESS_KEY", "")
-PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
-PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY", "")
+# The stock-provider keys resolve per access (saved setting, then environment,
+# then unset) so an admin can add one on /settings without a restart.
+_STOCK_KEYS = {"UNSPLASH_ACCESS_KEY", "PEXELS_API_KEY", "PIXABAY_API_KEY"}
+
+
+def __getattr__(name: str):
+    """Resolve the stock-provider keys on access (PEP 562)."""
+    if name in _STOCK_KEYS:
+        return appconfig.get(name, "")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def extract_keywords_from_text(text: str, max_keywords: int = 3) -> str:

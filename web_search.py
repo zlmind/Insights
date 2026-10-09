@@ -21,6 +21,8 @@ import logging
 from dataclasses import dataclass
 from typing import List, Optional
 
+import appconfig
+
 logger = logging.getLogger(__name__)
 
 TAVILY_ENDPOINT = "https://api.tavily.com/search"
@@ -46,14 +48,14 @@ class SearchError(RuntimeError):
 
 def get_provider() -> str:
     """Resolve the effective provider name from env + key availability."""
-    choice = (os.getenv("WEB_SEARCH_PROVIDER", "auto") or "auto").strip().lower()
+    choice = (appconfig.get("WEB_SEARCH_PROVIDER", "auto") or "auto").strip().lower()
     if choice and choice != "auto":
         return choice
-    if os.getenv("TAVILY_API_KEY"):
+    if appconfig.get("TAVILY_API_KEY"):
         return "tavily"
-    if os.getenv("BRAVE_SEARCH_API_KEY"):
+    if appconfig.get("BRAVE_SEARCH_API_KEY"):
         return "brave"
-    if os.getenv("OPENAI_API_KEY"):
+    if appconfig.get("OPENAI_API_KEY"):
         return "openai"
     return "none"
 
@@ -121,7 +123,7 @@ def _search_tavily(query, max_results, allowed_domains, exclude_domains,
                    topic, days, include_content, timeout) -> List[SearchResult]:
     import requests
 
-    key = os.getenv("TAVILY_API_KEY")
+    key = appconfig.get("TAVILY_API_KEY")
     if not key:
         raise SearchError("TAVILY_API_KEY is not configured")
 
@@ -169,7 +171,7 @@ def _search_tavily(query, max_results, allowed_domains, exclude_domains,
 def _search_brave(query, max_results, allowed_domains, timeout) -> List[SearchResult]:
     import requests
 
-    key = os.getenv("BRAVE_SEARCH_API_KEY")
+    key = appconfig.get("BRAVE_SEARCH_API_KEY")
     if not key:
         raise SearchError("BRAVE_SEARCH_API_KEY is not configured")
 

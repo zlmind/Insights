@@ -447,27 +447,19 @@
             
             <div class="row mb-3">
                 <div class="col-md-8">
-                    <label class="form-label fw-bold">Select Platforms</label>
+                    <label class="form-label fw-bold">发布渠道</label>
                     <div class="d-flex flex-wrap gap-2" id="platform-checkboxes">
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" value="twitter" id="platform-twitter" checked>
-                            <label class="form-check-label" for="platform-twitter">𝕏 / Twitter</label>
+                            <input class="form-check-input" type="checkbox" value="xiaohongshu" id="platform-xiaohongshu" checked>
+                            <label class="form-check-label" for="platform-xiaohongshu">📕 小红书</label>
                         </div>
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" value="linkedin" id="platform-linkedin" checked>
-                            <label class="form-check-label" for="platform-linkedin">LinkedIn</label>
+                            <input class="form-check-input" type="checkbox" value="douyin" id="platform-douyin" checked>
+                            <label class="form-check-label" for="platform-douyin">🎵 抖音</label>
                         </div>
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" value="facebook" id="platform-facebook" checked>
-                            <label class="form-check-label" for="platform-facebook">Facebook</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" value="threads" id="platform-threads" checked>
-                            <label class="form-check-label" for="platform-threads">Threads</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" value="instagram" id="platform-instagram">
-                            <label class="form-check-label" for="platform-instagram">Instagram</label>
+                            <input class="form-check-input" type="checkbox" value="wechat" id="platform-wechat" checked>
+                            <label class="form-check-label" for="platform-wechat">💬 公众号</label>
                         </div>
                     </div>
                 </div>
@@ -475,7 +467,7 @@
                     <label class="form-label fw-bold" for="posts-per-platform">Posts per Platform</label>
                     <div class="input-group">
                         <button class="btn btn-outline-secondary" type="button" onclick="adjustPostCount(-1)">−</button>
-                        <input type="number" class="form-control text-center" id="posts-per-platform" value="10" min="1" max="21">
+                        <input type="number" class="form-control text-center" id="posts-per-platform" value="1" min="1" max="21">
                         <button class="btn btn-outline-secondary" type="button" onclick="adjustPostCount(1)">+</button>
                     </div>
                     <small class="text-muted">Generate 1-21 unique posts per platform</small>
@@ -3451,6 +3443,9 @@ function updateBulkImageCounts() {
 
 <style>
 :root {
+    --platform-xiaohongshu-color: #FF2442;
+    --platform-douyin-color: #FE2C55;
+    --platform-wechat-color: #07C160;
     --platform-twitter-color: #000000;
     --platform-linkedin-color: #0077B5;
     --platform-facebook-color: #1877F2;
@@ -3462,6 +3457,9 @@ function updateBulkImageCounts() {
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
+.social-copy-card[data-platform="xiaohongshu"] .social-copy-header { background-color: var(--platform-xiaohongshu-color); }
+.social-copy-card[data-platform="douyin"] .social-copy-header { background-color: var(--platform-douyin-color); }
+.social-copy-card[data-platform="wechat"] .social-copy-header { background-color: var(--platform-wechat-color); }
 .social-copy-card[data-platform="twitter"] .social-copy-header { background-color: var(--platform-twitter-color); }
 .social-copy-card[data-platform="linkedin"] .social-copy-header { background-color: var(--platform-linkedin-color); }
 .social-copy-card[data-platform="facebook"] .social-copy-header { background-color: var(--platform-facebook-color); }

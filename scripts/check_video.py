@@ -25,6 +25,12 @@ received with a hash of the file that was served. Nothing here posts to a real
 account or reaches a real host; the platforms' request shapes come from their
 published API documentation, so they prove the client speaks the documented
 protocol, not that the live service accepts it.
+
+The app is Chinese-platform-first: the composer offers only xiaohongshu, douyin
+and wechat, and they are draft-only, so nothing publishes them. The sections
+that create rows do it through the database -- the Western platforms' machinery
+stays wired up for the rows a legacy card still has -- and take the trio where
+the routes still take them, which is what ``copy`` and ``newpost`` now drive.
 """
 
 import json
@@ -36,7 +42,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _video_gate import (  # noqa: E402
     FakeApi, FakeResponse, VideoServer, MB, check, fail, form_bytes,
-    make_sample_mp4, no_wait, sha, temp_videos,
+    make_sample_mp4, no_wait, set_cloudinary, sha, temp_videos,
 )
 
 VIDEO = "https://cdn.example.test/clip.mp4"
@@ -788,6 +794,9 @@ def section_routes():
     db, P, web, client = rig.database, rig.P, rig.web, rig.client
     sizes = {"value": 5 * MB}
     web.video_media.head_size = lambda url: sizes["value"]  # no network in a gate
+    # The library route also lists the uploads folder; point it at the throwaway
+    # directory so the repo's own uploaded files cannot get into the listing.
+    web.app.config["UPLOAD_FOLDER"] = os.path.join(rig.directory, "static", "uploads")
 
     ids = rig.card("Route words", ["linkedin", "threads", "twitter"], image_url=None)
     card_ids = ",".join(str(i) for i in ids.values())
@@ -814,11 +823,13 @@ def section_routes():
     check(status == 200 and videos(ids.values()) == [PUBLIC_URL_2] * 3, "replace did not reach every row")
     check(len([g for g in rig.cards() if g["head"]["content"] == "Route words"]) == 1, "replace split the card")
 
-    # per-platform warnings come with the attach (LinkedIn 500 MB, Instagram 300 MB)
+    # per-platform warnings come with the attach (at 600 MB: the 500 MB caps —
+    # LinkedIn plus the draft-only trio — and Instagram's 300 MB)
     sizes["value"] = 600 * MB
     status, res = post_video(ids["linkedin"], video_url=PUBLIC_URL, post_ids=card_ids)
     hard = sorted(w["platform"] for w in res["warnings"] if w["level"] == "error")
-    check(status == 200 and hard == ["instagram", "linkedin"], f"size warnings wrong: {hard} {trim(res)}")
+    check(status == 200 and hard == ["douyin", "instagram", "linkedin", "wechat", "xiaohongshu"],
+          f"size warnings wrong: {hard} {trim(res)}")
     sizes["value"] = 5 * MB
 
     # a stale id from another card is not touched
@@ -860,12 +871,12 @@ def section_routes():
         response = client.post(url, data=field, content_type="multipart/form-data")
         return response.status_code, (response.get_json(silent=True) or {})
 
-    web.CLOUDINARY_CONFIGURED = False
+    set_cloudinary(db, False)
     status, res = upload("clip.mp4", clip, ids["linkedin"], post_ids=card_ids)
     check(status == 400 and "Cloudinary" in res["error"] and videos(ids.values()) == [None] * 3 and not uploads,
           f"without Cloudinary the upload should be refused cleanly: {status} {trim(res)}")
 
-    web.CLOUDINARY_CONFIGURED = True
+    set_cloudinary(db, True)
     for name, data in (("clip.avi", clip), ("notes.txt", b"hello"), ("empty.mp4", b"")):
         status, res = upload(name, data, ids["linkedin"], post_ids=card_ids)
         check(status == 400 and res.get("error") and videos(ids.values()) == [None] * 3 and not uploads,
@@ -1018,41 +1029,59 @@ def section_copy():
     def card_of(content):
         return [g for g in rig.cards() if g["head"]["content"] == content]
 
-    ids = rig.card("Copy with video", ["linkedin"], image_url=None)
-    db.update_standalone_post_video(ids["linkedin"], VIDEO, db_path=P)
-    plain = rig.card("Copy without video", ["linkedin"], image_url=None)
+    # The platforms the composer offers. A second account gives the "second
+    # account" tick something to name; until it is ticked a row is aimed at the
+    # platform's default, which is what the composer writes.
+    default = db.upsert_social_account("xiaohongshu", "xhs-main", label="Main", db_path=P)
+    studio = db.upsert_social_account("xiaohongshu", "xhs-studio", label="Studio", db_path=P)
+    ids = rig.card("Copy with video", [("xiaohongshu", default)], image_url=None)
+    (xhs,) = ids.values()                     # the card's primary row
+    db.update_standalone_post_video(xhs, VIDEO, db_path=P)
+    plain = rig.card("Copy without video", [("xiaohongshu", default)], image_url=None)
+    (plain_xhs,) = plain.values()
 
     # tick another platform
-    res = client.post(f"/compose/post/{ids['linkedin']}/platform",
-                      data={"platform": "threads", "action": "add", "post_ids": str(ids["linkedin"])})
+    res = client.post(f"/compose/post/{xhs}/platform",
+                      data={"platform": "douyin", "action": "add", "post_ids": str(xhs)})
     check(res.status_code == 200 and res.get_json().get("success"), f"tick failed: {res.status_code} {trim(res.get_json())}")
-    threads = [r for r in rig.rows_for("Copy with video") if r["platform"] == "threads"]
-    check(len(threads) == 1 and threads[0]["video_url"] == VIDEO, f"the ticked row did not get the video: {threads}")
+    douyin = [r for r in rig.rows_for("Copy with video") if r["platform"] == "douyin"]
+    check(len(douyin) == 1 and douyin[0]["video_url"] == VIDEO, f"the ticked row did not get the video: {douyin}")
     check(len(card_of("Copy with video")) == 1 and len(card_of("Copy with video")[0]["platforms"]) == 2,
           "ticking a platform split the card because the video was not copied")
 
     # a second account of the same platform
-    res = client.post(f"/compose/post/{ids['linkedin']}/platform",
-                      data={"platform": "linkedin", "action": "add", "account_id": str(rig.studio),
-                            "post_ids": f"{ids['linkedin']},{threads[0]['id']}"})
+    res = client.post(f"/compose/post/{xhs}/platform",
+                      data={"platform": "xiaohongshu", "action": "add", "account_id": str(studio),
+                            "post_ids": f"{xhs},{douyin[0]['id']}"})
     check(res.status_code == 200, f"tick of the second account failed: {res.status_code}")
     check(len(card_of("Copy with video")) == 1 and len(card_of("Copy with video")[0]["platforms"]) == 3,
           "a second account's row did not stay on the card")
 
+    # the Western platforms are not offered any more: ticking one is refused,
+    # names why, and creates nothing
+    before = len(rig.rows())
+    res = client.post(f"/compose/post/{xhs}/platform",
+                      data={"platform": "linkedin", "action": "add", "post_ids": str(xhs)})
+    offered = ", ".join(web.COMPOSE_PLATFORMS)
+    check(res.status_code == 400 and offered in res.get_json()["error"]
+          and len(rig.rows()) == before,
+          f"ticking a platform the app no longer offers must be refused with the ones it does "
+          f"offer ({offered}) and add nothing: {res.status_code} {trim(res.get_json())}")
+
     # bulk Add Platform
-    status, res = rig.post({"post_ids": [ids["linkedin"], plain["linkedin"]], "targets": ["twitter"], "queue": False})
+    status, res = rig.post({"post_ids": [xhs, plain_xhs], "targets": ["wechat"], "queue": False})
     check(status == 200 and res.get("success") and res["added"] == 2, f"bulk add failed: {status} {trim(res)}")
-    twitter = [r for r in rig.rows_for("Copy with video") if r["platform"] == "twitter"]
-    check(len(twitter) == 1 and twitter[0]["video_url"] == VIDEO, f"bulk add did not copy the video: {twitter}")
+    wechat = [r for r in rig.rows_for("Copy with video") if r["platform"] == "wechat"]
+    check(len(wechat) == 1 and wechat[0]["video_url"] == VIDEO, f"bulk add did not copy the video: {wechat}")
     check(len(card_of("Copy with video")) == 1 and len(card_of("Copy with video")[0]["platforms"]) == 4,
           "bulk Add Platform split the video card")
     # control: the card without a video is copied without one, and is still its own card
-    plain_twitter = [r for r in rig.rows_for("Copy without video") if r["platform"] == "twitter"]
-    check(len(plain_twitter) == 1 and plain_twitter[0]["video_url"] is None
+    plain_wechat = [r for r in rig.rows_for("Copy without video") if r["platform"] == "wechat"]
+    check(len(plain_wechat) == 1 and plain_wechat[0]["video_url"] is None
           and len(card_of("Copy without video")) == 1, "a card without a video changed shape")
 
     # re-rendering the card (which the ticks do) keeps the video
-    html = client.post(f"/compose/post/{ids['linkedin']}/card",
+    html = client.post(f"/compose/post/{xhs}/card",
                        data={"post_ids": ",".join(str(r["id"]) for r in rig.rows_for("Copy with video"))}).get_json()["html"]
     check(VIDEO in html, "the re-rendered card lost the video")
 

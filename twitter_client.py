@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from urllib.parse import urlencode
 from typing import Optional
 
+import appconfig
 import requests
 
 import video_media
@@ -70,8 +71,8 @@ class TwitterClient:
         client_secret: str | None = None,
         redirect_uri: str | None = None,
     ):
-        self.client_id = client_id or os.environ.get("TWITTER_CLIENT_ID")
-        self.client_secret = client_secret or os.environ.get("TWITTER_CLIENT_SECRET")
+        self.client_id = client_id or appconfig.get("TWITTER_CLIENT_ID")
+        self.client_secret = client_secret or appconfig.get("TWITTER_CLIENT_SECRET")
         self.redirect_uri = redirect_uri or os.environ.get(
             "TWITTER_REDIRECT_URI", "http://localhost:5001/twitter/callback"
         )

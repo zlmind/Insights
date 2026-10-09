@@ -23,6 +23,12 @@ people. ``persist``, ``publish`` and ``queue`` drive the real routes, database
 and publisher on a throwaway database with a recording Instagram client.
 ``ui`` and ``js`` read the rendered pages and run the page's own functions under
 node. Nothing here posts anything, reads a real token or leaves the machine.
+
+The composer no longer offers Instagram -- the app is Chinese-platform-first --
+so the rows here are seeded through the database and their people are saved
+through the card's own ig-people route. The routes that used to create
+Instagram posts (create, tick, bulk Add Platform) refuse the platform now, and
+``refuse`` and ``persist`` say so rather than pretend otherwise.
 """
 
 import json
@@ -386,24 +392,35 @@ def section_refuse():
     reply = client.post(f"/compose/post/{pid}/ig-people", data={})
     check(reply.status_code == 400, "a request with neither field is refused")
 
-    # create: a bad handle writes no row at all
+    # create: the people are read before any row is written, so a bad handle --
+    # and a list with no Instagram target on the card, which is every create now
+    # that the composer offers only the domestic platforms -- leaves nothing behind
     count = lambda: len(database.list_standalone_posts(db_path=P))
     base = count()
     for payload in ({"ig_collaborators": "john doe"}, {"ig_collaborators": "a1,b2,c3,d4"},
                     {"ig_reel_tags": "x y"}):
         reply = client.post("/compose/post/create",
-                            data={"content": "Hello", "targets": [f"instagram:{ids[0]}"], **payload})
+                            data={"content": "Hello", "targets": ["xiaohongshu"], **payload})
         check(reply.status_code == 400, f"create with {payload} must be refused, got {reply.status_code}")
         check(count() == base, f"create with {payload} left {count() - base} row(s) behind")
     # collaborators without an Instagram target are refused, not silently dropped
-    reply = client.post("/compose/post/create", data={"content": "Hello", "targets": ["threads"],
+    reply = client.post("/compose/post/create", data={"content": "Hello", "targets": ["xiaohongshu"],
                                                       "ig_collaborators": "amy"})
     check(reply.status_code == 400 and "Instagram" in reply.get_json()["error"] and count() == base,
           f"collaborators with no Instagram target must be refused: {reply.get_json()}")
-    # control: the same create with good input works
-    reply = client.post("/compose/post/create", data={"content": "Hello", "targets": [f"instagram:{ids[0]}"],
+    # and create refuses the retired platforms outright, good people or not:
+    # the people on a legacy Instagram row are saved through the card, which the
+    # ig-people route above still takes
+    reply = client.post("/compose/post/create", data={"content": "Hello",
+                                                      "targets": [f"instagram:{ids[0]}"],
                                                       "ig_collaborators": "amy"})
-    check(reply.status_code == 200 and count() == base + 1, "control: valid people must create the post")
+    check(reply.status_code == 400 and "instagram" in reply.get_json()["error"] and count() == base,
+          f"create must refuse a platform the app no longer offers: {reply.get_json()}")
+    # control: the same create without people goes ahead, so the refusals above
+    # are about the people and the retired platform, not about create itself
+    reply = client.post("/compose/post/create", data={"content": "Hello", "targets": ["xiaohongshu"]})
+    check(reply.status_code == 200 and count() == base + 1,
+          "control: a create with no people still makes its row")
 
     # a card with no Instagram row has nowhere to put them
     other = database.add_standalone_post("manual", "g", "threads", "Only threads", db_path=P)
@@ -713,58 +730,76 @@ def section_persist():
         check(reply.status_code == 400 and database.get_standalone_post(c1, db_path=P)["ig_collaborators"] is None,
               f"reel-options must refuse {bad} and change nothing: {reply.get_json()}")
 
-    # --- ticking a second Instagram account (or bulk Add Platform) carries the card's people
-    reply = client.post(f"/compose/post/{a}/platform", data={"platform": "instagram", "action": "add",
-                                                              "account_id": str(ids[1]), "post_ids": f"{a},{b}"})
-    check(reply.status_code == 400 and "already" in reply.get_json()["error"], "control: that account is already on the card")
+    # --- adding a platform to a card. The domestic ones are offered and never
+    # carry Instagram people; the Western ones are refused outright, so the
+    # copy-the-people-to-a-new-Instagram-row path is no longer reachable from a
+    # tick -- the people live on the rows a legacy card already has.
     solo = make_row(database, ids[0], "image", content="Solo copy")
     set_people(client, solo, "keep, these")
+    before = len(database.list_standalone_posts(db_path=P))
     reply = client.post(f"/compose/post/{solo}/platform", data={"platform": "instagram", "action": "add",
                                                                  "account_id": str(ids[1]), "post_ids": f"{solo}"})
-    check(reply.status_code == 200, f"adding the second account failed: {reply.get_data(as_text=True)[:200]}")
-    new_id = reply.get_json()["post_id"]
-    nr = database.get_standalone_post(new_id, db_path=P)
-    check(json.loads(nr["ig_collaborators"] or "[]") == ["keep", "these"],
-          f"a second Instagram account added to a card must carry its collaborators, got {nr['ig_collaborators']!r}")
-    # control: Threads added to the same card gets no Instagram people
-    th = client.post(f"/compose/post/{solo}/platform", data={"platform": "threads", "action": "add",
-                                                              "post_ids": f"{solo}"}).get_json()["post_id"]
-    check(database.get_standalone_post(th, db_path=P)["ig_collaborators"] is None,
-          "control: a Threads row added to the card must carry no Instagram people")
-    # bulk Add Platform
+    check(reply.status_code == 400 and "Must be one of: xiaohongshu, douyin, wechat" in reply.get_json()["error"],
+          f"ticking the retired platform must be refused with the ones on offer: {reply.status_code} {reply.get_json()}")
+    check(len(database.list_standalone_posts(db_path=P)) == before,
+          "a refused tick must not create the row it refused to create")
+    check(json.loads(database.get_standalone_post(solo, db_path=P)["ig_collaborators"] or "[]") == ["keep", "these"],
+          "a refused tick must leave the people already saved exactly as they were")
+    # a platform the composer does offer can still be ticked, and gets no people
+    reply = client.post(f"/compose/post/{solo}/platform", data={"platform": "douyin", "action": "add",
+                                                                 "post_ids": f"{solo}"})
+    check(reply.status_code == 200, f"ticking an offered platform failed: {reply.get_data(as_text=True)[:200]}")
+    nr = database.get_standalone_post(reply.get_json()["post_id"], db_path=P)
+    check(nr["platform"] == "douyin" and nr["ig_collaborators"] is None,
+          f"a row added for another platform must carry no Instagram people: {dict(nr)}")
+    # bulk Add Platform, same rules
     bulk_src = make_row(database, ids[0], "image", content="Bulk copy")
     set_people(client, bulk_src, "bulky")
+    before = len(database.list_standalone_posts(db_path=P))
     reply = client.post("/compose/posts/bulk-add-platform",
                         json={"post_ids": [bulk_src], "targets": [f"instagram:{ids[1]}"], "queue": False})
+    check(reply.status_code == 400 and "Invalid platform: instagram" in reply.get_json()["error"],
+          f"bulk Add Platform must refuse a retired platform: {reply.status_code} {reply.get_json()}")
+    check(len(database.list_standalone_posts(db_path=P)) == before, "a refused bulk add must create no row")
+    reply = client.post("/compose/posts/bulk-add-platform",
+                        json={"post_ids": [bulk_src], "targets": ["wechat"], "queue": False})
     check(reply.status_code == 200 and reply.get_json().get("success"),
           f"bulk add failed: {reply.status_code} {reply.get_data(as_text=True)[:300]}")
     rows = [r for r in database.list_standalone_posts(db_path=P) if r["content"] == "Bulk copy"]
-    check(len(rows) == 2 and all(json.loads(r["ig_collaborators"] or "[]") == ["bulky"] for r in rows),
-          f"bulk Add Platform must carry collaborators to the new Instagram row: {[r['ig_collaborators'] for r in rows]}")
+    made = [r for r in rows if r["platform"] == "wechat"]
+    kept = [r for r in rows if r["platform"] == "instagram"]
+    check(len(made) == 1 and made[0]["ig_collaborators"] is None,
+          f"bulk Add Platform must write no Instagram people on the row it adds: {made}")
+    check(len(kept) == 1 and json.loads(kept[0]["ig_collaborators"] or "[]") == ["bulky"],
+          "the collaborators stay on the Instagram row they were saved on")
 
-    # --- Write Manually: saved on the Instagram rows only, echoed back
+    # --- Write Manually: people with no Instagram target on the card -- which is
+    # every create now -- are refused rather than dropped, and the retired
+    # platforms are refused before them
+    before = len(database.list_standalone_posts(db_path=P))
     reply = client.post("/compose/post/create", data={
-        "content": "Fresh post", "targets": [f"instagram:{ids[0]}", f"instagram:{ids[1]}", "threads"],
+        "content": "Fresh post", "targets": ["xiaohongshu", "douyin"],
         "ig_collaborators": ENTERED, "ig_reel_tags": TAGS_ENTERED})
     body = reply.get_json()
-    check(reply.status_code == 200 and body["ig_collaborators"] == ENTERED_CLEAN and body["ig_reel_tags"] == TAGS_CLEAN,
-          f"create must echo the cleaned people: {body}")
-    created = {r["platform"] + str(r["account_id"]): r
-               for r in (database.get_standalone_post(i, db_path=P) for i in body["post_ids"])}
-    igs = [r for r in created.values() if r["platform"] == "instagram"]
-    check(len(igs) == 2 and all(json.loads(r["ig_collaborators"]) == ENTERED_CLEAN
-                                and json.loads(r["ig_reel_tags"]) == TAGS_CLEAN for r in igs),
-          "every Instagram row created must carry the people")
-    check([r["ig_collaborators"] for r in created.values() if r["platform"] == "threads"] == [None],
-          "the Threads row created alongside must not")
+    check(reply.status_code == 400 and "Instagram" in body["error"],
+          f"create must refuse people with no Instagram target on the card: {body}")
+    check(len(database.list_standalone_posts(db_path=P)) == before,
+          "a refused create must write no row")
+    reply = client.post("/compose/post/create", data={
+        "content": "Fresh post", "targets": [f"instagram:{ids[0]}", f"instagram:{ids[1]}"],
+        "ig_collaborators": ENTERED, "ig_reel_tags": TAGS_ENTERED})
+    check(reply.status_code == 400 and "Invalid platform: instagram" in reply.get_json()["error"],
+          f"create must refuse the retired platforms: {reply.get_json()}")
 
-    # --- the card the page draws shows what was saved
-    html = client.post(f"/compose/post/{igs[0]['id']}/card",
-                       data={"post_ids": ",".join(str(r["id"]) for r in created.values())}).get_json()["html"]
+    # --- the card the page draws shows what a legacy Instagram row has saved
+    rendered = [make_row(database, ids[n], "image", content="Rendered copy") for n in (0, 1)]
+    set_people(client, rendered[0], ENTERED, TAGS_ENTERED, post_ids=rendered)
+    html = client.post(f"/compose/post/{rendered[0]}/card",
+                       data={"post_ids": ",".join(str(r) for r in rendered)}).get_json()["html"]
     check('value="@amy, @bob"' in html, "the card must show the saved collaborators")
 
     print("persist: the columns migrate an old database without touching its rows, the routes round-trip, "
-          "and the people stay card-wide (second account, bulk Add Platform, Write Manually)")
+          "and the people stay card-wide on the Instagram rows a card has (both accounts, a re-rendered card)")
     print("IG_PEOPLE_PERSIST_OK")
 
 
@@ -1174,7 +1209,7 @@ const renderIgStrip = () => {};
   console.log(JSON.stringify(out));
 })();
 """
-    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
     check(result.returncode == 0, f"node failed:\n{result.stderr.strip()[:1200]}")
     out = json.loads(result.stdout.strip().splitlines()[-1])
 
@@ -1217,12 +1252,15 @@ const renderIgStrip = () => {};
     check(sent_fields.get("ig_collaborators") == "@Amy, bob" and sent_fields.get("ig_reel_tags") == "@cat",
           f"with Instagram ticked, Save must send the people as typed (trimmed): {sent_fields}")
 
-    # replay exactly what the page sent against the real routes
+    # replay what the page sent against the real routes. Save itself cannot be
+    # replayed any more: create refuses the retired platforms, and the page no
+    # longer offers an Instagram chip to tick -- the fields are the legacy rows'
+    # builder, reached through the card's own save instead.
     post = client.post("/compose/post/create", data={
         "content": "A post", "targets": [f"instagram:{ids[0]}"],
         "ig_collaborators": sent_fields["ig_collaborators"], "ig_reel_tags": sent_fields["ig_reel_tags"]})
-    check(post.status_code == 200 and post.get_json()["ig_collaborators"] == ["amy", "bob"]
-          and post.get_json()["ig_reel_tags"] == ["cat"], f"the page's Save, replayed, must be accepted: {post.get_json()}")
+    check(post.status_code == 400 and "Invalid platform: instagram" in post.get_json()["error"],
+          f"create must refuse the retired platform the old page code still names: {post.get_json()}")
     saved = client.post(f"/compose/post/{reel}/ig-people", data=fields)
     check(saved.status_code == 200 and saved.get_json()["ig_collaborators"] == ["amy", "bob"],
           f"the page's save, replayed, must be accepted: {saved.get_data(as_text=True)[:300]}")

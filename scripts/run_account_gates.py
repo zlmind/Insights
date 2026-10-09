@@ -53,7 +53,7 @@ def run_gate(filename, token, args=()):
     try:
         result = subprocess.run(
             [sys.executable, os.path.join(HERE, filename), *args],
-            capture_output=True, text=True, timeout=TIMEOUT_SECONDS,
+            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=TIMEOUT_SECONDS,
             cwd=HERE,
         )
     except subprocess.TimeoutExpired:

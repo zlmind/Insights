@@ -697,7 +697,7 @@ def section_syntax():
             path = os.path.join(work, f"script_{index}.js")
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write(body)
-            run = subprocess.run([node, "--check", path], capture_output=True, text=True)
+            run = subprocess.run([node, "--check", path], capture_output=True, text=True, encoding='utf-8', errors='replace')
             check(run.returncode == 0,
                   f"inline script {index} on the accounts page does not parse:\n{run.stderr.strip()[:500]}")
     finally:

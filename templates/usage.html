@@ -16,12 +16,11 @@
 
 {% block content %}
 <p class="results-count mb-3">
-    Spend on AI content generation, split by how it was triggered.
-    <strong style="color:#6f42c1;">Proactive</strong> = automated background work (episode
-    transcription, summaries, action items). <strong style="color:#0d6efd;">Reactive</strong> =
-    generation you triggered yourself (Command Center posts, articles, refine, thumbnails).
-    Costs are <em>estimates</em> from a local price table &mdash; token counts are exact.
-    Tune prices with the <code>USAGE_PRICE_*</code> env vars.
+    AI 内容生成的花费，按触发方式拆分。
+    <strong style="color:#6f42c1;">主动</strong> = 自动后台工作（单集转写、摘要、待办事项）。
+    <strong style="color:#0d6efd;">被动</strong> = 你自己触发的生成（撰写页帖子、文章、润色、缩略图）。
+    费用按本地价格表<em>估算</em> —— token 数是精确的。
+    可用 <code>USAGE_PRICE_*</code> 环境变量调整价格。
 </p>
 
 <div class="filter-bar">
@@ -63,8 +62,7 @@
         </div>
     </form>
     <p class="results-count mt-2 mb-0">
-        Mode &amp; content-type filters apply to the event log below; the tiles and breakdowns
-        always show the full split for the selected date range.
+        模式与内容类型筛选只作用于下方的事件日志；上方的统计卡片与细分始终展示所选日期范围的完整拆分。
     </p>
 </div>
 

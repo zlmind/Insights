@@ -414,11 +414,18 @@ def init_db(db_path: str = DB_PATH) -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
+                is_admin INTEGER NOT NULL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_login_at TIMESTAMP
             )
             """
         )
+        # Existing databases upgrade in place; the first account becomes the
+        # admin so a deployed instance keeps working after the update.
+        cur = conn.execute("PRAGMA table_info(users)")
+        user_columns = [row[1] for row in cur.fetchall()]
+        if user_columns and "is_admin" not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
         # Audit log of mutating actions and named auth events
         conn.execute(
             """
@@ -808,7 +815,78 @@ def init_db(db_path: str = DB_PATH) -> None:
             )
 
         _migrate_tokens_to_accounts(conn)
+
+        # An instance upgraded from before admins existed has no admin yet;
+        # the oldest account is the one that set the instance up.
+        if user_columns:
+            admin = conn.execute(
+                "SELECT COUNT(*) FROM users WHERE is_admin = 1"
+            ).fetchone()[0]
+            if not admin:
+                conn.execute(
+                    "UPDATE users SET is_admin = 1 "
+                    "WHERE id = (SELECT MIN(id) FROM users)"
+                )
+
+        # Instance-wide settings set from the /settings page by an admin.
+        # Reads fall back to environment variables, so an existing .env keeps
+        # working until the same key is saved here.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_by INTEGER,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
         conn.commit()
+
+
+# ── Instance settings (admin-editable replacements for .env entries) ──────
+
+
+def get_setting(key: str, default: Optional[str] = None,
+                db_path: str = DB_PATH) -> Optional[str]:
+    """The saved value for one setting, or the default when it is not set."""
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?", (key,)
+        ).fetchone()
+    return row[0] if row else default
+
+
+def set_setting(key: str, value: str, updated_by: Optional[int] = None,
+                db_path: str = DB_PATH) -> None:
+    """Save one setting, recording which admin saved it."""
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO app_settings (key, value, updated_by, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_by = excluded.updated_by,
+                updated_at = excluded.updated_at
+            """,
+            (key, value, updated_by),
+        )
+        conn.commit()
+
+
+def delete_setting(key: str, db_path: str = DB_PATH) -> None:
+    """Forget a saved setting, falling the key back to its environment value."""
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+        conn.commit()
+
+
+def list_settings(db_path: str = DB_PATH) -> Dict[str, str]:
+    """Every saved setting as a plain {key: value} mapping."""
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute("SELECT key, value FROM app_settings").fetchall()
+    return dict(rows)
 
 
 # Identity of a connected login, per platform: which token column holds the
@@ -4714,12 +4792,15 @@ def create_user(
 ) -> int:
     """Insert a new user and return the new row id.
 
-    Raises ``sqlite3.IntegrityError`` if the username is already taken.
+    The first account created on an instance becomes its admin — it is the
+    only role allowed to edit /settings. Raises ``sqlite3.IntegrityError``
+    if the username is already taken.
     """
     with sqlite3.connect(db_path) as conn:
+        first = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
         cur = conn.execute(
-            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-            (username, password_hash),
+            "INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, ?)",
+            (username, password_hash, 1 if first else 0),
         )
         conn.commit()
         return int(cur.lastrowid)

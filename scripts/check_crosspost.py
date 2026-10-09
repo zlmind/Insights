@@ -28,15 +28,37 @@ facebook = connect(database, "facebook", "fb-1", "Brand Page")
 instagram = connect(database, "instagram", "ig-1", "brandco")
 
 # --- one card, six targets across five platforms --------------------------
+# The Western platforms are hidden from the UI, so /compose/post/create refuses
+# them; the publish machinery below stays live for legacy rows, which is what
+# these are — seeded straight into the database like rows saved before the
+# channels were hidden.
 COPY = "The same announcement, everywhere it needs to go."
-created = client.post("/compose/post/create", data={
-    "targets": [f"linkedin:{work}", f"linkedin:{studio}", f"threads:{threads}",
-                f"twitter:{twitter}", f"facebook:{facebook}", f"instagram:{instagram}"],
-    "content": COPY,
-    "image_url": "https://example.test/pic.jpg",
-}).get_json()
-check(created and created.get("success"), f"creating the card failed: {created}")
-post_ids = created["post_ids"]
+post_ids = [
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="linkedin",
+        content=COPY, image_url="https://example.test/pic.jpg",
+        account_id=work, db_path=P),
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="linkedin",
+        content=COPY, image_url="https://example.test/pic.jpg",
+        account_id=studio, db_path=P),
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="threads",
+        content=COPY, image_url="https://example.test/pic.jpg",
+        account_id=threads, db_path=P),
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="twitter",
+        content=COPY, image_url="https://example.test/pic.jpg",
+        account_id=twitter, db_path=P),
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="facebook",
+        content=COPY, image_url="https://example.test/pic.jpg",
+        account_id=facebook, db_path=P),
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="instagram",
+        content=COPY, image_url="https://example.test/pic.jpg",
+        account_id=instagram, db_path=P),
+]
 check(len(post_ids) == 6, f"expected 6 rows for 6 targets, got {len(post_ids)}")
 
 # The rows are one card, not six: same copy, one row per target.
@@ -97,11 +119,17 @@ work = connect(database, "linkedin", "li-work", "Work")
 studio = connect(database, "linkedin", "li-studio", "Studio")
 twitter = connect(database, "twitter", "tw-1", "brandco")
 
-created = client.post("/compose/post/create", data={
-    "targets": [f"linkedin:{work}", f"linkedin:{studio}", f"twitter:{twitter}"],
-    "content": "Partial fan-out",
-}).get_json()
-ids = created["post_ids"]
+ids = [
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="linkedin",
+        content="Partial fan-out", account_id=work, db_path=P),
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="linkedin",
+        content="Partial fan-out", account_id=studio, db_path=P),
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="twitter",
+        content="Partial fan-out", account_id=twitter, db_path=P),
+]
 result = client.post(f"/compose/post/{ids[0]}/publish", data={
     "post_ids": ",".join(str(i) for i in ids),
 }).get_json()
@@ -124,11 +152,14 @@ P = database.DB_PATH
 clients = install_fake_clients(publisher)
 work = connect(database, "linkedin", "li-work", "Work")
 studio = connect(database, "linkedin", "li-studio", "Studio")
-created = client.post("/compose/post/create", data={
-    "targets": [f"linkedin:{work}", f"linkedin:{studio}"],
-    "content": "Only one of these",
-}).get_json()
-ids = created["post_ids"]
+ids = [
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="linkedin",
+        content="Only one of these", account_id=work, db_path=P),
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="linkedin",
+        content="Only one of these", account_id=studio, db_path=P),
+]
 result = client.post(f"/compose/post/{ids[0]}/publish", data={
     "post_ids": ",".join(str(i) for i in ids),
     "target_ids": str(ids[1]),

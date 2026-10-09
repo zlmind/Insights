@@ -44,6 +44,13 @@ LIBRARY_GATES = [
      "the committed accuracy report is a real, self-consistent sample"),
 ]
 
+# The instance settings page and the appconfig layer behind it. One script, one
+# gate: it drives the real /settings page on a throwaway database.
+SETTINGS_GATES = [
+    ("check_settings_ui.py", "SETTINGS_UI_OK",
+     "settings saved on /settings beat .env, secrets never echo back, and the retired platforms group stays hidden while its keys still save"),
+]
+
 # The Compose page's gates. Several scripts hold more than one gate and pick one
 # by argument, each printing its own token, so one file appears once per section.
 # Two of them run the page's JavaScript through node, so CI installs it.
@@ -255,9 +262,9 @@ IG_PEOPLE_GATES = [
 # healthy state: a script that is not a gate should not carry the check_ prefix.
 NOT_GATES = {}
 
-ALL_GATES = (ACCOUNT_GATES + ACCOUNT_JS_GATES + LIBRARY_GATES + COMPOSE_GATES
-             + VIDEO_GATES + MANUAL_POST_GATES + QUEUE_GATES + PAGING_GATES
-             + IG_PEOPLE_GATES)
+ALL_GATES = (ACCOUNT_GATES + ACCOUNT_JS_GATES + LIBRARY_GATES + SETTINGS_GATES
+             + COMPOSE_GATES + VIDEO_GATES + MANUAL_POST_GATES + QUEUE_GATES
+             + PAGING_GATES + IG_PEOPLE_GATES)
 
 
 def _unpack(entry):

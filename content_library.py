@@ -69,11 +69,21 @@ from media_probe import (
     cold_capture_date,
 )
 
+import appconfig
+
 logger = logging.getLogger(__name__)
 
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_VISION_MODEL = os.environ.get("OLLAMA_VISION_MODEL", "llama3.2-vision")
-OLLAMA_TEXT_MODEL = os.environ.get("OLLAMA_TEXT_MODEL", "llama3.2")
+# The Ollama settings resolve per access (saved setting, then environment,
+# then default) so an admin can repoint the local models on /settings without
+# a restart.
+_OLLAMA_SETTINGS = {"OLLAMA_BASE_URL", "OLLAMA_VISION_MODEL", "OLLAMA_TEXT_MODEL"}
+
+
+def __getattr__(name: str):
+    """Resolve the Ollama settings on access (PEP 562)."""
+    if name in _OLLAMA_SETTINGS:
+        return appconfig.get(name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # Label used when no tier reaches the confidence floor. Kept as a real category
 # so unresolved files stay visible and reviewable instead of vanishing.
@@ -921,7 +931,7 @@ def _ollama_generate(model: str, prompt: str, images: Optional[list[str]] = None
         payload["images"] = images
 
     req = urllib.request.Request(
-        f"{OLLAMA_BASE_URL}/api/generate",
+        f"{appconfig.get('OLLAMA_BASE_URL')}/api/generate",
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"},
     )
@@ -938,22 +948,22 @@ def _ollama_generate(model: str, prompt: str, images: Optional[list[str]] = None
 def ollama_status() -> dict:
     """Report reachability and whether the configured models are installed."""
     try:
-        req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/tags")
+        req = urllib.request.Request(f"{appconfig.get('OLLAMA_BASE_URL')}/api/tags")
         with urllib.request.urlopen(req, timeout=5) as resp:
             tags = json.loads(resp.read())
     except Exception:
         return {"available": False, "models": [], "vision_ready": False, "text_ready": False,
-                "vision_model": OLLAMA_VISION_MODEL, "text_model": OLLAMA_TEXT_MODEL}
+                "vision_model": appconfig.get("OLLAMA_VISION_MODEL"), "text_model": appconfig.get("OLLAMA_TEXT_MODEL")}
 
     names = [m.get("name", "") for m in tags.get("models", [])]
     stems = {n.split(":")[0] for n in names}
     return {
         "available": True,
         "models": names,
-        "vision_model": OLLAMA_VISION_MODEL,
-        "text_model": OLLAMA_TEXT_MODEL,
-        "vision_ready": OLLAMA_VISION_MODEL.split(":")[0] in stems,
-        "text_ready": OLLAMA_TEXT_MODEL.split(":")[0] in stems,
+        "vision_model": appconfig.get("OLLAMA_VISION_MODEL"),
+        "text_model": appconfig.get("OLLAMA_TEXT_MODEL"),
+        "vision_ready": appconfig.get("OLLAMA_VISION_MODEL").split(":")[0] in stems,
+        "text_ready": appconfig.get("OLLAMA_TEXT_MODEL").split(":")[0] in stems,
     }
 
 
@@ -977,7 +987,7 @@ def caption_file(f: ScannedFile, budget: HydrationBudget, workspace: str,
     Raises :class:`BudgetExhausted` before touching the file if its size does
     not fit the remaining download allowance.
     """
-    model = vision_model or OLLAMA_VISION_MODEL
+    model = vision_model or appconfig.get("OLLAMA_VISION_MODEL")
     meta: dict = {}
 
     if not f.materialized:
@@ -1176,9 +1186,9 @@ def classify_from_evidence(
             raw = _cloud_map(prompt, text_model)
         except Exception as exc:
             logger.warning("cloud mapping failed, falling back to local: %s", exc)
-            raw = _ollama_generate(text_model or OLLAMA_TEXT_MODEL, prompt, num_predict=160)
+            raw = _ollama_generate(text_model or appconfig.get("OLLAMA_TEXT_MODEL"), prompt, num_predict=160)
     else:
-        raw = _ollama_generate(text_model or OLLAMA_TEXT_MODEL, prompt, num_predict=160)
+        raw = _ollama_generate(text_model or appconfig.get("OLLAMA_TEXT_MODEL"), prompt, num_predict=160)
 
     # Literal token overlap, computed regardless of what the model says, so a
     # dropped-but-obvious mapping can still be recovered below.
@@ -1429,7 +1439,14 @@ def apply_plan(
                     target = _dedupe_name(target)
 
                 if mode == "link":
-                    os.symlink(item.src, target)
+                    try:
+                        os.symlink(item.src, target)
+                    except OSError:
+                        # Windows without Developer Mode refuses symlinks; a
+                        # hardlink keeps the no-second-copy property while the
+                        # archive sits on one volume, and the outer handler
+                        # records it when even that is impossible.
+                        os.link(item.src, target)
                 else:
                     shutil.copy2(item.src, target)
                 copied += 1

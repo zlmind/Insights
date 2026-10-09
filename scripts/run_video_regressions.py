@@ -46,7 +46,7 @@ def main():
         try:
             result = subprocess.run(
                 [sys.executable, os.path.join(HERE, script)] + args,
-                capture_output=True, text=True, timeout=TIMEOUT_SECONDS, cwd=HERE,
+                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=TIMEOUT_SECONDS, cwd=HERE,
             )
         except subprocess.TimeoutExpired:
             failures.append(f"{label}: timed out after {TIMEOUT_SECONDS}s")

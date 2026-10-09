@@ -14,6 +14,12 @@ declared.
 
 Both run on a throwaway database with fake platform clients, so neither touches
 a real insights.db or a real account.
+
+The app is Chinese-platform-first, so the bulk selection no longer queues or
+posts anything: its Post-now and Queue buttons and the Queue-All modal are gone
+from the page, along with the per-platform totals and scope tables they read.
+``totals`` pins that removal, and checks that the one bulk run left -- Add
+Platform, which is still offered for the domestic trio -- sums its batches.
 """
 
 import collections
@@ -157,7 +163,7 @@ def section_refreshcard():
             handle.write(match.group(0))
         with open(harness_path, "w", encoding="utf-8") as handle:
             handle.write(HARNESS)
-        run = subprocess.run([node, harness_path, fn_path], capture_output=True, text=True, timeout=60)
+        run = subprocess.run([node, harness_path, fn_path], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     check(run.returncode == 0, f"the harness crashed:\n{run.stderr.strip()[:600]}")
@@ -240,6 +246,23 @@ def section_totals():
     node = shutil.which("node")
     check(node, "node is required for this gate and was not found on PATH")
     source = "\n".join(rendered_scripts())
+
+    # The bulk selection no longer queues or posts: its buttons, the Queue-All
+    # modal and the per-platform totals and scope tables they read are gone from
+    # the page. What is left to sum is the bulk Add Platform picker, which the
+    # composer still offers for the domestic trio.
+    removed = ("postNowSelectedPosts", "queueSelectedPosts", "unqueueSelectedPosts",
+               "showQueueAllModal", "queueAllUnscheduled", "queueAllBothPlatforms",
+               "queuePlatformPosts", "PLATFORM_TOTALS", "SCOPE_QUEUEABLE_PLATFORMS",
+               "SCOPE_POSTABLE_PLATFORMS", "scopeCounts")
+    lingering = [name for name in removed if re.search(rf"\b{name}\b", source)]
+    check(not lingering, f"the removed bulk-queue helpers are still on the page: {lingering}")
+    check(re.search(r"\bPOSTS_TOTAL\b", source), "POSTS_TOTAL is gone from the page")
+    for name in ("postNowFromCard", "postNowAllFromCard", "queueAllFromCard", "togglePostPlatform",
+                 "toggleChipQueue", "openScheduleModal", "refreshCard"):
+        check(re.search(rf"^(?:async\s+)?function\s+{name}\(", source, re.M),
+              f"the per-card handler {name}() is gone from the page")
+
     lifted = []
     for name in ("newBulkPlatformTotals", "mergeBulkPlatformTotals"):
         check(len(re.findall(rf"^function {name}\(", source, re.M)) == 1,
@@ -256,7 +279,7 @@ def section_totals():
             handle.write("\n".join(lifted))
         with open(harness_path, "w", encoding="utf-8") as handle:
             handle.write(TOTALS_HARNESS)
-        run = subprocess.run([node, harness_path, fn_path], capture_output=True, text=True, timeout=60)
+        run = subprocess.run([node, harness_path, fn_path], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     check(run.returncode == 0, f"the harness crashed:\n{run.stderr.strip()[:600]}")

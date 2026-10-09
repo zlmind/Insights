@@ -176,9 +176,10 @@ def walk_tree(root: str, skip_hidden: bool = True) -> Iterator[FileStat]:
 
 def free_bytes(path: str) -> int:
     """Free space on the volume holding ``path``, in bytes."""
+    # shutil.disk_usage over os.statvfs: statvfs does not exist on Windows,
+    # and the volume check should work wherever the library runs.
     try:
-        vfs = os.statvfs(path)
-        return vfs.f_bavail * vfs.f_frsize
+        return shutil.disk_usage(path).free
     except OSError:
         return 0
 

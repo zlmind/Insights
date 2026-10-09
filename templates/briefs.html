@@ -2,10 +2,10 @@
 {% block title %}Content Agent | Insights{% endblock %}
 {% block header %}Content Agent{% endblock %}
 {% block subtitle %}<p class="page-subtitle">
-    Declare a <strong>content brief</strong> once. The agent researches source material
-    (web search + your saved sources) and prepares draft posts and articles for you to
-    review in <a href="{{ url_for('compose_page') }}">Compose</a> and
-    <a href="{{ url_for('view_articles') }}">Articles</a>. Nothing posts without you.
+    一次性声明<strong>内容简报</strong>。代理会调研素材（网页搜索 + 你保存的来源），
+    起草帖子与文章，交给你在
+    <a href="{{ url_for('compose_page') }}">撰写</a> 和
+    <a href="{{ url_for('view_articles') }}">文章</a> 页审阅。没有任何内容会未经你确认就发布。
 </p>{% endblock %}
 {% block content %}
 
@@ -37,7 +37,7 @@
             <td><span class="badge bg-secondary text-capitalize">{{ b.content_type }}</span></td>
             <td>
                 {% for p in b.platforms_list %}
-                    <span title="{{ p }}">{% if p == 'linkedin' %}💼{% elif p == 'threads' %}🧵{% elif p == 'facebook' %}📘{% elif p == 'twitter' %}𝕏{% else %}📱{% endif %}</span>
+                    <span title="{{ p }}">{% if p == 'xiaohongshu' %}📕{% elif p == 'douyin' %}🎵{% elif p == 'wechat' %}💬{% elif p == 'linkedin' %}💼{% elif p == 'threads' %}🧵{% elif p == 'facebook' %}📘{% elif p == 'twitter' %}𝕏{% else %}📱{% endif %}</span>
                 {% endfor %}
             </td>
             <td>
@@ -130,9 +130,9 @@
           </div>
 
           <div class="mb-3" id="platforms-group">
-            <label class="form-label">Platforms</label>
+            <label class="form-label">发布渠道</label>
             <div>
-              {% for p, icon in [('linkedin','💼 LinkedIn'), ('threads','🧵 Threads'), ('twitter','𝕏 Twitter'), ('facebook','📘 Facebook'), ('instagram','📷 Instagram')] %}
+              {% for p, icon in [('xiaohongshu','📕 小红书'), ('douyin','🎵 抖音'), ('wechat','💬 公众号')] %}
               <div class="form-check form-check-inline">
                 <input class="form-check-input plat-check" type="checkbox" name="platforms" value="{{ p }}" id="f-plat-{{ p }}">
                 <label class="form-check-label" for="f-plat-{{ p }}">{{ icon }}</label>

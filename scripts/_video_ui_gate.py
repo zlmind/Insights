@@ -15,7 +15,10 @@ Renders the real /compose and /schedule pages and checks four things:
 * the schedule page marks a queued post that carries a video.
 
 Runs on a throwaway database with fake platform clients: no network, no real
-insights.db, no real account.
+insights.db, no real account. The composer offers the domestic trio only, so
+"Write a New Post" is driven with xiaohongshu and douyin targets and Cloudinary
+is turned on the way the settings page turns it on -- a saved setting, not a
+module flag.
 """
 
 import collections
@@ -53,7 +56,7 @@ def node_check(node, blocks, label):
             path = os.path.join(work, f"block{index}.js")
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write(body)
-            result = subprocess.run([node, "--check", path], capture_output=True, text=True)
+            result = subprocess.run([node, "--check", path], capture_output=True, text=True, encoding='utf-8', errors='replace')
             check(result.returncode == 0,
                   f"{label} inline script #{index} does not parse:\n{result.stderr.strip()[:600]}")
     finally:
@@ -284,7 +287,7 @@ def section_ui():
             handle.write(source[start:end])
         with open(harness_path, "w", encoding="utf-8") as handle:
             handle.write(HARNESS)
-        run = subprocess.run([node, harness_path, fn_path], capture_output=True, text=True, timeout=60)
+        run = subprocess.run([node, harness_path, fn_path], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     check(run.returncode == 0, f"the harness crashed:\n{run.stderr.strip()[:800]}")
@@ -426,7 +429,7 @@ function build() {
 async function run(scenario) {
   const els = build();
   const log = { fetch: [], toast: [], alert: [], reload: 0 };
-  const chips = [{ dataset: { platform: 'linkedin', accountId: '7' } }, { dataset: { platform: 'threads', accountId: '' } }];
+  const chips = [{ dataset: { platform: 'xiaohongshu', accountId: '7' } }, { dataset: { platform: 'douyin', accountId: '' } }];
   const ctx = {
     console, Promise,
     FormData: class {
@@ -438,8 +441,8 @@ async function run(scenario) {
       getElementById: (id) => els[id] || null,
       querySelectorAll: () => chips,
     },
-    platformCharLimits: { linkedin: 3000, threads: 500 },
-    PLATFORM_LABELS: { linkedin: 'LinkedIn', threads: 'Threads' },
+    platformCharLimits: { xiaohongshu: 1000, douyin: 1000 },
+    PLATFORM_LABELS: { xiaohongshu: '小红书', douyin: '抖音' },
     showToast: (m, t) => log.toast.push([t, m]),
     alert: (m) => log.alert.push(m),
     location: { reload: () => { log.reload++; } },
@@ -514,7 +517,7 @@ const results = {};
 def section_newpost():
     import io
     from check_bulk_platform import Rig
-    from _video_gate import MB, make_sample_mp4
+    from _video_gate import MB, make_sample_mp4, set_cloudinary
 
     node = shutil.which("node")
     check(node, "node is required for this gate and was not found on PATH")
@@ -531,7 +534,7 @@ def section_newpost():
                 "public_id": "insights/np1", "bytes": len(data)}
 
     web.cloudinary.uploader.upload = fake_upload
-    web.CLOUDINARY_CONFIGURED = True
+    set_cloudinary(db, True)
     sample = make_sample_mp4(rig.directory, seconds=2)
     with open(sample, "rb") as fh:
         clip = fh.read()
@@ -539,7 +542,7 @@ def section_newpost():
     def rows():
         return [dict(r) for r in db.list_standalone_posts(db_path=P)]
 
-    def create(content="A brand new post", targets=("linkedin", "threads"), **fields):
+    def create(content="A brand new post", targets=("xiaohongshu", "douyin"), **fields):
         data = {"content": content, "targets": list(targets), **fields}
         response = client.post("/compose/post/create", data=data, content_type="multipart/form-data")
         return response.status_code, (response.get_json(silent=True) or {})
@@ -552,7 +555,7 @@ def section_newpost():
     status, res = create(video_url=url)
     check(status == 200 and res.get("success"), f"create with a video URL failed: {status} {res}")
     made = [r for r in rows() if r["content"] == "A brand new post"]
-    check(sorted(r["platform"] for r in made) == ["linkedin", "threads"]
+    check(sorted(r["platform"] for r in made) == ["douyin", "xiaohongshu"]
           and all(r["video_url"] == url for r in made), f"every ticked account's post should carry the video: {made}")
     check(res["post"]["video_url"] == url and res["video_warnings"] == [], f"reply wrong: {res}")
     check(len(cards()) == 1 and len(cards()[0]["platforms"]) == 2, "the new video post should be one card")
@@ -597,11 +600,11 @@ def section_newpost():
     check(status == 400 and "cloudinary is down" in res["error"] and len(rows()) == before,
           f"a failed upload must say why and create nothing: {status} {res}")
     web.cloudinary.uploader.upload = fake_upload
-    web.CLOUDINARY_CONFIGURED = False
+    set_cloudinary(db, False)
     status, res = create(content="No cloudinary", video=(io.BytesIO(clip), "clip.mp4"))
     check(status == 400 and "Cloudinary" in res["error"] and len(rows()) == before,
           f"without Cloudinary a file should be refused cleanly: {status} {res}")
-    web.CLOUDINARY_CONFIGURED = True
+    set_cloudinary(db, True)
 
     # a request that was going to fail anyway must not spend an upload first
     uploaded = len(uploads)
@@ -639,7 +642,7 @@ def section_newpost():
             handle.write(source[start:end])
         with open(harness_path, "w", encoding="utf-8") as handle:
             handle.write(NEWPOST_HARNESS)
-        run = subprocess.run([node, harness_path, fn_path], capture_output=True, text=True, timeout=60)
+        run = subprocess.run([node, harness_path, fn_path], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     check(run.returncode == 0, f"the harness crashed:\n{run.stderr.strip()[:800]}")
@@ -672,7 +675,7 @@ def section_newpost():
     check(sf["url"] == "/compose/post/create" and sf["method"] == "POST", f"wrong request: {sf['url']} {sf['method']}")
     check(keys.count("video") == 1 and "video_url" not in keys and ["video", {"file": "clip.mp4"}] in sf["entries"],
           f"a chosen file must be sent as the video: {sf['entries']}")
-    check(["targets", "linkedin:7"] in sf["entries"] and ["targets", "threads"] in sf["entries"]
+    check(["targets", "xiaohongshu:7"] in sf["entries"] and ["targets", "douyin"] in sf["entries"]
           and ["content", "Words for the post"] in sf["entries"], f"the post itself must still be sent: {sf['entries']}")
     check(sf["saveText"] == "<span class=\"spinner-border spinner-border-sm\"></span> Uploading video..."
           and sf["reloads"] == 1, f"saving a file should say it is uploading, then reload: {sf}")

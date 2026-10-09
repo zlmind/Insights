@@ -43,11 +43,13 @@ def rig(with_posts=True):
     ids["work"] = connect(database, "linkedin", "li-work", "Work")
     ids["studio"] = connect(database, "linkedin", "li-studio", "Studio")
     ids["threads"] = connect(database, "threads", "th-1", "brandco")
-    # Twitter is deliberately left unconnected to prove the modal says so.
+    # The app is Chinese-first: the modal must offer only the trio, none of it
+    # connected (the domestic platforms have no OAuth yet), and none of the
+    # legacy Western accounts above, however connected they are.
     if with_posts:
         for i in range(2):
             database.add_standalone_post(
-                "manual", "gate", "linkedin", f"Wiring card {i}", db_path=database.DB_PATH)
+                "manual", "gate", "wechat", f"Wiring card {i}", db_path=database.DB_PATH)
     return database, web, client, ids
 
 
@@ -86,26 +88,45 @@ def section_wiring():
           "the Remove Platform button does not open the modal in remove mode")
     check('id="remove-platform-count"' in html, "the Remove Platform button has no count to update")
 
-    # --- the modal: one chip per publish target, queue option, apply button --
+    # --- the modal: one chip per offered platform, queue option, apply button -
     check('id="bulkPlatformModal"' in html, "the page has no bulk platform modal")
     chips_html = region(html, 'id="bulk-platform-targets"', 'id="bulk-platform-queue"')
     composer_html = region(html, 'id="new-post-platforms"', "<textarea")
     modal_chips = re.findall(r'<span class="platform-chip[^"]*"[^>]*>', chips_html)
     composer_chips = re.findall(r'<span class="platform-chip[^"]*"[^>]*>', composer_html)
-    check(len(modal_chips) == len(composer_chips) and len(modal_chips) >= 6,
-          f"the modal offers {len(modal_chips)} targets, the composer {len(composer_chips)}: "
-          "a connected account is missing from one of them")
+    offered = list(web.COMPOSE_PLATFORMS)
+    check(offered == ["xiaohongshu", "douyin", "wechat"],
+          f"the app's offered platforms are not the Chinese trio: {offered}")
+    check(len(modal_chips) == len(composer_chips) == len(offered),
+          f"the modal offers {len(modal_chips)} targets, the composer {len(composer_chips)}, "
+          f"the app offers {len(offered)}: the three lists have drifted apart")
+    chip_platforms = re.findall(r'data-platform="([^"]*)"', chips_html)
+    check(sorted(chip_platforms) == sorted(offered),
+          f"the modal offers {chip_platforms}, the app offers {offered}")
+    hidden = {"linkedin", "threads", "twitter", "facebook", "instagram"}
+    check(not hidden & set(chip_platforms),
+          f"a hidden Western platform is still offered by the modal: "
+          f"{sorted(hidden & set(chip_platforms))}")
+    # The trio's labels on screen: xiaohongshu, douyin, wechat. Built from
+    # codepoints so this file stays ASCII and a console on a non-UTF-8 codepage
+    # cannot choke on a failure message.
+    trio_labels = sorted((chr(0x5c0f) + chr(0x7ea2) + chr(0x4e66),   # xiaohongshu
+                          chr(0x6296) + chr(0x97f3),                 # douyin
+                          chr(0x516c) + chr(0x4f17) + chr(0x53f7)))  # wechat
     labels = re.findall(r'data-label="([^"]*)"', chips_html)
-    check("Work" in labels and "Studio" in labels,
-          f"both LinkedIn accounts should be offered by name, got {labels}")
-    account_ids = re.findall(r'data-account-id="(\d*)"', chips_html)
-    check(str(ids["work"]) in account_ids and str(ids["studio"]) in account_ids
-          and len(set(a for a in account_ids if a)) == len([a for a in account_ids if a]),
-          f"the modal's chips do not carry distinct account ids: {account_ids}")
-    twitter = next((c for c in modal_chips if 'data-platform="twitter"' in c), "")
-    check('data-connected="false"' in twitter, "an unconnected platform is not marked as such")
-    check('data-connected="true"' in next(c for c in modal_chips if 'data-platform="threads"' in c),
-          "a connected platform is marked unconnected")
+    check(sorted(labels) == trio_labels,
+          f"the modal's chips are not labelled for the trio, got {len(labels)} labels")
+    check(not any("Work" in label or "Studio" in label or "brandco" in label for label in labels),
+          f"a legacy Western account is still offered by name: {labels}")
+    account_ids = re.findall(r'data-account-id="([^"]*)"', chips_html)
+    check(set(account_ids) == {""},
+          "trio chips must not claim an account - the trio has no logins: "
+          f"{account_ids}")
+    connected = re.findall(r'data-connected="([^"]*)"', chips_html)
+    check(set(connected) == {"false"},
+          f"every trio chip is an unconnected one, got connected flags {connected}")
+    check(chips_html.count("bulk-chip-note") == len(offered),
+          "an unconnected chip does not say so")
     check(re.search(r'id="bulk-platform-queue"[^>]*checked', html),
           "the queue option should start ticked: queueing is what was asked for")
     modal_tag = re.search(r'<div[^>]*id="bulkPlatformModal"[^>]*>', html).group(0)
@@ -178,8 +199,9 @@ def section_wiring():
     check('id="bulkPlatformModal"' in empty,
           "with no saved posts the modal is missing, and the page script would throw at parse time")
 
-    print(f"Add/Remove Platform: buttons, modal with {len(modal_chips)} account-aware chips, "
-          f"mode-specific options and handlers are wired to the bulk add and remove endpoints")
+    print(f"Add/Remove Platform: buttons, modal offering only the {len(modal_chips)} "
+          f"Chinese-first platforms, mode-specific options and handlers are wired "
+          f"to the bulk add and remove endpoints")
     print("BULK_PLATFORM_UI_OK")
 
 
@@ -208,7 +230,7 @@ def section_syntax():
             path = os.path.join(work, f"block{index}.js")
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write(body)
-            result = subprocess.run([node, "--check", path], capture_output=True, text=True)
+            result = subprocess.run([node, "--check", path], capture_output=True, text=True, encoding='utf-8', errors='replace')
             check(result.returncode == 0,
                   f"inline script #{index} does not parse:\n{result.stderr.strip()[:600]}")
     finally:

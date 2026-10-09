@@ -50,6 +50,14 @@ USER_AGENT = "InsightsBot/1.0 (+https://insights.local)"
 # ``warn``: some are entitlement-dependent (X allows longer for Premium) or have
 # moved between API versions, so the platform, not this table, has the last word.
 PLATFORM_LIMITS = {
+    # The domestic platforms have no posting API: their drafts publish by
+    # copy-paste, so these are the app-upload limits worth warning about, not
+    # API enforcement.
+    "xiaohongshu": {"max_bytes": 500 * MB, "min_seconds": 1, "max_seconds": 60 * 60},
+    "douyin": {"max_bytes": 500 * MB, "min_seconds": 1, "max_seconds": 15 * 60},
+    "wechat": {"max_bytes": 500 * MB, "min_seconds": 1, "max_seconds": 60 * 60},
+    # Legacy: the hidden Western platforms keep their entries so old rows
+    # attached to a video still get honest warnings.
     "linkedin": {"max_bytes": 500 * MB, "min_seconds": 3, "max_seconds": 30 * 60},
     "twitter": {"max_bytes": MAX_DOWNLOAD_BYTES, "min_seconds": None, "max_seconds": 140},
     "threads": {"max_bytes": 1 * GB, "min_seconds": None, "max_seconds": 5 * 60},
@@ -58,6 +66,7 @@ PLATFORM_LIMITS = {
 }
 
 _PLATFORM_LABELS = {
+    "xiaohongshu": "小红书", "douyin": "抖音", "wechat": "公众号",
     "linkedin": "LinkedIn", "twitter": "X", "threads": "Threads",
     "facebook": "Facebook", "instagram": "Instagram",
 }

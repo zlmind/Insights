@@ -7,15 +7,20 @@
    per-post JS (image editor, Instagram builder, inline edit) needs no notion of
    groups at all. #}
 {# The one platform table: the chips here, the chip CSS and the JS tables in
-   compose.html, and the Find & Replace badges all read from it. #}
+   compose.html, and the Find & Replace badges all read from it. The domestic
+   platforms come first — they are what the app offers; the Western ones stay
+   in the table only so posts saved against them keep rendering. #}
 {% set PLATFORM_META = {
+    'xiaohongshu': {'label': '小红书', 'icon': '📕', 'color': '#FF2442', 'tint': 'rgba(255, 36, 66, 0.08)'},
+    'douyin':      {'label': '抖音',   'icon': '🎵', 'color': '#FE2C55', 'tint': 'rgba(254, 44, 85, 0.08)'},
+    'wechat':      {'label': '公众号', 'icon': '💬', 'color': '#07C160', 'tint': 'rgba(7, 193, 96, 0.08)'},
     'linkedin':  {'label': 'LinkedIn',  'icon': '💼', 'color': '#0077B5', 'tint': 'rgba(0, 119, 181, 0.08)'},
     'threads':   {'label': 'Threads',   'icon': '🧵', 'color': '#000000', 'tint': 'rgba(0, 0, 0, 0.06)'},
     'twitter':   {'label': 'X',         'icon': '𝕏', 'color': '#1DA1F2', 'tint': 'rgba(29, 161, 242, 0.08)'},
     'facebook':  {'label': 'Facebook',  'icon': '📘', 'color': '#1877F2', 'tint': 'rgba(24, 119, 242, 0.08)'},
     'instagram': {'label': 'Instagram', 'icon': '📷', 'color': '#E4405F', 'tint': 'rgba(228, 64, 95, 0.08)'},
 } %}
-{% set PLATFORM_ORDER = ['linkedin', 'threads', 'twitter', 'facebook', 'instagram'] %}
+{% set PLATFORM_ORDER = ['xiaohongshu', 'douyin', 'wechat', 'linkedin', 'threads', 'twitter', 'facebook', 'instagram'] %}
 
 {% macro render_post_item(group) %}
 {# Destinations are keyed by platform AND account, because a platform can hold
@@ -61,20 +66,28 @@
                                 </button>
                                 {% endif %}
                                 {# Publishing and scheduling are per platform, so they hang off a
-                                   menu of the ticked platforms rather than a button each. #}
+                                   menu of the ticked platforms rather than a button each.
+                                   Draft-only platforms (no posting API) are left out of both
+                                   menus and of the all-accounts counts. A card aimed only at
+                                   draft-only platforms keeps a publish button as a reserved
+                                   placeholder: one-click publishing arrives with the
+                                   open-source publisher, until then the copy button is the
+                                   way out. #}
+                                {% set publishable = group.platforms | rejectattr('platform', 'in', DRAFT_ONLY_PLATFORMS) | list %}
+                                {% if publishable %}
                                 <button type="button" class="btn btn-outline-info dropdown-toggle" data-bs-toggle="dropdown" data-bs-boundary="viewport" aria-expanded="false" title="Post now">
                                     🚀
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end">
-                                    {% for entry in group.platforms %}
+                                    {% for entry in publishable %}
                                     <li><button class="dropdown-item" type="button" onclick="postNowFromCard(this, {{ entry.id }}, '{{ entry.platform }}', {{ entry.account_id or 'null' }})">
                                         {{ PLATFORM_META.get(entry.platform, {}).get('icon', '📱') }} Post to {{ entry.account_label or PLATFORM_META.get(entry.platform, {}).get('label', entry.platform|capitalize) }} now
                                     </button></li>
                                     {% endfor %}
-                                    {% if group.platforms | length > 1 %}
+                                    {% if publishable | length > 1 %}
                                     <li><hr class="dropdown-divider"></li>
                                     <li><button class="dropdown-item fw-semibold" type="button" onclick="postNowAllFromCard(this)">
-                                        🚀 Post to all {{ group.platforms | length }} accounts
+                                        🚀 Post to all {{ publishable | length }} accounts
                                     </button></li>
                                     {% endif %}
                                 </ul>
@@ -82,18 +95,24 @@
                                     📅
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end">
-                                    {% for entry in group.platforms %}
+                                    {% for entry in publishable %}
                                     <li><button class="dropdown-item" type="button" onclick="openScheduleModal({{ entry.id }}, 'standalone', '{{ entry.platform }}')">
                                         {{ PLATFORM_META.get(entry.platform, {}).get('icon', '📱') }} Schedule for {{ entry.account_label or PLATFORM_META.get(entry.platform, {}).get('label', entry.platform|capitalize) }}
                                     </button></li>
                                     {% endfor %}
-                                    {% if group.platforms | length > 1 %}
+                                    {% if publishable | length > 1 %}
                                     <li><hr class="dropdown-divider"></li>
                                     <li><button class="dropdown-item fw-semibold" type="button" onclick="queueAllFromCard(this)">
-                                        📅 Queue all {{ group.platforms | length }} accounts
+                                        📅 Queue all {{ publishable | length }} accounts
                                     </button></li>
                                     {% endif %}
                                 </ul>
+                                {% else %}
+                                <button type="button" class="btn btn-outline-info" disabled
+                                        title="一键发布即将支持：将接入开源发布工具，当前请用复制按钮手动发布">
+                                    🚀
+                                </button>
+                                {% endif %}
                                 <button class="btn btn-outline-danger" onclick="deletePost({{ group.id }}, this)" title="Delete this post everywhere">
                                     🗑️
                                 </button>
@@ -122,10 +141,14 @@
                                     {% if platform != 'twitter' or target.show_label %}<span class="chip-name">{{ name }}</span>{% endif %}
                                 </button>
                                 {% if entry %}
+                                {# Draft-only platforms have no posting API, so there is no
+                                   queue to join — the copy button is the way out for now. #}
+                                {% if platform not in DRAFT_ONLY_PLATFORMS %}
                                 <button type="button" class="chip-queue {% if entry.queued %}is-queued{% endif %}"
                                         data-queued="{{ 'true' if entry.queued else 'false' }}"
                                         onclick="toggleChipQueue(this)"
                                         title="{% if entry.queued %}Queued for {{ entry.queued }}, click to remove{% else %}Add to the {{ name }} queue{% endif %}">{% if entry.queued %}✅{% else %}➕{% endif %}</button>
+                                {% endif %}
                                 {% if entry.posted and entry.posted.url %}
                                 <a class="chip-posted" href="{{ entry.posted.url }}" target="_blank" rel="noopener"
                                    title="Posted {{ entry.posted.posted_at[:16] if entry.posted.posted_at else '' }}, click to view">🔗</a>

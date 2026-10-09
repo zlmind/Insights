@@ -2,9 +2,9 @@
 {% block title %}Content Library | Insights{% endblock %}
 {% block header %}Content Library{% endblock %}
 {% block subtitle %}<p class="page-subtitle">
-    Catalogue a media archive and sort it by <strong>year</strong> and <strong>category</strong>.
-    The scan reads only file metadata, so it never downloads anything. Categories are learned
-    from a folder you have already sorted by hand, and nothing is copied until you approve it.
+    把媒体库归档，并按<strong>年份</strong>和<strong>类别</strong>整理。
+    扫描只读取文件元数据，不会下载任何内容。类别从你手工整理过的文件夹里学习，
+    未经你确认不会复制任何文件。
 </p>{% endblock %}
 {% block content %}
 
@@ -111,8 +111,8 @@
         </table>
         {% else %}
         <p class="text-muted mb-0">
-            Add the archive you want sorted, and — if you have one — a folder you have already
-            sorted by hand. Its subfolder names become the categories.
+            添加想要整理的归档目录；如果有的话，再添加一个你已手工分好类的文件夹 ——
+            其子文件夹名将成为类别。
         </p>
         {% endif %}
     </div>
@@ -141,8 +141,8 @@
 
 {% if not scan %}
 <div class="alert alert-secondary">
-    No catalogue yet. Add an archive folder above and press <strong>Scan</strong> — it reads
-    metadata only, so it costs nothing and takes seconds even for tens of thousands of files.
+    还没有编目。在上方添加归档目录并点击<strong>扫描</strong> —— 只读取元数据，
+    不花一分钱，几万份文件也只需几秒钟。
 </div>
 {% else %}
 

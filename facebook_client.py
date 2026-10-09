@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from urllib.parse import urlencode
 from typing import Optional
 
+import appconfig
 import requests
 
 logger = logging.getLogger(__name__)
@@ -36,8 +37,8 @@ class FacebookClient:
         app_secret: str | None = None,
         redirect_uri: str | None = None,
     ):
-        self.app_id = app_id or os.environ.get("FACEBOOK_APP_ID")
-        self.app_secret = app_secret or os.environ.get("FACEBOOK_APP_SECRET")
+        self.app_id = app_id or appconfig.get("FACEBOOK_APP_ID")
+        self.app_secret = app_secret or appconfig.get("FACEBOOK_APP_SECRET")
         self.redirect_uri = redirect_uri or os.environ.get(
             "FACEBOOK_REDIRECT_URI", "http://localhost:5001/facebook/callback"
         )

@@ -12,6 +12,7 @@ try:
 except ImportError:
     pass
 
+import functools
 import io
 import csv
 import math
@@ -290,6 +291,7 @@ from insights import (
 # Content agent orchestrator. Safe to import at top: content_agent (and the
 # research_engine/web_search it pulls in) only late-import insights_web inside
 # functions, so there is no import cycle at module load.
+import appconfig
 import content_agent
 import document_extractor
 from starter_prompts import grouped_starter_prompts
@@ -420,16 +422,22 @@ IG_FIT_TARGETS = {
     'feed_landscape': (1080, 566),
 }
 
-# Configure Cloudinary (optional - for public image URLs that work with Threads)
-CLOUDINARY_CONFIGURED = False
-if os.environ.get('CLOUDINARY_CLOUD_NAME'):
+# Cloudinary (optional - for public image URLs that work with Threads). Used
+# to be configured once at import from the environment; now the first upload
+# applies whatever /settings has, so an admin can add credentials without a
+# restart.
+def cloudinary_ready() -> bool:
+    """Apply the saved Cloudinary credentials if present; True when usable."""
+    cloud_name = appconfig.get("CLOUDINARY_CLOUD_NAME")
+    if not cloud_name:
+        return False
     cloudinary.config(
-        cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
-        api_key=os.environ.get('CLOUDINARY_API_KEY'),
-        api_secret=os.environ.get('CLOUDINARY_API_SECRET'),
+        cloud_name=cloud_name,
+        api_key=appconfig.get("CLOUDINARY_API_KEY"),
+        api_secret=appconfig.get("CLOUDINARY_API_SECRET"),
         secure=True
     )
-    CLOUDINARY_CONFIGURED = True
+    return True
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -472,13 +480,13 @@ def _short_ua() -> str:
 
 
 def _signups_allowed() -> bool:
-    """First user is always allowed (bootstrap). After that, gated by env."""
+    """First user is always allowed (bootstrap). After that, gated by setting."""
     try:
         if count_users() == 0:
             return True
     except sqlite3.OperationalError:
         return True
-    return os.environ.get("ALLOW_SIGNUP", "").lower() == "true"
+    return (appconfig.get("ALLOW_SIGNUP") or "").lower() == "true"
 
 
 def current_user():
@@ -500,6 +508,33 @@ def current_user():
 @app.context_processor
 def _inject_current_user():
     return {"current_user": current_user()}
+
+
+# ── Interface language (English / 简体中文) ────────────────────────────────
+#
+# Templates hold the UI strings in English; the interface itself is Chinese
+# only. Templates receive `lang` (used for <html lang> and data-lang), and the
+# actual string replacement happens client-side in static/i18n.js against
+# static/i18n/zh.json — a newly added template string is simply untranslated
+# until its entry is added to the dictionary. There is no language choice to
+# make: every request is zh, whatever the cookie or Accept-Language say.
+
+SUPPORTED_LANGS = ("zh",)
+
+
+def _worker_lang() -> str:
+    """Language for generation outside a request (queue workers, agent runs)."""
+    return (os.getenv("CONTENT_LANG") or "zh").strip().lower()
+
+
+@app.before_request
+def _pick_request_lang():
+    g.lang = "zh"
+
+
+@app.context_processor
+def _inject_lang():
+    return {"lang": "zh"}
 
 
 @app.template_filter("md_preview")
@@ -735,6 +770,91 @@ def logout():
         log_event("logout")
     session.clear()
     return redirect(url_for("login"))
+
+
+# ── Instance settings (admin) ─────────────────────────────────────────────
+# The .env file used to be the only place configuration lived, which works
+# for one person and not for a team: nobody pastes an API key into a server
+# file for each colleague. The admin manages the keys on /settings instead;
+# appconfig resolves each one from the saved value first, then the
+# environment, so a .env keeps working until the same key is saved here.
+
+
+def require_admin(view):
+    """Limit a view to signed-in admins; everyone else gets a 403."""
+    @functools.wraps(view)
+    def wrapped(*args, **kwargs):
+        user = current_user()
+        if user is None or not user["is_admin"]:
+            abort(403)
+        return view(*args, **kwargs)
+    return wrapped
+
+
+@app.route("/settings", methods=["GET", "POST"])
+@require_admin
+def instance_settings():
+    if request.method == "POST":
+        saved, cleared, rejected = [], [], []
+        for key in appconfig.SETTING_KEYS:
+            meta = appconfig.SETTINGS[key]
+            if request.form.get(f"clear_{key}"):
+                database.delete_setting(key)
+                cleared.append(key)
+                continue
+            raw = request.form.get(key)
+            if raw is None:
+                continue
+            value = raw.strip()
+            if meta.get("secret") and not value:
+                # A blank secret field means "keep what is saved" — the
+                # browser never sees the current value to resend it.
+                continue
+            choices = meta.get("choices")
+            if choices and value and value not in choices:
+                rejected.append(key)
+                continue
+            if value:
+                database.set_setting(key, value, updated_by=current_user()["id"])
+                saved.append(key)
+        if saved or cleared:
+            log_event("settings_updated",
+                      details={"saved": saved, "cleared": cleared})
+        return redirect(url_for("instance_settings",
+                                saved=len(saved), cleared=len(cleared),
+                                rejected=len(rejected)))
+
+    # Group the registry for the page; secrets render as an empty field with
+    # a "set" marker, never their value. The Western platforms' OAuth group is
+    # hidden: those channels are no longer offered, so there is nothing left
+    # to wire up (the registry keeps the keys so old saved values resolve).
+    hidden_groups = {"platforms"}
+    groups = []
+    for group_id, heading in appconfig.SETTING_GROUPS:
+        if group_id in hidden_groups:
+            continue
+        rows = []
+        for key, meta in appconfig.SETTINGS.items():
+            if meta["group"] != group_id:
+                continue
+            where = appconfig.source(key)
+            row = {
+                "key": key,
+                "label": meta["label"],
+                "help": meta.get("help"),
+                "secret": meta.get("secret", False),
+                "choices": meta.get("choices"),
+                "value": None if meta.get("secret") else appconfig.get(key),
+                "is_set": bool(appconfig.get(key)),
+                "source": where,
+            }
+            rows.append(row)
+        if rows:
+            groups.append({"id": group_id, "heading": heading, "rows": rows})
+    return render_template("settings.html", groups=groups,
+                           saved=request.args.get("saved", type=int),
+                           cleared=request.args.get("cleared", type=int),
+                           rejected=request.args.get("rejected", type=int))
 
 
 # ── Activity log viewer ───────────────────────────────────────────────────
@@ -1350,7 +1470,7 @@ def save_stock_image_to_library(image_url: str, direct_save: bool = False) -> st
         raise ValueError(f"Invalid image from stock API: {e}")
     
     # Upload to Cloudinary if configured
-    if CLOUDINARY_CONFIGURED:
+    if cloudinary_ready():
         result = cloudinary.uploader.upload(
             cleaned_bytes,
             folder="insights/stock",
@@ -1430,8 +1550,8 @@ def worker() -> None:
                 audio_path = download_youtube_audio(url)
                 try:
                     transcript = transcribe_audio(audio_path)
-                    summary = summarize_text(transcript)
-                    actions = extract_action_items(transcript)
+                    summary = summarize_text(transcript, lang=_worker_lang())
+                    actions = extract_action_items(transcript, lang=_worker_lang())
                     save_episode(url, title, transcript, summary, actions, feed_id, published, channel=channel)
                     _backfill_youtube_source(url, transcript, summary)
                 finally:
@@ -1446,8 +1566,8 @@ def worker() -> None:
                             for chunk in r.iter_content(chunk_size=8192):
                                 f.write(chunk)
                     transcript = transcribe_audio(audio_path)
-                    summary = summarize_text(transcript)
-                    actions = extract_action_items(transcript)
+                    summary = summarize_text(transcript, lang=_worker_lang())
+                    actions = extract_action_items(transcript, lang=_worker_lang())
                     out_path = os.path.join(tmpdir, "results.json")
                     write_results_json(transcript, summary, actions, out_path)
                     save_episode(url, title, transcript, summary, actions, feed_id, published)
@@ -1691,10 +1811,10 @@ def fetch_article_content_safe(url: str, timeout: int = 12, max_bytes: int = 3_0
 
 def create_jira_issue(summary: str, description: str) -> dict:
     """Create a JIRA issue using credentials from environment variables."""
-    base = os.environ.get("JIRA_BASE_URL")
-    email = os.environ.get("JIRA_EMAIL")
-    token = os.environ.get("JIRA_API_TOKEN")
-    project = os.environ.get("JIRA_PROJECT_KEY")
+    base = appconfig.get("JIRA_BASE_URL")
+    email = appconfig.get("JIRA_EMAIL")
+    token = appconfig.get("JIRA_API_TOKEN")
+    project = appconfig.get("JIRA_PROJECT_KEY")
     if not all([base, email, token, project]):
         raise RuntimeError("JIRA configuration is missing")
 
@@ -1729,9 +1849,9 @@ def create_jira_issue(summary: str, description: str) -> dict:
 
 def get_jira_issue_status(issue_key: str) -> str:
     """Return the status name for a JIRA issue."""
-    base = os.environ.get("JIRA_BASE_URL")
-    email = os.environ.get("JIRA_EMAIL")
-    token = os.environ.get("JIRA_API_TOKEN")
+    base = appconfig.get("JIRA_BASE_URL")
+    email = appconfig.get("JIRA_EMAIL")
+    token = appconfig.get("JIRA_API_TOKEN")
     if not all([base, email, token, issue_key]):
         return ""
     try:
@@ -1748,9 +1868,9 @@ def get_jira_issue_status(issue_key: str) -> str:
 
 def get_jira_issue_transitions(issue_key: str) -> list[dict]:
     """Return available transitions for a JIRA issue."""
-    base = os.environ.get("JIRA_BASE_URL")
-    email = os.environ.get("JIRA_EMAIL")
-    token = os.environ.get("JIRA_API_TOKEN")
+    base = appconfig.get("JIRA_BASE_URL")
+    email = appconfig.get("JIRA_EMAIL")
+    token = appconfig.get("JIRA_API_TOKEN")
     if not all([base, email, token, issue_key]):
         return []
     try:
@@ -1770,9 +1890,9 @@ def get_jira_issue_transitions(issue_key: str) -> list[dict]:
 
 def transition_jira_issue(issue_key: str, transition_id: str) -> None:
     """Move a JIRA issue to a new status via transition id."""
-    base = os.environ.get("JIRA_BASE_URL")
-    email = os.environ.get("JIRA_EMAIL")
-    token = os.environ.get("JIRA_API_TOKEN")
+    base = appconfig.get("JIRA_BASE_URL")
+    email = appconfig.get("JIRA_EMAIL")
+    token = appconfig.get("JIRA_API_TOKEN")
     if not all([base, email, token, issue_key, transition_id]):
         return
     try:
@@ -2204,11 +2324,11 @@ def process_text_article():
     app.logger.info("Article content loaded (%d chars)", len(transcript))
 
     app.logger.info("Generating summary")
-    summary = summarize_text(transcript)
+    summary = summarize_text(transcript, lang=g.lang)
     app.logger.info("Summary complete")
 
     app.logger.info("Extracting action items")
-    actions = extract_action_items(transcript)
+    actions = extract_action_items(transcript, lang=g.lang)
     app.logger.info("Action item extraction complete")
 
     # Persist results
@@ -2301,11 +2421,11 @@ def process_episode():
         app.logger.info("Transcription complete")
 
         app.logger.info("Generating summary")
-        summary = summarize_text(transcript)
+        summary = summarize_text(transcript, lang=g.lang)
         app.logger.info("Summary complete")
 
         app.logger.info("Extracting action items")
-        actions = extract_action_items(transcript)
+        actions = extract_action_items(transcript, lang=g.lang)
         app.logger.info("Action item extraction complete")
         save_episode(audio_url, title, transcript, summary, actions, feed_id, published, channel=channel)
         if is_youtube_url(audio_url):
@@ -2676,6 +2796,7 @@ def create_article():
             style=style,
             extra_context=extra_context if extra_context else None,
             is_text_source=is_text_source,
+            lang=g.lang,
         )
         # Save article to database
         article_id = add_article(
@@ -2771,8 +2892,8 @@ def generate_article_social(article_id: int):
     if not platforms:
         platforms = ["twitter", "linkedin", "facebook", "threads"]
     
-    # Get number of posts per platform (default to 10, max 21)
-    posts_per_platform = request.form.get('posts_per_platform', 10, type=int)
+    # Get number of posts per platform (default to 1, max 21)
+    posts_per_platform = request.form.get('posts_per_platform', 1, type=int)
     posts_per_platform = max(1, min(posts_per_platform, 21))
     
     # Get optional extra context for the prompt
@@ -3081,6 +3202,7 @@ def refine_article_with_ai(article_id: int):
             current_content=article['content'],
             user_feedback=feedback,
             article_topic=article['topic'],
+            lang=g.lang,
         )
         
         # Optionally auto-save the refined content
@@ -4666,6 +4788,11 @@ def schedule_add():
     article_id = request.form.get('article_id', type=int)
     use_queue = request.form.get('use_queue') == '1'  # Auto-schedule to next available slot
     platform = request.form.get('platform', 'linkedin')  # Platform: 'linkedin' or 'threads'
+
+    if platform in DRAFT_ONLY_PLATFORMS:
+        return jsonify({
+            "error": f"{platform} is draft-only: copy the post and publish it manually."
+        }), 400
     
     # If using queue, get the next available time slot for this platform
     if use_queue or not scheduled_for:
@@ -4878,34 +5005,18 @@ def schedule_list():
             slot_dict['day_display'] = day_names[slot_dict['day_of_week']]
         time_slots_list.append(slot_dict)
     
-    # Get next available slot for each platform
-    next_slots = {}
-    for plat in ['linkedin', 'threads', 'facebook', 'twitter', 'instagram']:
-        slot = get_next_available_slot(platform=plat)
-        if slot:
-            try:
-                dt = datetime.fromisoformat(slot)
-                next_slots[plat] = dt.strftime('%A, %B %d at %I:%M %p')
-            except (ValueError, TypeError):
-                next_slots[plat] = slot
-        else:
-            next_slots[plat] = None
-    
-    # For backwards compatibility
-    next_slot_display = next_slots.get('linkedin')
-    
     # Get daily posting limits
     daily_limits = get_all_daily_limits()
-    
+
     # Get Threads username for constructing view URLs (kept for backward compatibility)
     threads_username = threads_token['username'] if threads_token and 'username' in threads_token.keys() else None
-    
+
     # Count entries by platform: the badges count what will be published, so a
     # post going to two platforms counts once on each.
     linkedin_count = sum(1 for p in posts if p['platform'] == 'linkedin')
     threads_count = sum(1 for p in posts if p['platform'] == 'threads')
     facebook_count = sum(1 for p in posts if p['platform'] == 'facebook')
-    
+
     return render_template(
         'schedule.html',
         queue_groups=groups,
@@ -4918,8 +5029,6 @@ def schedule_list():
         linkedin_connected=linkedin_connected,
         threads_connected=threads_connected,
         time_slots=time_slots_list,
-        next_slot_display=next_slot_display,
-        next_slots=next_slots,
         daily_limits=daily_limits,
         threads_username=threads_username,
         linkedin_count=linkedin_count,
@@ -5568,8 +5677,18 @@ POSTS_MAX_BATCH = 100
 
 
 # Every platform a saved post can target, in the order a Compose card draws its
-# ticks. One list so the chips, the composer and the filter bar agree.
-COMPOSE_PLATFORMS = ('linkedin', 'threads', 'twitter', 'facebook', 'instagram')
+# ticks. One list so the chips, the composer and the filter bar agree. The app
+# is Chinese-first: only the domestic platforms are offered. The Western
+# platforms (linkedin, threads, twitter, facebook, instagram) stay wired up —
+# their clients, accounts and queued posts keep working — but nothing in the
+# UI offers them any more.
+COMPOSE_PLATFORMS = ('xiaohongshu', 'douyin', 'wechat')
+
+# Platforms with no posting API yet: content is generated and saved as
+# reviewable drafts, and the card's publish button is a reserved placeholder —
+# publishing will go through an open-source publisher once one is wired in.
+# These platforms are refused by the schedule/publish routes.
+DRAFT_ONLY_PLATFORMS = ('xiaohongshu', 'douyin', 'wechat')
 
 
 def _group_standalone_posts(rows):
@@ -5789,7 +5908,9 @@ def _inject_publish_targets():
     after a tick), so the target list comes from the environment rather than
     each caller remembering to pass it.
     """
-    return {'PUBLISH_TARGETS': _publish_target_options(), 'IG_MAX_COLLABORATORS': MAX_COLLABORATORS}
+    return {'PUBLISH_TARGETS': _publish_target_options(),
+            'DRAFT_ONLY_PLATFORMS': DRAFT_ONLY_PLATFORMS,
+            'IG_MAX_COLLABORATORS': MAX_COLLABORATORS}
 
 
 def _row_account_label(row):
@@ -5904,12 +6025,6 @@ def compose_page():
         for group in first_page
     ]
 
-    # Row counts per platform still drive the "Queue All" modal and the sizing of
-    # an across-pages selection, both of which act one platform-row at a time.
-    platform_totals = {}
-    for post in posts:
-        platform_totals[post['platform']] = platform_totals.get(post['platform'], 0) + 1
-
     # Distinct briefs across ALL saved posts (not just the first page), for the filter
     briefs_in_posts = {}
     for post in posts:
@@ -5920,12 +6035,6 @@ def compose_page():
         {'id': bid, 'name': name}
         for bid, name in sorted(briefs_in_posts.items(), key=lambda kv: kv[1].lower())
     ]
-    
-    # Get next available slots for display
-    next_slots = {
-        'linkedin': get_next_available_slot('linkedin'),
-        'threads': get_next_available_slot('threads'),
-    }
     
     # Get saved URL sources for the "From Saved Source" tab
     saved_sources = list_url_sources()
@@ -5971,12 +6080,10 @@ def compose_page():
         'compose.html',
         post_groups=post_groups,
         group_total=len(groups),
-        platform_totals=platform_totals,
         compose_platforms=list(COMPOSE_PLATFORMS),
         page_size=POSTS_PAGE_SIZE,
         max_batch=POSTS_MAX_BATCH,
         brief_filter_options=brief_filter_options,
-        next_slots=next_slots,
         saved_sources=saved_sources,
         selected_source=selected_source,
         linkedin_connected=linkedin_connected,
@@ -6776,7 +6883,7 @@ def compose_generate():
     content = request.form.get('content', '').strip()
     platforms = request.form.getlist('platforms')
     tone = request.form.get('tone', 'professional')
-    posts_per_platform = request.form.get('posts_per_platform', 10, type=int)
+    posts_per_platform = request.form.get('posts_per_platform', 1, type=int)
     extra_context = request.form.get('extra_context', '').strip() or None
     topic = request.form.get('topic', '').strip() or None
     image_url = request.form.get('image_url', '').strip() or None
@@ -7012,7 +7119,7 @@ def compose_generate():
                     from PIL import Image
                     img = Image.open(BytesIO(first_image_bytes))
                     img.verify()
-                    if CLOUDINARY_CONFIGURED:
+                    if cloudinary_ready():
                         result = cloudinary.uploader.upload(
                             first_image_bytes,
                             folder="insights",
@@ -7737,6 +7844,11 @@ def compose_bulk_add_platform():
                         reason = "Already published"
                     elif row['used']:
                         reason = "Marked as used"
+                if reason is None and row['platform'] in DRAFT_ONLY_PLATFORMS:
+                    # Draft-only platforms have no posting API: a queued entry
+                    # could never go out, so queueing is refused with the way
+                    # out, exactly as the single-card queue route does.
+                    reason = f"{row['platform']} is draft-only: copy the post and publish it manually."
                 if reason is None and stats['account_id'] is None:
                     reason = f"Connect {platform_name(row['platform'])} before queueing"
                 if reason is None:
@@ -7903,7 +8015,10 @@ def compose_import_file():
     """Import posts from a CSV or XLSX file into the Command Center."""
     import csv as csv_mod
 
-    IMPORT_PLATFORMS = {'threads', 'linkedin', 'facebook', 'twitter', 'instagram'}
+    # Chinese names import as their platform id too: a sheet written in
+    # Chinese should not have to know the internal identifiers.
+    IMPORT_PLATFORMS = {'xiaohongshu', 'douyin', 'wechat', '小红书', '抖音', '公众号',
+                        'threads', 'linkedin', 'facebook', 'twitter', 'instagram'}
     TRUTHY = {'true', '1', 'yes', 'y', 't'}
 
     def _is_truthy(val) -> bool:
@@ -7999,8 +8114,8 @@ def compose_import_file():
         platforms = []
         for token in tokens:
             normalized = token.lower()
-            if normalized == 'x':
-                normalized = 'twitter'
+            normalized = {'x': 'twitter', '小红书': 'xiaohongshu', '抖音': 'douyin',
+                          '公众号': 'wechat', '微信': 'wechat'}.get(normalized, normalized)
             if normalized in seen:
                 continue
             seen.add(normalized)
@@ -8031,7 +8146,7 @@ def compose_import_file():
                     "row": i,
                     "reason": "unsupported_platform",
                     "message": f"Unsupported platform '{original_token}'",
-                    "fix": "Change the Platform value to one of: Threads, LinkedIn, Facebook, Twitter/X, Instagram. Use commas to list multiple (e.g. 'Twitter,Threads').",
+                    "fix": "将 Platform 列改为：小红书、抖音、公众号（可用逗号分隔写多个，如 '小红书,抖音'）。",
                     "platform": original_token or "(blank)",
                     "preview": content_preview,
                 })
@@ -9075,7 +9190,7 @@ def compose_upload_image():
         return jsonify({"error": str(e)}), 400
     
     # Upload to Cloudinary if configured (for public URLs that work with Threads)
-    if CLOUDINARY_CONFIGURED:
+    if cloudinary_ready():
         try:
             result = cloudinary.uploader.upload(
                 cleaned_bytes,
@@ -9126,7 +9241,7 @@ def compose_upload_image():
         "image_url": image_url,
         "filename": unique_filename,
         "storage": "local",
-        "warning": "Image stored locally - may not work with Threads/external platforms" if not CLOUDINARY_CONFIGURED else None
+        "warning": "Image stored locally - may not work with Threads/external platforms" if not cloudinary_ready() else None
     })
 
 
@@ -9146,10 +9261,10 @@ def _store_uploaded_video(file):
     if not allowed_video_file(file.filename):
         return None, f"Video type not allowed. Allowed types: {', '.join(sorted(ALLOWED_VIDEO_EXTENSIONS))}", 400
 
-    if not CLOUDINARY_CONFIGURED:
+    if not cloudinary_ready():
         return None, (
-            "Video upload needs Cloudinary. Configure Cloudinary, or paste a "
-            "public video URL instead."
+            "Video upload needs Cloudinary. Configure Cloudinary on the "
+            "settings page, or paste a public video URL instead."
         ), 400
 
     video_bytes = file.read()
@@ -9161,10 +9276,20 @@ def _store_uploaded_video(file):
     # video one platform refuses still goes out to the others.
     duration = None
     suffix = os.path.splitext(file.filename)[1].lower() or '.mp4'
-    with tempfile.NamedTemporaryFile(suffix=suffix) as probe_copy:
-        probe_copy.write(video_bytes)
-        probe_copy.flush()
-        duration = video_media.probe_file(probe_copy.name).get('duration')
+    # The copy is written, closed and removed rather than held open: on Windows
+    # a file Python still holds open denies every other handle, so ffprobe read
+    # nothing and every upload came back with no duration and no length
+    # warnings.
+    fd, probe_path = tempfile.mkstemp(suffix=suffix)
+    try:
+        with os.fdopen(fd, 'wb') as probe_copy:
+            probe_copy.write(video_bytes)
+        duration = video_media.probe_file(probe_path).get('duration')
+    finally:
+        try:
+            os.remove(probe_path)
+        except OSError:
+            pass
 
     try:
         result = cloudinary.uploader.upload(
@@ -9283,7 +9408,7 @@ def _store_fitted_image(jpeg_bytes: bytes, prefix: str) -> str:
     Returns the URL to use for the post — absolute for local storage, matching
     the upload routes so Instagram's fetcher can reach it.
     """
-    if CLOUDINARY_CONFIGURED:
+    if cloudinary_ready():
         try:
             result = cloudinary.uploader.upload(
                 jpeg_bytes,
@@ -9585,7 +9710,7 @@ def _annotate_video(src_path: str, layers: list, font_path: str, workdir: str) -
 def _store_annotated_video(video_path: str) -> str:
     """Persist an annotated video like an upload; returns its serving URL."""
     size = os.path.getsize(video_path)
-    if CLOUDINARY_CONFIGURED:
+    if cloudinary_ready():
         result = cloudinary.uploader.upload(
             video_path, folder="insights", resource_type="video",
         )
@@ -10163,6 +10288,10 @@ def _queue_row(row, already, card_rows=None, no_slots=None):
         return None, {"post_id": row['id'], "platform": platform,
                       "target": target_name, "error": error}
 
+    if platform in DRAFT_ONLY_PLATFORMS:
+        # No posting API: a queued entry could never go out. Same refusal the
+        # queue and bulk-add routes give, with the way out named.
+        return skip(f"{platform} is draft-only: copy the post and publish it manually.")
     if platform not in SCHEDULABLE_PLATFORMS:
         return skip(f"{target_name} does not support scheduling yet")
     if already.get(row['id']):
@@ -10276,7 +10405,11 @@ def compose_add_to_queue(post_id: int):
     scheduled_for = request.form.get('scheduled_for', '').strip()
     
     # Validate platform
-    if platform not in ['linkedin', 'threads', 'facebook', 'twitter', 'instagram']:
+    if platform in DRAFT_ONLY_PLATFORMS:
+        return jsonify({
+            "error": f"{platform} is draft-only: copy the post and publish it manually."
+        }), 400
+    if platform not in SCHEDULABLE_PLATFORMS:
         return jsonify({"error": f"Platform {platform} does not support scheduling yet"}), 400
 
     # Instagram posts require media; validate by format (and auto-attach a stock
@@ -10834,7 +10967,7 @@ def compose_generate_from_source():
     source_id = request.form.get('source_id', type=int)
     platforms = request.form.getlist('platforms')
     tone = request.form.get('tone', 'professional')
-    posts_per_platform = request.form.get('posts_per_platform', 10, type=int)
+    posts_per_platform = request.form.get('posts_per_platform', 1, type=int)
     extra_context = request.form.get('extra_context', '').strip() or None
     image_url = request.form.get('image_url', '').strip() or None
     ai_provider, ai_model, use_local = _parse_ai_provider(request.form)
@@ -11365,11 +11498,13 @@ def brief_run_now(brief_id):
     if get_active_brief_run(brief_id):
         return jsonify({"error": "A run is already in progress for this brief"}), 409
     run_id = create_brief_run(brief_id, trigger='manual')
+    run_lang = g.lang  # read in request context; the background thread has none
 
     def _bg():
         with usage_meter.usage_context("proactive"):
             try:
-                content_agent.run_brief(brief_id, trigger='manual', run_id=run_id)
+                content_agent.run_brief(brief_id, trigger='manual', run_id=run_id,
+                                        lang=run_lang)
             except Exception:
                 app.logger.exception("Manual brief run %s failed", brief_id)
                 try:

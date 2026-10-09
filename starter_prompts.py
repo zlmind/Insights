@@ -101,8 +101,8 @@ STARTER_PROMPTS: List[Dict[str, str]] = [
         "category": "Promote Content",
         "title": "Turn a blog into a thread / breakdown",
         "content": (
-            "Break my blog \"[BLOG TITLE]\" ([URL]) into a punchy [X/Threads thread "
-            "OR LinkedIn breakdown].\n"
+            "Break my blog \"[BLOG TITLE]\" ([URL]) into a 小红书 note OR a "
+            "公众号 breakdown.\n"
             "- Each point = one concrete, usable idea a [AUDIENCE] can act on. No "
             "filler lines, no \"let's dive in,\" no restating the obvious.\n"
             "- Start with a hook strong enough to earn the second line.\n"

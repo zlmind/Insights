@@ -66,6 +66,9 @@ class ResearchBrief:
     strict_focus: bool = False
     max_items: int = 5
     freshness_days: Optional[int] = None
+    # Language of the generated search queries and research brief (the posts
+    # themselves follow each platform's language instead).
+    lang: str = "en"
 
 
 @dataclass
@@ -207,19 +210,25 @@ def _build_query_plan(brief: ResearchBrief, use_local: bool, max_queries: int) -
         import insights
         client, model, provider = insights._get_llm_client(
             use_local, model=os.getenv("CONTENT_AGENT_MODEL"))
-        aud = f" for an audience of {brief.audience}" if brief.audience else ""
-        kw = f" Must relate to: {', '.join(brief.keywords)}." if brief.keywords else ""
-        msgs = [
-            {"role": "system", "content": (
-                "You generate diverse, high-signal web search queries. "
-                "Reply with a JSON array of short query strings only."
-            )},
-            {"role": "user", "content": (
-                f"Topic: {base[:1000]}{aud}.{kw} Produce {max_queries} distinct search "
-                "queries, each under 12 words, that together cover the topic broadly. "
-                "Reply with a JSON array of strings only."
-            )},
-        ]
+        if getattr(brief, "lang", "en") == "zh":
+            import prompts_zh
+            msgs = prompts_zh.query_plan_messages(
+                topic=base, audience=brief.audience,
+                keywords=brief.keywords, max_queries=max_queries)
+        else:
+            aud = f" for an audience of {brief.audience}" if brief.audience else ""
+            kw = f" Must relate to: {', '.join(brief.keywords)}." if brief.keywords else ""
+            msgs = [
+                {"role": "system", "content": (
+                    "You generate diverse, high-signal web search queries. "
+                    "Reply with a JSON array of short query strings only."
+                )},
+                {"role": "user", "content": (
+                    f"Topic: {base[:1000]}{aud}.{kw} Produce {max_queries} distinct search "
+                    "queries, each under 12 words, that together cover the topic broadly. "
+                    "Reply with a JSON array of strings only."
+                )},
+            ]
         resp = client.chat.completions.create(
             model=model, messages=msgs, temperature=0.4, max_tokens=300
         )
@@ -524,17 +533,23 @@ def _synthesize_brief(brief: ResearchBrief, items: List[SourceItem], use_local: 
         import insights
         client, model, provider = insights._get_llm_client(
             use_local, model=os.getenv("CONTENT_AGENT_MODEL"))
-        aud = f" The audience is {brief.audience}." if brief.audience else ""
-        msgs = [
-            {"role": "system", "content": (
-                "You synthesize research notes into a concise brief a writer can use. "
-                "Write 4 to 6 sentences. " + insights.NO_EM_DASH_RULE
-            )},
-            {"role": "user", "content": (
-                f"Topic: {brief.topic}.{aud}\n\nSources:\n{joined}\n\n"
-                "Write a short synthesis highlighting the key angles, facts, and themes to cover."
-            )},
-        ]
+        if getattr(brief, "lang", "en") == "zh":
+            import prompts_zh
+            msgs = prompts_zh.synthesize_messages(
+                topic=brief.topic, audience=brief.audience,
+                sources_joined=joined)
+        else:
+            aud = f" The audience is {brief.audience}." if brief.audience else ""
+            msgs = [
+                {"role": "system", "content": (
+                    "You synthesize research notes into a concise brief a writer can use. "
+                    "Write 4 to 6 sentences. " + insights.NO_EM_DASH_RULE
+                )},
+                {"role": "user", "content": (
+                    f"Topic: {brief.topic}.{aud}\n\nSources:\n{joined}\n\n"
+                    "Write a short synthesis highlighting the key angles, facts, and themes to cover."
+                )},
+            ]
         resp = client.chat.completions.create(
             model=model, messages=msgs, temperature=0.5, max_tokens=500
         )

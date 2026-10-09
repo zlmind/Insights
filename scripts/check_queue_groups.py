@@ -705,7 +705,7 @@ def run_node(harness, functions, data=None):
             with open(paths[name], "w", encoding="utf-8") as handle:
                 handle.write(body)
         run = subprocess.run([node, paths["harness.js"], paths["functions.js"], paths["data.json"]],
-                             capture_output=True, text=True, timeout=60)
+                             capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     check(run.returncode == 0, f"the harness crashed:\n{run.stderr.strip()[:1200]}")
@@ -1204,7 +1204,7 @@ def section_syntax():
             path = os.path.join(work, f"script_{index}.js")
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write(body)
-            run = subprocess.run([node, "--check", path], capture_output=True, text=True)
+            run = subprocess.run([node, "--check", path], capture_output=True, text=True, encoding='utf-8', errors='replace')
             check(run.returncode == 0,
                   f"inline script {index} on the schedule page does not parse:\n{run.stderr.strip()[:600]}")
     finally:

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from urllib.parse import quote, urlencode
 from typing import Optional
 
+import appconfig
 import requests
 
 import video_media
@@ -135,8 +136,8 @@ class LinkedInClient:
         redirect_uri: str | None = None,
     ):
         """Initialize the LinkedIn client with credentials from env or params."""
-        self.client_id = client_id or os.environ.get("LINKEDIN_CLIENT_ID")
-        self.client_secret = client_secret or os.environ.get("LINKEDIN_CLIENT_SECRET")
+        self.client_id = client_id or appconfig.get("LINKEDIN_CLIENT_ID")
+        self.client_secret = client_secret or appconfig.get("LINKEDIN_CLIENT_SECRET")
         self.redirect_uri = redirect_uri or os.environ.get(
             "LINKEDIN_REDIRECT_URI", "http://localhost:5001/linkedin/callback"
         )

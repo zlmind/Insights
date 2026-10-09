@@ -126,7 +126,12 @@ def main() -> int:
                   for f in fs if not f.startswith(".")]
         assert placed, f"{mode}: nothing placed"
         if mode == "link":
-            assert all(os.path.islink(p) for p in placed), "link mode produced real files"
+            # A symlink on Unix; Windows without Developer Mode gets a
+            # hardlink — either way the placement must not have duplicated
+            # the bytes, which is what "not a real file" means here.
+            def _is_link(p):
+                return os.path.islink(p) or os.stat(p).st_nlink > 1
+            assert all(_is_link(p) for p in placed), "link mode produced real files"
         else:
             assert not any(os.path.islink(p) for p in placed), "copy mode produced links"
         # re-apply must be idempotent

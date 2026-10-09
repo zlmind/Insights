@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime
 from urllib.parse import urlsplit
 
@@ -32,11 +33,13 @@ import research_engine
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PLATFORMS = ["linkedin", "threads", "twitter"]
-_PLATFORM_ALIASES = {"x": "twitter"}
-# Platforms the scheduler can auto-queue. Instagram requires an image, so
-# _auto_queue only queues instagram drafts it can attach an image to.
-SCHEDULABLE = {"linkedin", "threads", "facebook", "twitter", "instagram"}
+DEFAULT_PLATFORMS = ["xiaohongshu", "douyin", "wechat"]
+_PLATFORM_ALIASES = {"x": "twitter", "公众号": "wechat", "微信": "wechat"}
+# Platforms the scheduler can auto-queue. None for now: the domestic platforms
+# have no posting API yet, so their drafts stay reviewable in Compose and
+# publishing waits for the open-source publisher. The Western platforms keep
+# their client code but are no longer offered, so nothing auto-queues anywhere.
+SCHEDULABLE = set()
 
 
 # ── Brief parsing ───────────────────────────────────────────────────────────
@@ -77,7 +80,12 @@ def _brief_to_dict(row) -> dict:
 
 # ── Context building ────────────────────────────────────────────────────────
 
-def _creative_context(brief: dict) -> str:
+def _creative_context(brief: dict, lang: str = "en") -> str:
+    if lang == "zh":
+        import prompts_zh
+        return prompts_zh.creative_context(
+            brief.get("audience_persona"),
+            brief.get("must_include_keywords") or [])
     parts = []
     if brief.get("audience_persona"):
         parts.append(f"Target audience/persona: {brief['audience_persona']}.")
@@ -216,8 +224,14 @@ def _auto_queue(brief: dict, post_ids: list) -> int:
 
 # ── Public entrypoint ───────────────────────────────────────────────────────
 
-def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = None) -> dict:
+def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = None,
+              lang: str | None = None) -> dict:
     """Execute one run of a content brief. Never raises after the run row exists.
+
+    ``lang`` sets the language for the research notes and any articles: request
+    paths pass the request language, the worker passes ``None`` to fall back to
+    ``CONTENT_LANG`` (default ``zh``). Posts follow each platform's own language
+    regardless.
 
     Returns a summary dict: ``{status, posts_created, articles_created,
     sources_found, sources_used, queued, cost_usd, run_id, warnings}``.
@@ -230,6 +244,24 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
         return {"status": "error", "error": "brief not found", "run_id": run_id}
 
     brief = _brief_to_dict(row)
+    lang = (lang or os.getenv("CONTENT_LANG") or "zh").strip().lower()
+
+    # Context labels follow the brief's language, matching the research notes.
+    def _angle(text):
+        if not text:
+            return ""
+        if lang == "zh":
+            import prompts_zh
+            return prompts_zh.editorial_angle(text)
+        return f"Editorial angle: {text}"
+
+    def _why(text):
+        if not text:
+            return ""
+        if lang == "zh":
+            import prompts_zh
+            return prompts_zh.why_relevant(text)
+        return f"Why this source is relevant: {text}"
     if run_id is None:
         run_id = database.create_brief_run(brief_id, trigger=trigger)
 
@@ -258,7 +290,7 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
         want_posts = content_type in ("posts", "both")
         want_articles = content_type in ("articles", "both")
         instructions = brief.get("instructions") or ""
-        creative = _creative_context(brief)
+        creative = _creative_context(brief, lang)
         research_attempted = bool(brief.get("use_web_search") or brief.get("use_saved_sources"))
 
         # ── Research ─────────────────────────────────────────────────────
@@ -272,6 +304,7 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
                 use_web_search=bool(brief.get("use_web_search")),
                 use_saved_sources=bool(brief.get("use_saved_sources")),
                 max_items=max_sources,
+                lang=lang,
             )
             rres = research_engine.run_research(rbrief)
             warnings.extend(rres.warnings)
@@ -290,9 +323,9 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
                     break
                 ctx = _combine_context(
                     creative,
-                    f"Editorial angle: {instructions}" if instructions else "",
+                    _angle(instructions),
                     research_text,
-                    f"Why this source is relevant: {item.why_relevant}" if item.why_relevant else "",
+                    _why(item.why_relevant),
                 )
                 try:
                     generated = insights.generate_posts_from_text(
@@ -349,7 +382,7 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
                         podcast_title=item.domain or "web",
                         episode_title=item.title,
                         style=brief.get("article_style") or "blog",
-                        extra_context=ctx, is_text_source=True,
+                        extra_context=ctx, is_text_source=True, lang=lang,
                     )
                 except Exception as exc:
                     logger.exception("article generation failed for %s", item.url)

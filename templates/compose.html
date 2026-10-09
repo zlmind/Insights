@@ -77,6 +77,9 @@
         font-weight: bold;
     }
     /* Platform-specific colors */
+    .platform-checkbox-box[data-platform="xiaohongshu"] { --platform-color: #FF2442; --platform-bg: #FF2442; }
+    .platform-checkbox-box[data-platform="douyin"] { --platform-color: #FE2C55; --platform-bg: #FE2C55; }
+    .platform-checkbox-box[data-platform="wechat"] { --platform-color: #07C160; --platform-bg: #07C160; }
     .platform-checkbox-box[data-platform="linkedin"] { --platform-color: #0077B5; --platform-bg: #0077B5; }
     .platform-checkbox-box[data-platform="threads"] { --platform-color: #000; --platform-bg: #000; }
     .platform-checkbox-box[data-platform="twitter"] { --platform-color: #1DA1F2; --platform-bg: #1DA1F2; }
@@ -592,8 +595,10 @@
             <div class="btn-group btn-group-sm" role="group" id="ai-provider-toggle">
                 <input type="radio" class="btn-check" name="aiProvider" id="provider-openai" value="openai" checked>
                 <label class="btn btn-outline-primary" for="provider-openai">OpenAI</label>
+                {% if model_options.models.anthropic %}
                 <input type="radio" class="btn-check" name="aiProvider" id="provider-anthropic" value="anthropic">
                 <label class="btn btn-outline-primary" for="provider-anthropic">Anthropic</label>
+                {% endif %}
                 <input type="radio" class="btn-check" name="aiProvider" id="provider-local" value="local">
                 <label class="btn btn-outline-success" for="provider-local">
                     <span id="ollama-status-dot" class="me-1">●</span> Local (Ollama)
@@ -867,8 +872,8 @@
             <!-- Import File Tab -->
             <div class="tab-pane fade" id="import-content" role="tabpanel">
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Upload CSV or Excel File</label>
-                    <p class="text-muted small mb-2">Import posts from a file with <code>Platform</code> and <code>copy</code> columns. Optional columns: <code>video</code> (source link) and <code>repost</code> (set to <code>true</code> to bypass the duplicate check and create a new post even if identical content already exists). Supported platforms: Threads, LinkedIn, Facebook, Twitter/X, Instagram. List multiple platforms in one row by separating them with commas (e.g. <code>Twitter,Threads</code>) to create a post for each.</p>
+                    <label class="form-label fw-bold">上传 CSV 或 Excel 文件</label>
+                    <p class="text-muted small mb-2">从包含 <code>Platform</code> 与 <code>copy</code> 两列的文件导入帖子。可选列：<code>video</code>（视频来源链接）和 <code>repost</code>（设为 <code>true</code> 可跳过查重，即使内容相同也会新建）。支持的渠道：小红书、抖音、公众号。一行写多个渠道可用逗号分隔（如 <code>小红书,抖音</code>），会为每个渠道各建一条。</p>
                     <input type="file" class="form-control" id="import-file-input" accept=".csv,.xlsx,.xls">
                 </div>
                 <div id="import-preview" class="d-none mb-3">
@@ -894,34 +899,25 @@
         <!-- Platform Selection -->
         <div class="row mb-4">
             <div class="col-md-8">
-                <label class="form-label fw-bold mb-3">Select Platforms</label>
+                <label class="form-label fw-bold mb-3">发布渠道</label>
                 <div class="d-flex flex-wrap gap-3" id="platform-checkboxes">
-                    <label class="platform-checkbox-box selected" data-platform="linkedin">
+                    <label class="platform-checkbox-box selected" data-platform="xiaohongshu" title="生成小红书笔记草稿（中文），复制后手动发布">
                         <span class="check-indicator"></span>
-                        <input type="checkbox" class="d-none" value="linkedin" id="platform-linkedin" checked>
-                        💼 LinkedIn
+                        <input type="checkbox" class="d-none" value="xiaohongshu" id="platform-xiaohongshu" checked>
+                        📕 小红书
                     </label>
-                    <label class="platform-checkbox-box selected" data-platform="threads">
+                    <label class="platform-checkbox-box selected" data-platform="douyin" title="生成抖音文案草稿（中文），复制后手动发布">
                         <span class="check-indicator"></span>
-                        <input type="checkbox" class="d-none" value="threads" id="platform-threads" checked>
-                        🧵 Threads
+                        <input type="checkbox" class="d-none" value="douyin" id="platform-douyin" checked>
+                        🎵 抖音
                     </label>
-                    <label class="platform-checkbox-box selected" data-platform="twitter">
+                    <label class="platform-checkbox-box selected" data-platform="wechat" title="生成公众号推文草稿（中文），复制后手动发布">
                         <span class="check-indicator"></span>
-                        <input type="checkbox" class="d-none" value="twitter" id="platform-twitter" checked>
-                        𝕏 Twitter
-                    </label>
-                    <label class="platform-checkbox-box selected" data-platform="facebook">
-                        <span class="check-indicator"></span>
-                        <input type="checkbox" class="d-none" value="facebook" id="platform-facebook" checked>
-                        📘 Facebook
-                    </label>
-                    <label class="platform-checkbox-box" data-platform="instagram" title="Instagram posts require an image">
-                        <span class="check-indicator"></span>
-                        <input type="checkbox" class="d-none" value="instagram" id="platform-instagram">
-                        📷 Instagram
+                        <input type="checkbox" class="d-none" value="wechat" id="platform-wechat" checked>
+                        💬 公众号
                     </label>
                 </div>
+                <div class="form-text">三个渠道均为草稿模式：一键发布即将支持（将接入开源发布工具），当前生成后复制文案手动发布。</div>
                 {# Accounts, only where a platform has more than one. The copy is
                    written once per platform whatever is ticked here; the ticks
                    decide how many accounts that one piece of copy is saved for,
@@ -961,7 +957,7 @@
                 <label class="form-label fw-bold" for="posts-per-platform">Posts per Platform</label>
                 <div class="input-group">
                     <button class="btn btn-outline-secondary" type="button" onclick="adjustPostCount(-1)">−</button>
-                    <input type="number" class="form-control text-center" id="posts-per-platform" value="10" min="1" max="10">
+                    <input type="number" class="form-control text-center" id="posts-per-platform" value="1" min="1" max="10">
                     <button class="btn btn-outline-secondary" type="button" onclick="adjustPostCount(1)">+</button>
                 </div>
                 <small class="text-muted">Generate 1-10 unique posts per platform</small>
@@ -1207,12 +1203,6 @@
                         title="Stop the selected posts going to some platforms">
                     ➖ Remove Platform (<span id="remove-platform-count">0</span>)
                 </button>
-                <button type="button" class="btn btn-sm btn-success d-none" id="queue-selected-btn" onclick="queueSelectedPosts()">
-                    ➕ Add to Queue (<span id="queue-selected-count">0</span>)
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-danger d-none" id="unqueue-selected-btn" onclick="unqueueSelectedPosts()">
-                    ➖ Remove from Queue (<span id="unqueue-selected-count">0</span>)
-                </button>
                 <button type="button" class="btn btn-sm btn-danger d-none" id="delete-selected-btn" onclick="deleteSelectedPosts()">
                     🗑️ Delete Selected (<span id="selected-count">0</span>)
                 </button>
@@ -1228,14 +1218,8 @@
                 <button type="button" class="btn btn-sm btn-outline-success d-none" id="mark-used-selected-btn" onclick="markUsedSelectedPosts()">
                     ✓ Mark as Used (<span id="mark-used-count">0</span>)
                 </button>
-                <button type="button" class="btn btn-sm btn-primary d-none" id="post-now-selected-btn" onclick="postNowSelectedPosts()">
-                    🚀 Post Now (<span id="post-now-count">0</span>)
-                </button>
                 <button type="button" class="btn btn-sm btn-outline-info" onclick="openSearchReplaceModal()">
                     🔍 Find & Replace
-                </button>
-                <button type="button" class="btn btn-sm btn-primary" onclick="showQueueAllModal()">
-                    🚀 Queue All Unscheduled
                 </button>
                 <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearAllPosts()">
                     🗑️ Clear All
@@ -1257,12 +1241,10 @@
                 <option value="not-queued" selected>➕ Not Queued</option>
             </select>
             <select class="form-select form-select-sm" style="width: auto;" id="filter-platform" onchange="applyPostFilters()">
-                <option value="">All Platforms</option>
-                <option value="linkedin">💼 LinkedIn</option>
-                <option value="threads">🧵 Threads</option>
-                <option value="facebook">📘 Facebook</option>
-                <option value="twitter">𝕏 Twitter</option>
-                <option value="instagram">📷 Instagram</option>
+                <option value="">全部渠道</option>
+                <option value="xiaohongshu">📕 小红书</option>
+                <option value="douyin">🎵 抖音</option>
+                <option value="wechat">💬 公众号</option>
             </select>
             <select class="form-select form-select-sm" style="width: auto;" id="filter-image" onchange="applyPostFilters()">
                 <option value="">All Images</option>
@@ -1365,64 +1347,6 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" onclick="schedulePost()">📅 Schedule</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Queue All Modal -->
-<div class="modal fade" id="queueAllModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">
-                <h5 class="modal-title">🚀 Queue All Unscheduled Posts</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>Add all unscheduled posts to the queue? They will be assigned to the next available time slots.</p>
-                <div class="d-flex gap-3 justify-content-center">
-                    <div class="text-center">
-                        <div class="fs-4 fw-bold text-primary" id="unscheduled-linkedin-count">0</div>
-                        <div class="small text-muted">LinkedIn posts</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="fs-4 fw-bold text-dark" id="unscheduled-threads-count">0</div>
-                        <div class="small text-muted">Threads posts</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="fs-4 fw-bold" style="color: #1877F2;" id="unscheduled-facebook-count">0</div>
-                        <div class="small text-muted">Facebook posts</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="fs-4 fw-bold" style="color: #1DA1F2;" id="unscheduled-twitter-count">0</div>
-                        <div class="small text-muted">Twitter posts</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="fs-4 fw-bold" style="color: #E4405F;" id="unscheduled-instagram-count">0</div>
-                        <div class="small text-muted">Instagram posts</div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer justify-content-center flex-wrap gap-2">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="queueAllUnscheduled('linkedin')">
-                    💼 Queue LinkedIn
-                </button>
-                <button type="button" class="btn btn-dark" onclick="queueAllUnscheduled('threads')">
-                    🧵 Queue Threads
-                </button>
-                <button type="button" class="btn" style="background-color: #1877F2; color: white;" onclick="queueAllUnscheduled('facebook')">
-                    📘 Queue Facebook
-                </button>
-                <button type="button" class="btn" style="background-color: #1DA1F2; color: white;" onclick="queueAllUnscheduled('twitter')">
-                    𝕏 Queue Twitter
-                </button>
-                <button type="button" class="btn" style="background-color: #E4405F; color: white;" onclick="queueAllUnscheduled('instagram')">
-                    📷 Queue Instagram
-                </button>
-                <button type="button" class="btn btn-success" onclick="queueAllBothPlatforms()">
-                    🚀 Queue All
-                </button>
             </div>
         </div>
     </div>
@@ -1654,8 +1578,7 @@
                         Each selected post is also posted to the platforms you tick. Posts that already go there are left alone.
                     </p>
                     <p class="text-muted small mb-2 bulk-only-remove">
-                        Each selected post stops going to the platforms you tick. The number beside a platform is how many
-                        of the selected posts go there now.
+                        所选帖子将不再发到你勾选的渠道。渠道旁的数字是当前有多少篇所选帖子发往该渠道。
                     </p>
                     {# Same chips the cards and the composer draw, one per connected account. #}
                     <div class="platform-chips mb-3" id="bulk-platform-targets" role="group" aria-label="Platforms to add">
@@ -1761,8 +1684,8 @@
                     <span class="text-muted small" id="search-selected-count">0 of 0 selected</span>
                 </div>
                 <div class="text-muted small mb-2 d-none" id="search-click-hint">
-                    💡 Click on highlighted text to exclude individual matches from replacement &middot;
-                    Use <strong>✏️ Edit</strong> to rewrite a post right here
+                    💡 点击高亮文字可将该处排除在替换之外 &middot;
+                    用<strong>✏️ 编辑</strong>直接在这里改写帖子
                 </div>
                 <div id="search-results-container" style="max-height: 400px; overflow-y: auto;">
                     <div class="text-center text-muted py-4" id="search-empty-state">
@@ -5503,9 +5426,6 @@ function schedulePost() {
 //   {filters: {platform, used, queued, image, source, brief}, total, byPlatform}
 let selectAllScope = null;
 
-const SCOPE_QUEUEABLE_PLATFORMS = ['linkedin', 'threads'];
-const SCOPE_POSTABLE_PLATFORMS = ['linkedin', 'threads', 'facebook', 'twitter', 'instagram'];
-
 // The filter bar's current state. The server reproduces this exact predicate so
 // an across-pages selection matches what the filters say is showing.
 function currentPostFilters() {
@@ -5545,21 +5465,6 @@ function anyFilterActive(filters) {
 
 function nonPlatformFiltersActive(filters) {
     return NARROWING_FILTER_KEYS.some(k => k !== 'platform' && !!filters[k]);
-}
-
-// Per-platform counts for the selection, so the toolbar can size the
-// queueable/postable subsets without loading every post.
-function scopeCounts(platform, totals) {
-    const source = totals || PLATFORM_TOTALS;
-    const platforms = platform ? [platform] : Object.keys(source);
-    let total = 0, queueable = 0, postable = 0;
-    platforms.forEach(p => {
-        const n = source[p] || 0;
-        total += n;
-        if (SCOPE_QUEUEABLE_PLATFORMS.includes(p)) queueable += n;
-        if (SCOPE_POSTABLE_PLATFORMS.includes(p)) postable += n;
-    });
-    return { total, queueable, postable };
 }
 
 function clearSelectAllScope() {
@@ -5661,15 +5566,12 @@ function toggleSelectMode() {
     const deleteBtn = document.getElementById('delete-selected-btn');
     const addPlatformBtn = document.getElementById('add-platform-selected-btn');
     const removePlatformBtn = document.getElementById('remove-platform-selected-btn');
-    const queueBtn = document.getElementById('queue-selected-btn');
-    const unqueueBtn = document.getElementById('unqueue-selected-btn');
     const removeImageBtn = document.getElementById('remove-image-selected-btn');
     const addImageBtn = document.getElementById('add-image-selected-btn');
     const findStockBtn = document.getElementById('find-stock-images-btn');
     const markUsedBtn = document.getElementById('mark-used-selected-btn');
-    const postNowBtn = document.getElementById('post-now-selected-btn');
     const selectModeBtns = document.querySelectorAll('.select-mode-btn');
-    
+
     if (selectModeActive) {
         checkboxes.forEach(cb => cb.classList.remove('d-none'));
         selectModeBtns.forEach(btn => btn.classList.remove('d-none'));
@@ -5688,13 +5590,10 @@ function toggleSelectMode() {
         deleteBtn.classList.add('d-none');
         addPlatformBtn.classList.add('d-none');
         removePlatformBtn.classList.add('d-none');
-        queueBtn.classList.add('d-none');
-        unqueueBtn.classList.add('d-none');
         removeImageBtn.classList.add('d-none');
         addImageBtn.classList.add('d-none');
         findStockBtn.classList.add('d-none');
         markUsedBtn.classList.add('d-none');
-        postNowBtn.classList.add('d-none');
     }
     updateSelectedCount();
 }
@@ -5742,9 +5641,6 @@ function selectedPostIds() {
 function updateSelectedCount() {
     const scoped = !!selectAllScope;
     const cards = selectedCards();
-    const scopeInfo = scoped
-        ? scopeCounts(selectAllScope.filters.platform || null, selectAllScope.byPlatform)
-        : null;
     const count = scoped ? selectAllScope.total : cards.length;
     document.getElementById('selected-count').textContent = count;
 
@@ -5753,13 +5649,10 @@ function updateSelectedCount() {
     const deleteBtn = document.getElementById('delete-selected-btn');
     const addPlatformBtn = document.getElementById('add-platform-selected-btn');
     const removePlatformBtn = document.getElementById('remove-platform-selected-btn');
-    const queueBtn = document.getElementById('queue-selected-btn');
-    const unqueueBtn = document.getElementById('unqueue-selected-btn');
     const removeImageBtn = document.getElementById('remove-image-selected-btn');
     const addImageBtn = document.getElementById('add-image-selected-btn');
     const findStockBtn = document.getElementById('find-stock-images-btn');
     const markUsedBtn = document.getElementById('mark-used-selected-btn');
-    const postNowBtn = document.getElementById('post-now-selected-btn');
 
     if (count > 0 && selectModeActive) {
         deleteBtn.classList.remove('d-none');
@@ -5806,52 +5699,14 @@ function updateSelectedCount() {
             markUsedBtn.classList.add('btn-outline-success');
             markUsedBtn.dataset.action = 'use';
         }
-
-        // Queueing and publishing are per platform, so these count platform
-        // destinations across the selected cards, not the cards themselves.
-        let queueableCount = 0;
-        let queuedCount = 0;
-        let postableCount = 0;
-        if (scoped) {
-            // Can't tell the already-queued split across pages; the server-side
-            // queue-all skips posts that are already scheduled.
-            queueableCount = scopeInfo.queueable;
-            queuedCount = 0;
-            postableCount = scopeInfo.postable;
-        } else {
-            cards.forEach(card => {
-                selectedChips(card).forEach(chip => {
-                    const platform = chip.dataset.platform;
-                    if (SCOPE_POSTABLE_PLATFORMS.includes(platform)) postableCount++;
-                    if (!SCOPE_QUEUEABLE_PLATFORMS.includes(platform)) return;
-                    const queueChip = chip.querySelector('.chip-queue');
-                    if (queueChip && queueChip.dataset.queued === 'true') {
-                        queuedCount++;
-                    } else {
-                        queueableCount++;
-                    }
-                });
-            });
-        }
-
-        document.getElementById('queue-selected-count').textContent = queueableCount;
-        document.getElementById('unqueue-selected-count').textContent = queuedCount;
-        document.getElementById('post-now-count').textContent = postableCount;
-
-        queueBtn.classList.toggle('d-none', queueableCount === 0);
-        unqueueBtn.classList.toggle('d-none', queuedCount === 0);
-        postNowBtn.classList.toggle('d-none', postableCount === 0);
     } else {
         deleteBtn.classList.add('d-none');
         addPlatformBtn.classList.add('d-none');
         removePlatformBtn.classList.add('d-none');
-        queueBtn.classList.add('d-none');
-        unqueueBtn.classList.add('d-none');
         removeImageBtn.classList.add('d-none');
         addImageBtn.classList.add('d-none');
         findStockBtn.classList.add('d-none');
         markUsedBtn.classList.add('d-none');
-        postNowBtn.classList.add('d-none');
     }
 
     const selectAllBtn = document.getElementById('select-all-btn');
@@ -6033,306 +5888,6 @@ async function markUsedSelectedPosts() {
         btn.disabled = false;
         alert('Error marking posts');
     });
-}
-
-async function postNowSelectedPosts() {
-    const scoped = !!selectAllScope;
-
-    const postsToPublish = [];
-    if (scoped) {
-        // Across-pages: fetch every matching id/platform (no DOM node for most).
-        let posts;
-        try {
-            posts = await fetchScopedPosts();
-        } catch (e) {
-            alert('Error: ' + e.message);
-            return;
-        }
-        posts.forEach(p => {
-            if (SCOPE_POSTABLE_PLATFORMS.includes(p.platform)) {
-                postsToPublish.push({
-                    postId: p.id,
-                    platform: p.platform,
-                    postItem: cardForPostId(p.id),
-                });
-            }
-        });
-    } else {
-        // One entry per ticked platform of every selected card.
-        selectedCards().forEach(card => {
-            selectedChips(card).forEach(chip => {
-                const platform = chip.dataset.platform;
-                if (!SCOPE_POSTABLE_PLATFORMS.includes(platform)) return;
-                postsToPublish.push({
-                    postId: parseInt(chip.dataset.platformPostId, 10),
-                    platform: platform,
-                    postItem: card.postItem,
-                });
-            });
-        });
-    }
-
-    if (postsToPublish.length === 0) {
-        alert('No publishable platforms selected');
-        return;
-    }
-
-    const missing = [...new Set(postsToPublish.map(p => p.platform))].filter(p => !platformConnected(p));
-    if (missing.length) {
-        alert('Please connect these platforms first: ' + missing.map(p => PLATFORM_LABELS[p] || p).join(', '));
-        return;
-    }
-
-    if (scoped) {
-        // Publishing thousands of posts to real accounts — require a strong,
-        // count-based confirmation that cannot be undone.
-        if (!confirm(`⚠️ Immediately publish ${postsToPublish.length} post${postsToPublish.length !== 1 ? 's' : ''} to your connected accounts?\n\nThis publishes across every page and cannot be undone.`)) {
-            return;
-        }
-    } else if (!confirm(`Post ${postsToPublish.length} selected post${postsToPublish.length !== 1 ? 's' : ''} now? This will publish them immediately to their platforms.`)) {
-        return;
-    }
-
-    const btn = document.getElementById('post-now-selected-btn');
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '⏳ Posting...';
-    btn.disabled = true;
-
-    let successCount = 0;
-    let errorCount = 0;
-    const errors = [];
-    const touched = new Set();
-
-    for (const post of postsToPublish) {
-        try {
-            const response = await fetch(`/compose/post/${post.postId}/${post.platform}`, {
-                method: 'POST',
-            });
-            const data = await response.json();
-
-            if (data.success) {
-                successCount++;
-                markChipPosted(post.postItem, post.platform, postedUrlFrom(post.platform, data));
-                if (post.postItem) touched.add(post.postItem);
-            } else {
-                errorCount++;
-                errors.push(`${post.platform} post ${post.postId}: ${data.error || 'Unknown error'}`);
-            }
-        } catch (e) {
-            errorCount++;
-            errors.push(`${post.platform} post ${post.postId}: ${e.message}`);
-        }
-    }
-
-    btn.innerHTML = originalText;
-    btn.disabled = false;
-
-    const wasScoped = scoped;
-    touched.forEach(item => refreshCardUsedState(item));
-    toggleSelectMode();
-
-    if (errorCount === 0) {
-        showToast(`Posted ${successCount} post${successCount !== 1 ? 's' : ''} successfully`, 'success');
-    } else {
-        showToast(`Posted ${successCount}, failed ${errorCount}`, errorCount > successCount ? 'error' : 'warning');
-        if (errors.length > 0) {
-            console.error('Post Now errors:', errors);
-        }
-    }
-
-    // Most scoped posts aren't in the DOM, so reload to reflect their new state.
-    if (wasScoped) {
-        setTimeout(() => location.reload(), 800);
-    }
-}
-
-async function queueSelectedPosts() {
-    // Across-pages: one request. The server re-derives the matching posts from
-    // the filters and queues each platform, instead of the browser shipping
-    // thousands of ids or looping post by post.
-    if (selectAllScope) {
-        // Which queueable platforms the selection actually covers — the banner's
-        // per-platform counts already tell us, so no id fetch is needed.
-        const scopePlatform = selectAllScope.filters.platform;
-        const candidates = scopePlatform ? [scopePlatform] : Object.keys(selectAllScope.byPlatform || {});
-        const queueablePlatforms = candidates.filter(p =>
-            SCOPE_QUEUEABLE_PLATFORMS.includes(p) && (selectAllScope.byPlatform || {})[p] > 0);
-
-        if (queueablePlatforms.length === 0) {
-            alert('No queueable posts selected (only LinkedIn and Threads posts can be queued)');
-            return;
-        }
-        const missing = queueablePlatforms.filter(p => !platformConnected(p));
-        if (missing.length) {
-            alert('Please connect these platforms first: ' + missing.map(p => PLATFORM_LABELS[p] || p).join(', '));
-            return;
-        }
-
-        const queueBtn = document.getElementById('queue-selected-btn');
-        const originalText = queueBtn.innerHTML;
-        queueBtn.innerHTML = '⏳ Adding...';
-        queueBtn.disabled = true;
-
-        let data = {};
-        try {
-            const res = await fetch('/compose/posts/queue-all-unscheduled', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    filters: selectAllScope.filters,
-                    platforms: queueablePlatforms,
-                })
-            });
-            data = await res.json();
-            if (!res.ok || !data.success) {
-                throw new Error(data.error || 'Failed to queue posts');
-            }
-        } catch (e) {
-            queueBtn.innerHTML = originalText;
-            queueBtn.disabled = false;
-            alert('Error: ' + e.message);
-            return;
-        }
-
-        queueBtn.innerHTML = originalText;
-        queueBtn.disabled = false;
-
-        const queuedTotal = data.queued || 0;
-        let msg = `Queued ${queuedTotal} post${queuedTotal !== 1 ? 's' : ''}`;
-        if (data.skipped) msg += `, skipped ${data.skipped}`;
-        if (data.no_slots) msg += ' (ran out of time slots — add more)';
-        showToast(msg, data.no_slots ? 'warning' : 'success');
-        setTimeout(() => location.reload(), 1200);
-        return;
-    }
-
-    // One queue entry per queueable, not-yet-queued platform of each card.
-    const postsToQueue = [];
-    selectedCards().forEach(card => {
-        selectedChips(card).forEach(chip => {
-            if (!SCOPE_QUEUEABLE_PLATFORMS.includes(chip.dataset.platform)) return;
-            const queueChip = chip.querySelector('.chip-queue');
-            if (queueChip && queueChip.dataset.queued === 'true') return;
-            postsToQueue.push({
-                postId: parseInt(chip.dataset.platformPostId, 10),
-                platform: chip.dataset.platform,
-                btn: queueChip,
-            });
-        });
-    });
-
-    if (postsToQueue.length === 0) {
-        alert('No queueable posts selected (only LinkedIn and Threads posts can be queued)');
-        return;
-    }
-
-    const missing = [...new Set(postsToQueue.map(p => p.platform))].filter(p => !platformConnected(p));
-    if (missing.length) {
-        alert('Please connect these platforms first: ' + missing.map(p => PLATFORM_LABELS[p] || p).join(', '));
-        return;
-    }
-
-    const queueBtn = document.getElementById('queue-selected-btn');
-    const originalText = queueBtn.innerHTML;
-    queueBtn.innerHTML = '⏳ Adding...';
-    queueBtn.disabled = true;
-
-    let successCount = 0;
-    let errorCount = 0;
-
-    for (const post of postsToQueue) {
-        try {
-            const formData = new FormData();
-            formData.append('platform', post.platform);
-
-            const response = await fetch(`/compose/post/${post.postId}/queue`, {
-                method: 'POST',
-                body: formData
-            });
-            const data = await response.json();
-
-            if (data.success) {
-                successCount++;
-                if (post.btn) setChipQueuedUI(post.btn, true, data.scheduled_for);
-            } else {
-                errorCount++;
-            }
-        } catch (e) {
-            errorCount++;
-        }
-    }
-
-    queueBtn.innerHTML = originalText;
-    queueBtn.disabled = false;
-
-    if (errorCount === 0) {
-        showToast(`Added ${successCount} post${successCount !== 1 ? 's' : ''} to queue`, 'success');
-    } else {
-        showToast(`Added ${successCount}, failed ${errorCount}`, errorCount > successCount ? 'error' : 'warning');
-    }
-
-    toggleSelectMode();
-}
-
-async function unqueueSelectedPosts() {
-    const postsToUnqueue = [];
-    selectedCards().forEach(card => {
-        selectedChips(card).forEach(chip => {
-            const queueChip = chip.querySelector('.chip-queue');
-            if (!queueChip || queueChip.dataset.queued !== 'true') return;
-            postsToUnqueue.push({
-                postId: parseInt(chip.dataset.platformPostId, 10),
-                platform: chip.dataset.platform,
-                queueBtn: queueChip,
-            });
-        });
-    });
-
-    if (postsToUnqueue.length === 0) {
-        alert('No queued posts selected');
-        return;
-    }
-
-    if (!confirm(`Remove ${postsToUnqueue.length} post${postsToUnqueue.length !== 1 ? 's' : ''} from the queue?`)) {
-        return;
-    }
-
-    const unqueueBtn = document.getElementById('unqueue-selected-btn');
-    const originalText = unqueueBtn.innerHTML;
-    unqueueBtn.innerHTML = '⏳ Removing...';
-    unqueueBtn.disabled = true;
-
-    let successCount = 0;
-    let errorCount = 0;
-
-    for (const post of postsToUnqueue) {
-        try {
-            const response = await fetch(`/compose/post/${post.postId}/unqueue`, {
-                method: 'POST'
-            });
-            const data = await response.json();
-
-            if (data.success) {
-                successCount++;
-                setChipQueuedUI(post.queueBtn, false);
-            } else {
-                errorCount++;
-            }
-        } catch (e) {
-            errorCount++;
-        }
-    }
-
-    unqueueBtn.innerHTML = originalText;
-    unqueueBtn.disabled = false;
-
-    if (errorCount === 0) {
-        showToast(`Removed ${successCount} post${successCount !== 1 ? 's' : ''} from queue`, 'success');
-    } else {
-        showToast(`Removed ${successCount}, failed ${errorCount}`, errorCount > successCount ? 'error' : 'warning');
-    }
-
-    toggleSelectMode();
 }
 
 // ============ Bulk: add or remove a platform on the selected posts ============
@@ -7152,175 +6707,8 @@ async function findStockImagesForSelected() {
     toggleSelectMode();
 }
 
-// Total saved posts per platform (from the server, across ALL posts — not just
-// the page currently loaded). Used for the Queue-All modal counts. These count
-// platform rows, which is what queueing acts on; POSTS_TOTAL counts cards.
-const PLATFORM_TOTALS = {{ platform_totals | tojson }};
+// Cards saved in total, across every page; "load more" reports progress against it.
 const POSTS_TOTAL = {{ group_total | default(0) }};
-
-function showQueueAllModal() {
-    // "Queue All" is server-side and queues every unscheduled post, so show the
-    // full per-platform totals rather than counting the loaded DOM.
-    document.getElementById('unscheduled-linkedin-count').textContent = PLATFORM_TOTALS.linkedin || 0;
-    document.getElementById('unscheduled-threads-count').textContent = PLATFORM_TOTALS.threads || 0;
-    document.getElementById('unscheduled-facebook-count').textContent = PLATFORM_TOTALS.facebook || 0;
-    document.getElementById('unscheduled-twitter-count').textContent = PLATFORM_TOTALS.twitter || 0;
-    document.getElementById('unscheduled-instagram-count').textContent = PLATFORM_TOTALS.instagram || 0;
-
-    new bootstrap.Modal(document.getElementById('queueAllModal')).show();
-}
-
-async function queueAllUnscheduled(platform) {
-    if (platform === 'linkedin' && !linkedinConnected) {
-        alert('Please connect LinkedIn first');
-        return;
-    }
-    if (platform === 'threads' && !threadsConnected) {
-        alert('Please connect Threads first');
-        return;
-    }
-    if (platform === 'facebook' && !facebookConnected) {
-        alert('Please connect Facebook first');
-        return;
-    }
-    if (platform === 'twitter' && !twitterConnected) {
-        alert('Please connect X/Twitter first');
-        return;
-    }
-    if (platform === 'instagram' && !instagramConnected) {
-        alert('Please connect Instagram first');
-        return;
-    }
-
-    const modalEl = document.getElementById('queueAllModal');
-    const modal = modalEl ? bootstrap.Modal.getInstance(modalEl) : null;
-    if (modal) modal.hide();
-    showToast(`Queuing all unscheduled ${platform} posts...`, 'info');
-
-    // Server-side: queues every unscheduled post for the platform, not just the
-    // ones currently loaded on the page.
-    try {
-        const fd = new FormData();
-        fd.append('platform', platform);
-        const res = await fetch('/compose/posts/queue-all-unscheduled', { method: 'POST', body: fd });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-            showToast(data.error || 'Queue failed', 'error');
-            return;
-        }
-        if (data.queued === 0 && !data.no_slots) {
-            showToast(`No unscheduled ${platform} posts to queue`, 'warning');
-            return;
-        }
-        let msg = `Queued ${data.queued} ${platform} post${data.queued !== 1 ? 's' : ''}`;
-        if (data.skipped) msg += `, skipped ${data.skipped}`;
-        if (data.no_slots) msg += ' (ran out of time slots — add more)';
-        showToast(msg, data.no_slots ? 'warning' : 'success');
-        setTimeout(() => location.reload(), 1200);
-    } catch (e) {
-        showToast('Queue failed: ' + e.message, 'error');
-    }
-}
-
-async function queueAllBothPlatforms() {
-    const linkedinCount = parseInt(document.getElementById('unscheduled-linkedin-count').textContent) || 0;
-    const threadsCount = parseInt(document.getElementById('unscheduled-threads-count').textContent) || 0;
-    const facebookCount = parseInt(document.getElementById('unscheduled-facebook-count').textContent) || 0;
-    const twitterCount = parseInt(document.getElementById('unscheduled-twitter-count')?.textContent) || 0;
-    const instagramCount = parseInt(document.getElementById('unscheduled-instagram-count')?.textContent) || 0;
-
-    if (linkedinCount === 0 && threadsCount === 0 && facebookCount === 0 && twitterCount === 0 && instagramCount === 0) {
-        showToast('No unscheduled posts to queue', 'warning');
-        return;
-    }
-
-    if (linkedinCount > 0 && !linkedinConnected) {
-        alert('Please connect LinkedIn first to queue LinkedIn posts');
-        return;
-    }
-    if (threadsCount > 0 && !threadsConnected) {
-        alert('Please connect Threads first to queue Threads posts');
-        return;
-    }
-    if (facebookCount > 0 && !facebookConnected) {
-        alert('Please connect Facebook first to queue Facebook posts');
-        return;
-    }
-    if (twitterCount > 0 && !twitterConnected) {
-        alert('Please connect X/Twitter first to queue Twitter posts');
-        return;
-    }
-    if (instagramCount > 0 && !instagramConnected) {
-        alert('Please connect Instagram first to queue Instagram posts');
-        return;
-    }
-    
-    bootstrap.Modal.getInstance(document.getElementById('queueAllModal')).hide();
-    
-    let totalSuccess = 0;
-    let totalFail = 0;
-    
-    // Queue LinkedIn posts
-    if (linkedinCount > 0 && linkedinConnected) {
-        showToast(`Adding ${linkedinCount} LinkedIn posts to queue...`, 'info');
-        const linkedinResult = await queuePlatformPosts('linkedin');
-        totalSuccess += linkedinResult.success;
-        totalFail += linkedinResult.fail;
-    }
-    
-    // Queue Threads posts
-    if (threadsCount > 0 && threadsConnected) {
-        showToast(`Adding ${threadsCount} Threads posts to queue...`, 'info');
-        const threadsResult = await queuePlatformPosts('threads');
-        totalSuccess += threadsResult.success;
-        totalFail += threadsResult.fail;
-    }
-
-    // Queue Facebook posts
-    if (facebookCount > 0 && facebookConnected) {
-        showToast(`Adding ${facebookCount} Facebook posts to queue...`, 'info');
-        const facebookResult = await queuePlatformPosts('facebook');
-        totalSuccess += facebookResult.success;
-        totalFail += facebookResult.fail;
-    }
-
-    // Queue Twitter posts
-    if (twitterCount > 0 && twitterConnected) {
-        showToast(`Adding ${twitterCount} Twitter posts to queue...`, 'info');
-        const twitterResult = await queuePlatformPosts('twitter');
-        totalSuccess += twitterResult.success;
-        totalFail += twitterResult.fail;
-    }
-
-    // Queue Instagram posts
-    if (instagramCount > 0 && instagramConnected) {
-        showToast(`Adding ${instagramCount} Instagram posts to queue...`, 'info');
-        const instagramResult = await queuePlatformPosts('instagram');
-        totalSuccess += instagramResult.success;
-        totalFail += instagramResult.fail;
-    }
-
-    if (totalFail === 0) {
-        showToast(`Added ${totalSuccess} posts to queue!`, 'success');
-    } else {
-        showToast(`Added ${totalSuccess}, skipped ${totalFail}`, 'warning');
-    }
-    setTimeout(() => location.reload(), 1200);
-}
-
-async function queuePlatformPosts(platform) {
-    // Server-side queue-all for one platform (used by "Queue All").
-    try {
-        const fd = new FormData();
-        fd.append('platform', platform);
-        const res = await fetch('/compose/posts/queue-all-unscheduled', { method: 'POST', body: fd });
-        const data = await res.json();
-        if (res.ok && data.success) {
-            return { success: data.queued || 0, fail: data.skipped || 0 };
-        }
-    } catch (e) { /* fall through */ }
-    return { success: 0, fail: 0 };
-}
 
 function clearAllPosts() {
     if (!confirm('Clear ALL generated posts? This cannot be undone.')) return;
@@ -8157,6 +7545,9 @@ function executeReplaceAll() {
 // --- Manual Post Creation ---
 
 const platformCharLimits = {
+    xiaohongshu: 1000,
+    douyin: 1000,
+    wechat: 20000,
     twitter: 280,
     threads: 500,
     linkedin: 3000,

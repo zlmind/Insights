@@ -29,11 +29,19 @@ work = connect(database, "linkedin", "li-work", "Work")
 studio = connect(database, "linkedin", "li-studio", "Studio")
 threads = connect(database, "threads", "th-1", "brandco")
 
-created = client.post("/compose/post/create", data={
-    "targets": [f"linkedin:{work}", f"linkedin:{studio}", f"threads:{threads}"],
-    "content": "Queued for everyone",
-}).get_json()
-ids = created["post_ids"]
+# The Western platforms are hidden from the UI, so the create API refuses them;
+# these rows are the legacy kind the queue must keep serving — seeded directly.
+ids = [
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="linkedin",
+        content="Queued for everyone", account_id=work, db_path=P),
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="linkedin",
+        content="Queued for everyone", account_id=studio, db_path=P),
+    database.add_standalone_post(
+        source_type="manual", source_content="gate", platform="threads",
+        content="Queued for everyone", account_id=threads, db_path=P),
+]
 
 # --- queueing the whole card takes one slot per target ---------------------
 queued = client.post(f"/compose/post/{ids[0]}/queue", data={

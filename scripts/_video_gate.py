@@ -224,7 +224,7 @@ def make_sample_mp4(directory, seconds=2, size="320x240"):
          "-f", "lavfi", "-i", f"testsrc=duration={seconds}:size={size}:rate=30",
          "-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}",
          "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", path],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=120,
     )
     check(result.returncode == 0 and os.path.getsize(path) > 1000,
           f"ffmpeg could not make a sample video: {result.stderr.strip()[:300]}")
@@ -235,3 +235,23 @@ def no_wait(*modules):
     """Stop status polling from really sleeping in the given client modules."""
     for module in modules:
         module._sleep = lambda _seconds: None
+
+
+CLOUDINARY_KEYS = ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET")
+
+
+def set_cloudinary(database, ready):
+    """Turn Cloudinary on or off the way the settings page does.
+
+    The app reads its Cloudinary credentials through ``appconfig`` — a setting
+    saved on /settings, then the environment — so the module flag the gates
+    used to set does nothing. A saved setting is what turns it on; and since
+    the repo's real .env leaks into a gate's environment through
+    ``load_dotenv``, the fallback is cleared too, so "off" is genuinely off.
+    """
+    for key in CLOUDINARY_KEYS:
+        os.environ.pop(key, None)
+        if ready:
+            database.set_setting(key, f"gate-{key.lower()}", db_path=database.DB_PATH)
+        else:
+            database.delete_setting(key, db_path=database.DB_PATH)
