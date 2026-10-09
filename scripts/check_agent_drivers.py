@@ -30,7 +30,7 @@ class FakeCLI:
         self.calls.append(list(args))
         for a in args:
             if a.endswith((".md", ".html")):
-                with open(a, encoding="utf-8") as fh:
+                with open(a, encoding="utf-8", newline="") as fh:
                     self.contents.append(fh.read())
         return self._script(args)
 

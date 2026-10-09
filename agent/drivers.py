@@ -131,7 +131,7 @@ class WechatSyncDriver:
     def _sync_one(self, ws_id, target, title, content) -> dict:
         os.makedirs(self._tmp_root, exist_ok=True)
         path = os.path.join(self._tmp_root, f"push-{os.getpid()}-{ws_id}.md")
-        with open(path, "w", encoding="utf-8") as fh:
+        with open(path, "w", encoding="utf-8", newline="") as fh:
             fh.write(content)
         try:
             code, out, err = self._run(
