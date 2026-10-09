@@ -52,6 +52,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from flasgger import Swagger
 import usage_meter
+import agent_hub
 import database
 import content_library
 import media_probe
@@ -454,7 +455,8 @@ def allowed_video_file(filename):
 # the health check). Mutating (non-GET) requests are recorded in
 # activity_log via after_request; named auth events use log_event().
 
-PUBLIC_ENDPOINTS = {"login", "signup", "logout", "health"}
+PUBLIC_ENDPOINTS = {"login", "signup", "logout", "health",
+                    "agent_heartbeat", "agent_claim", "agent_job_events"}
 
 # Auto-tracking writes a row for every non-GET request, but we suppress
 # rows for these endpoints because they're either covered by an explicit
@@ -10261,6 +10263,46 @@ def compose_post_to_threads(post_id: int):
 def compose_post_to_instagram(post_id: int):
     """Post a standalone post to Instagram immediately."""
     return _compose_publish_one(post_id, 'instagram')
+
+
+# ---------------------------------------------------------------------------
+# The local publishing agent's door. Token-authed, session-free; see
+# agent_hub. Every handler is a thin shell: the body is one agent_hub or
+# database call plus a status code.
+# ---------------------------------------------------------------------------
+
+
+@app.route("/agent/heartbeat", methods=["POST"])
+def agent_heartbeat():
+    if not agent_hub.check_agent_auth():
+        return jsonify({"error": "unauthorized"}), 401
+    agent_hub.record_heartbeat(request.get_json(silent=True) or {})
+    return jsonify({"ok": True})
+
+
+@app.route("/agent/jobs/claim", methods=["POST"])
+def agent_claim():
+    if not agent_hub.check_agent_auth():
+        return jsonify({"error": "unauthorized"}), 401
+    job = database.claim_agent_job(
+        kinds=("article_sync", "video_publish"),
+        agent=(request.get_json(silent=True) or {}).get("agent", ""),
+    )
+    if not job:
+        return "", 204
+    return jsonify(job)
+
+
+@app.route("/agent/jobs/<int:job_id>/events", methods=["POST"])
+def agent_job_events(job_id: int):
+    if not agent_hub.check_agent_auth():
+        return jsonify({"error": "unauthorized"}), 401
+    event = request.get_json(silent=True) or {}
+    try:
+        job = database.record_agent_job_event(job_id, event)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(job)
 
 
 def _queue_row(row, already, card_rows=None, no_slots=None):
