@@ -137,6 +137,21 @@
                                     <span class="agent-push-result ms-2 small"
                                           data-post-id="{{ entry.id }}"></span>
                                     {% endif %}
+                                    {% if entry.platform in push_platforms %}
+                                    <span class="d-inline-flex align-items-center gap-1 ms-1 agent-schedule-row"
+                                          data-post-id="{{ entry.id }}"
+                                          data-platform="{{ entry.platform }}">
+                                        <input type="datetime-local"
+                                               class="form-control form-control-sm agent-schedule-at"
+                                               style="max-width: 13rem;"
+                                               aria-label="定时推送时间">
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-success btn-agent-schedule"
+                                                title="到点后由本机 agent 推送草稿箱；现在入队，agent 离线也可以">
+                                            📅 定时推送
+                                        </button>
+                                    </span>
+                                    {% endif %}
                                 {% endfor %}
                                 <button class="btn btn-outline-danger" onclick="deletePost({{ group.id }}, this)" title="Delete this post everywhere">
                                     🗑️

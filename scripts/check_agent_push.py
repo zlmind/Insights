@@ -71,6 +71,14 @@ def main():
     check(b'platform-zhihu' in r.data and b'platform-toutiao' in r.data,
           "the compose page renders checkboxes for the new platforms")
 
+    # --- the scheduled-push entry renders for domestic article platforms ---
+    agent_hub._LAST_HEARTBEAT["t"] = None          # back to offline
+    html = client.get("/compose").get_data(as_text=True)
+    check('btn-agent-schedule' in html,
+          "the scheduled push entry renders next to the push button")
+    check('datetime-local' in html,
+          "the schedule entry carries a datetime-local input")
+
     print("AGENT_PUSH_OK")
 
 

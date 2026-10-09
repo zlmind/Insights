@@ -8227,5 +8227,26 @@ function renderPushResults(job, chip) {
         `${r.success ? '✅' : '❌'} ${r.success ? '已推入草稿，请到平台确认发布' : (r.error || '失败')}`
     ).join('　');
 }
+
+// Scheduled domestic push: same route, plus run_at; queuing while the agent
+// is offline is the point, so no online check happens client-side either.
+document.addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('.btn-agent-schedule');
+    if (!btn || btn.disabled) return;
+    const row = btn.closest('.agent-schedule-row');
+    const at = row.querySelector('.agent-schedule-at').value;
+    if (!at) { alert('先选一个推送时间'); return; }
+    btn.disabled = true;
+    try {
+        const form = new FormData();
+        form.set('target', row.dataset.platform);
+        form.set('run_at', at);
+        const r = await fetch(`/compose/post/${row.dataset.postId}/push`,
+                              {method: 'POST', body: form});
+        const body = await r.json();
+        if (!r.ok) { alert(body.error || '定时推送失败'); btn.disabled = false; return; }
+        btn.textContent = body.already ? '已在队列' : '已定时 ✓';
+    } catch (e) { alert('网络错误：' + e); btn.disabled = false; }
+});
 </script>
 {% endblock %}
