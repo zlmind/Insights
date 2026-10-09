@@ -61,6 +61,8 @@ AGENT_GATES = [
      "card pushes enqueue verbatim copy and dedupe while a job is in flight"),
     ("check_agent_agent.py", "AGENT_AGENT_OK",
      "the local agent claims over real HTTP, reports honestly and survives errors"),
+    ("check_agent_drivers.py", "AGENT_DRIVERS_OK",
+     "the wechatsync driver preflights login, classifies failures and cleans temp files"),
 ]
 
 # The Compose page's gates. Several scripts hold more than one gate and pick one
