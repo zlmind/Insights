@@ -59,6 +59,8 @@ AGENT_GATES = [
      "the /agent/* door authenticates by token and moves jobs through events"),
     ("check_domestic_publisher.py", "DOMESTIC_PUBLISHER_OK",
      "card pushes enqueue verbatim copy and dedupe while a job is in flight"),
+    ("check_agent_agent.py", "AGENT_AGENT_OK",
+     "the local agent claims over real HTTP, reports honestly and survives errors"),
 ]
 
 # The Compose page's gates. Several scripts hold more than one gate and pick one
