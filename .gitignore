@@ -24,4 +24,6 @@ static/threads_profile_25313868101646387.jpg
 static/instagram_profile_*.jpg
 extension/node_modules/
 extension/dist/
-extension/upstream/
+extension/upstream/*
+!extension/upstream/UPSTREAM_SHA
+!extension/E2E.md
