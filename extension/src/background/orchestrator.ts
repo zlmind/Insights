@@ -12,10 +12,18 @@ export interface PlatformResult {
   code?: string;
 }
 
-export function buildHeartbeat(logins: Record<string, boolean>): object {
+export interface Heartbeat {
+  agent: string;
+  busy: number | null;
+  tools: { extension: { available: boolean; platformIds: string[];
+    platforms: { id: string; logged_in: boolean }[] } };
+}
+
+export function buildHeartbeat(logins: Record<string, boolean>,
+                               busyJobId: number | null): Heartbeat {
   return {
     agent: AGENT_NAME,
-    busy: null,
+    busy: busyJobId,
     tools: {
       extension: {
         available: true,
@@ -24,6 +32,12 @@ export function buildHeartbeat(logins: Record<string, boolean>): object {
       },
     },
   };
+}
+
+// A publish can hold for minutes; hammering a down server every 5s is noise.
+// Exponential from 5s, capped at one minute, reset by the caller on success.
+export function backoffSeconds(consecutiveFailures: number): number {
+  return Math.min(60, 5 * 2 ** Math.max(0, consecutiveFailures - 1));
 }
 
 export function claimBody(platforms: string[]): object {
@@ -47,10 +61,9 @@ export interface CycleDeps {
 }
 
 export async function runCycle(deps: CycleDeps): Promise<boolean> {
-  if (deps.busy.current !== null) return false;
-  // The claim loop runs every 5s, but the heartbeat (and the login probes it
-  // carries) stay on their own 30s cadence: the mp homepage must not be
-  // fetched five times more often than the spec's heartbeat window needs.
+  // The beat runs before the busy check on purpose: a publish can hold for
+  // minutes, and the server greys the compose buttons after sixty seconds of
+  // silence — the one gap the python agent's beat thread exists to avoid.
   const clock = deps.beatClock || { lastBeat: 0 };
   const every = (deps.beatEverySeconds ?? 30) * 1000;
   if (Date.now() - clock.lastBeat >= every) {
@@ -59,8 +72,10 @@ export async function runCycle(deps: CycleDeps): Promise<boolean> {
     try {
       logins = await deps.checkLogins();
     } catch { /* a lost login probe must not kill the beat */ }
-    await deps.client.heartbeat(buildHeartbeat(logins)).catch(() => {});
+    await deps.client.heartbeat(buildHeartbeat(logins, deps.busy.current))
+      .catch(() => {});
   }
+  if (deps.busy.current !== null) return false;
   const job = await deps.client.claim(claimBody(PLATFORM_IDS));
   if (!job) return false;
   deps.busy.current = job.id;
@@ -107,7 +122,23 @@ export async function publishJob(deps: PublishDeps, job: Job): Promise<void> {
     return;
   }
   const ok = results.filter((r) => r.success).length;
-  const status = results.length && ok === results.length ? "succeeded"
+  const retryable = results.some(
+    (r) => r.code === "sync_failed" || r.code === "timeout");
+  if (results.length && ok === 0 && retryable) {
+    // The server requeues only a `failed` event: an all-retryable failure
+    // sends one so timeout/sync_failed burn an attempt instead of dying
+    // terminally. needs_login-only failures keep the `done` shape below —
+    // retrying cannot log the platform in, and `done` preserves the
+    // per-platform results the queue page renders.
+    await deps.client.sendEvent(job.id, {
+      type: "failed", retryable: true,
+      error: results.map((r) => r.error || r.code || "失败").join("；"),
+      results,
+    });
+    return;
+  }
+  const status = !results.length ? "failed"
+    : ok === results.length ? "succeeded"
     : ok > 0 ? "partial" : "failed";
   await deps.client.sendEvent(job.id, { type: "done", status, results });
 }

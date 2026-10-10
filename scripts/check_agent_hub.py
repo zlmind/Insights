@@ -104,6 +104,18 @@ def main():
     check(r.status_code == 204,
           "a broken payload in the candidate window is skipped, not a 500")
 
+    # A matching job behind a full window of the other lane's jobs must
+    # still be found: the scan pages, it does not stop at the first batch.
+    for _ in range(120):
+        database.enqueue_agent_job(
+            "article_sync", json.dumps({"items": [{"target": "wechat", "content": "x"}],
+                                        "executor": "extension"}))
+    tail_job = database.enqueue_agent_job(
+        "article_sync", json.dumps({"items": [{"target": "zhihu", "content": "x"}]}))
+    r = client.post("/agent/jobs/claim", headers=AUTH, json={"agent": "layne-win"})
+    check(r.status_code == 200 and r.get_json()["id"] == tail_job,
+          "a matching job behind 120 other-lane jobs is still claimed")
+
     # An extension-shaped heartbeat (tools keyed by the extension's name)
     # feeds the same login-state view; a tools-less heartbeat is tolerated.
     client.post("/agent/heartbeat", headers=AUTH, json={

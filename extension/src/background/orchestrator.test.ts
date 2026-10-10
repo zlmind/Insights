@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildHeartbeat, claimBody, publishJob, runCycle } from "./orchestrator";
+import { backoffSeconds, buildHeartbeat, claimBody, publishJob, runCycle } from "./orchestrator";
 
 const job = (id: number, executor?: string) => ({
   id,
@@ -18,15 +18,24 @@ function makeClient(claimResult: unknown) {
 
 describe("heartbeat and claim shapes", () => {
   it("builds the same heartbeat shape as the python agent", () => {
-    expect(buildHeartbeat({ wechat: true })).toEqual({
+    expect(buildHeartbeat({ wechat: true }, null)).toEqual({
       agent: "insights-ext", busy: null,
       tools: { extension: { available: true, platformIds: ["wechat"],
         platforms: [{ id: "wechat", logged_in: true }] } },
     });
   });
+  it("carries the job id while a publish holds the worker", () => {
+    expect(buildHeartbeat({ wechat: true }, 7).busy).toBe(7);
+  });
   it("claims as the extension with its platform capabilities", () => {
     expect(claimBody(["wechat"])).toEqual({
       agent: "insights-ext", executor: "extension", platforms: ["wechat"] });
+  });
+  it("backs off exponentially and caps at a minute", () => {
+    expect(backoffSeconds(1)).toBe(5);
+    expect(backoffSeconds(2)).toBe(10);
+    expect(backoffSeconds(3)).toBe(20);
+    expect(backoffSeconds(9)).toBe(60);
   });
 });
 
@@ -58,6 +67,25 @@ describe("runCycle", () => {
     expect(await runCycle(deps)).toBe(false);
     expect(client.claim).not.toHaveBeenCalled();
   });
+
+  it("keeps beating while a job is running, with its id as busy", async () => {
+    const client = makeClient(null);
+    const deps = { client, checkLogins: vi.fn(async () => ({ wechat: true })),
+                   busy: { current: 42 }, beatClock: { lastBeat: 0 },
+                   publishOne: vi.fn() };
+    await runCycle(deps);
+    expect(client.claim).not.toHaveBeenCalled();
+    expect(client.heartbeat).toHaveBeenCalledTimes(1);
+    expect(client.heartbeat.mock.calls[0][0].busy).toBe(42);
+  });
+
+  it("lets a claim rejection reach the caller so the loop can back off",
+    async () => {
+      const client = makeClient(null);
+      client.claim = vi.fn().mockRejectedValue(new Error("server down"));
+      await expect(runCycle({ client, checkLogins: async () => ({}),
+        busy: { current: null }, publishOne: vi.fn() })).rejects.toThrow("server down");
+    });
 
   it("keeps the heartbeat on its own 30s cadence while claiming every cycle",
     async () => {
@@ -98,9 +126,23 @@ describe("publishJob result normalization", () => {
         code: "needs_login", error: "未登录" });
     await publishJob(d, job(8));
     const done = d.client.sendEvent.mock.calls[1][1];
+    expect(done.type).toBe("done");
     expect(done.status).toBe("failed");
     expect(done.results[0].code).toBe("needs_login");
   });
+
+  it("a retryable all-failure reports failed with retryable so the server requeues",
+    async () => {
+      const d = deps();
+      d.publishOne.mockResolvedValue(
+        { platform: "wechat", success: false, draft: false,
+          code: "timeout", error: "超时" });
+      await publishJob(d, job(8));
+      const evt = d.client.sendEvent.mock.calls[1][1];
+      expect(evt.type).toBe("failed");
+      expect(evt.retryable).toBe(true);
+      expect(evt.results[0].code).toBe("timeout");
+    });
 
   it("maps an exception to a retryable failed event", async () => {
     const d = deps();

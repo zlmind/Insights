@@ -42,6 +42,16 @@ export type WeixinPublishResult =
   | { ok: true; detail: string }
   | { ok: false; code: "needs_login" | "sync_failed" | "timeout"; error: string };
 
+// mp.weixin strips non-mmbiz hotlinks, so a content image the pipeline
+// refused to re-host would render as a broken image in the draft while the
+// UI reported success. Count them; any loss fails the publish.
+export function uploadSummary(_total: number,
+                              uploads: (WeixinUploadResult | null)[]):
+    { ok: boolean; failed: number } {
+  const failed = uploads.filter((u) => u === null).length;
+  return { ok: failed === 0, failed };
+}
+
 // A 1x1 gray PNG: the draft API wants some cover; content quality is owned
 // by the author's images, not this fallback.
 const PLACEHOLDER_COVER =
@@ -162,16 +172,23 @@ export async function publishWeixinArticle(payload: {
         link.replaceWith(replacement);
       });
       const images = Array.from(doc.getElementsByTagName("img"));
+      const uploads: (WeixinUploadResult | null)[] = [];
       let firstUpload: WeixinUploadResult | null = null;
       for (const img of images) {
         const src = img.getAttribute("src");
         if (!src) continue;
         const result = (await uploadImageBySource(src, token))
           ?? (await uploadImage({ url: src }, 8, { userName, ticket, token }));
+        uploads.push(result);
         if (result) {
           if (!firstUpload) firstUpload = result;
           img.setAttribute("src", result.url);
         }
+      }
+      const summary = uploadSummary(images.length, uploads);
+      if (!summary.ok) {
+        return { ok: false, code: "sync_failed",
+                 error: `${summary.failed} 张正文图片上传失败，草稿未创建` };
       }
       const processedContent = doc.body.innerHTML;
 

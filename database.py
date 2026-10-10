@@ -6663,18 +6663,28 @@ def claim_agent_job(*, kinds=("article_sync",), agent="", stale_minutes=15,
                  (datetime.utcnow()
                   - timedelta(minutes=stale_minutes)).isoformat(timespec="seconds")),
             )
-            rows = conn.execute(
-                f"""
-                SELECT id, payload FROM agent_jobs
-                WHERE status = 'pending' AND kind IN ({marks})
-                  AND (run_after IS NULL OR run_after <= ?)
-                ORDER BY id LIMIT 100
-                """,
-                (*kinds, now),
-            ).fetchall()
-            chosen = next((rid for rid, text in rows
-                           if _job_matches_executor(text, executor, platforms)),
-                          None)
+            # Page through every pending candidate inside the transaction:
+            # stopping at the first batch would let a run of the other lane's
+            # jobs starve a matching one behind them.
+            chosen = None
+            last_id = 0
+            while chosen is None:
+                rows = conn.execute(
+                    f"""
+                    SELECT id, payload FROM agent_jobs
+                    WHERE status = 'pending' AND kind IN ({marks})
+                      AND (run_after IS NULL OR run_after <= ?)
+                      AND id > ?
+                    ORDER BY id LIMIT 100
+                    """,
+                    (*kinds, now, last_id),
+                ).fetchall()
+                if not rows:
+                    break
+                chosen = next((rid for rid, text in rows
+                               if _job_matches_executor(text, executor, platforms)),
+                              None)
+                last_id = rows[-1][0]
             if chosen is None:
                 conn.rollback()
                 return None
