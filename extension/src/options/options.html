@@ -1,1 +1,26 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Insights 发布助手</title></head><body>Insights 发布助手设置页（构建占位）</body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Insights 发布助手设置</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 30rem; color: #1e293b; }
+    label { display: block; margin: 1rem 0 .25rem; font-weight: 600; }
+    input { width: 100%; box-sizing: border-box; padding: .5rem; }
+    button { margin-top: 1rem; padding: .5rem 1.25rem; }
+    .status { margin-top: 1rem; font-weight: 600; }
+    .login { margin-top: .5rem; color: #475569; }
+  </style>
+</head>
+<body>
+  <h1>Insights 发布助手</h1>
+  <p>把 Insights 的文章推进公众号草稿箱。配对一次即可：填服务器地址与共享密钥。</p>
+  <label for="server-url">服务器地址</label>
+  <input id="server-url" type="url" placeholder="https://your-insights-server">
+  <label for="agent-token">AGENT_TOKEN</label>
+  <input id="agent-token" type="password" placeholder="设置页生成的共享密钥">
+  <button id="save" type="button">保存并测试</button>
+  <div class="status" id="status"></div>
+  <div class="login" id="weixin-login"></div>
+</body>
+</html>
