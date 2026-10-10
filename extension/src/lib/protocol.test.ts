@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ProtocolClient, loadSettings } from "./protocol";
+import { ProtocolClient, loadSettings, pairWithCode } from "./protocol";
 
 const settings = { serverUrl: "https://insights.example", token: "t0" };
 
@@ -47,5 +47,32 @@ describe("ProtocolClient", () => {
     };
     const s = await loadSettings(storage as never);
     expect(s).toEqual({ serverUrl: "https://s.example", token: "t" });
+  });
+});
+
+describe("pairWithCode", () => {
+  it("exchanges a one-time code for the bearer token", async () => {
+    const f = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ token: "t-new" }),
+      { status: 200, headers: { "Content-Type": "application/json" } }));
+    await expect(pairWithCode("https://s.example", "AB23CD45",
+      f as unknown as typeof fetch)).resolves.toBe("t-new");
+    const [url, init] = f.mock.calls[0];
+    expect(url).toBe("https://s.example/agent/pair");
+    expect((init as RequestInit).headers as Record<string, string>)
+      .not.toHaveProperty("Authorization");
+    expect(JSON.parse((init as RequestInit).body as string))
+      .toEqual({ code: "AB23CD45" });
+  });
+
+  it("throws on a refused code and on a tokenless body", async () => {
+    const f403 = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ error: "配对码无效或已过期" }), { status: 403 }));
+    await expect(pairWithCode("https://s.example", "DEAD", f403 as typeof fetch))
+      .rejects.toThrow("HTTP 403");
+    const fEmpty = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({}), { status: 200 }));
+    await expect(pairWithCode("https://s.example", "AB23CD45",
+      fEmpty as typeof fetch)).rejects.toThrow("密钥");
   });
 });

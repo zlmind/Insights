@@ -83,3 +83,19 @@ export class ProtocolClient {
     }
   }
 }
+
+// The bootstrap that OBTAINS the token, so it carries no bearer header:
+// one live pairing code from the queue page trades for AGENT_TOKEN.
+export async function pairWithCode(
+  baseUrl: string, code: string, fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  const resp = await fetchImpl(baseUrl + "/agent/pair", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  if (!resp.ok) throw new Error(`/agent/pair -> HTTP ${resp.status}`);
+  const body = (await resp.json()) as { token?: string };
+  if (!body.token) throw new Error("服务器未返回密钥");
+  return body.token;
+}

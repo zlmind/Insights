@@ -8,19 +8,29 @@
     label { display: block; margin: 1rem 0 .25rem; font-weight: 600; }
     input { width: 100%; box-sizing: border-box; padding: .5rem; }
     button { margin-top: 1rem; padding: .5rem 1.25rem; }
+    .primary { background: #2563eb; color: #fff; border: none; border-radius: .375rem; }
     .status { margin-top: 1rem; font-weight: 600; }
     .login { margin-top: .5rem; color: #475569; }
+    details { margin-top: 1.5rem; color: #475569; }
+    summary { cursor: pointer; }
   </style>
 </head>
 <body>
   <h1>Insights 发布助手</h1>
-  <p>把 Insights 的文章推进公众号草稿箱。配对一次即可：填服务器地址与共享密钥。</p>
+  <p>把 Insights 的文章推进公众号草稿箱。配对一次即可。</p>
   <label for="server-url">服务器地址</label>
-  <input id="server-url" type="url" placeholder="https://your-insights-server">
-  <label for="agent-token">AGENT_TOKEN</label>
-  <input id="agent-token" type="password" placeholder="设置页生成的共享密钥">
-  <button id="save" type="button">保存并测试</button>
+  <input id="server-url" type="url" placeholder="http://127.0.0.1:5001">
+  <label for="pair-code">配对码</label>
+  <input id="pair-code" inputmode="latin" maxlength="12" autocomplete="off"
+         placeholder="发布队列页 →「配对浏览器扩展」生成">
+  <button id="pair" type="button" class="primary">一键配对</button>
   <div class="status" id="status"></div>
   <div class="login" id="weixin-login"></div>
+  <details>
+    <summary>手动填密钥（备用）</summary>
+    <label for="agent-token">AGENT_TOKEN</label>
+    <input id="agent-token" type="password" placeholder="与服务器设置页一致的共享密钥">
+    <button id="save" type="button">保存并测试</button>
+  </details>
 </body>
 </html>
