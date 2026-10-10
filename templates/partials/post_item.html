@@ -118,47 +118,6 @@
                                     🚀
                                 </button>
                                 {% endif %}
-                                {# Domestic article platforms push through the
-                                   local agent; the button says why whenever it
-                                   cannot be used right now. #}
-                                {% for entry in group.platforms %}
-                                    {% if entry.platform in push_platforms %}
-                                    {# The button says why it cannot be used,
-                                       one reason at a time: offline first,
-                                       then the settings-page switch, then
-                                       the platform's login state. #}
-                                    <button type="button"
-                                            class="btn btn-sm btn-success btn-agent-push"
-                                            data-post-id="{{ entry.id }}"
-                                            data-platform="{{ entry.platform }}"
-                                            {% if not agent_online %}disabled
-                                                title="本机代理离线：请在本机运行 python -m agent"
-                                            {% elif not push_platforms[entry.platform].enabled %}disabled
-                                                title="该平台未在设置页启用"
-                                            {% elif platform_login.get(entry.platform) is false %}disabled
-                                                title="{{ push_platforms[entry.platform].label }}在本机浏览器未登录，请先登录一次"
-                                            {% endif %}>
-                                        {% if platform_login.get(entry.platform) is false %}⚠ {% endif %}📤 推送到{{ push_platforms[entry.platform].label }}草稿箱
-                                    </button>
-                                    <span class="agent-push-result ms-2 small"
-                                          data-post-id="{{ entry.id }}"></span>
-                                    {% endif %}
-                                    {% if entry.platform in push_platforms %}
-                                    <span class="d-inline-flex align-items-center gap-1 ms-1 agent-schedule-row"
-                                          data-post-id="{{ entry.id }}"
-                                          data-platform="{{ entry.platform }}">
-                                        <input type="datetime-local"
-                                               class="form-control form-control-sm agent-schedule-at"
-                                               style="max-width: 13rem;"
-                                               aria-label="定时推送时间">
-                                        <button type="button"
-                                                class="btn btn-sm btn-outline-success btn-agent-schedule"
-                                                title="到点后由本机 agent 推送草稿箱；现在入队，agent 离线也可以">
-                                            📅 定时推送
-                                        </button>
-                                    </span>
-                                    {% endif %}
-                                {% endfor %}
                                 <button class="btn btn-outline-danger" onclick="deletePost({{ group.id }}, this)" title="Delete this post everywhere">
                                     🗑️
                                 </button>
@@ -205,6 +164,48 @@
                             </span>
                             {% endfor %}
                         </div>
+
+                        {# Domestic article platforms push through the local
+                           agent, one group per row: button, result and the
+                           schedule pair travel together, so a crowded card
+                           wraps between groups instead of squeezing any of
+                           them into vertical text. #}
+                        {% set push_entries = group.platforms | selectattr('platform', 'in', push_platforms) | list %}
+                        {% if push_entries %}
+                        <div class="push-bar" role="group" aria-label="推送到草稿箱">
+                            {% for entry in push_entries %}
+                            <span class="push-group">
+                                <button type="button"
+                                        class="btn btn-sm btn-success btn-agent-push"
+                                        data-post-id="{{ entry.id }}"
+                                        data-platform="{{ entry.platform }}"
+                                        {% if not agent_online %}disabled
+                                            title="本机代理离线：请在本机运行 python -m agent"
+                                        {% elif not push_platforms[entry.platform].enabled %}disabled
+                                            title="该平台未在设置页启用"
+                                        {% elif platform_login.get(entry.platform) is false %}disabled
+                                            title="{{ push_platforms[entry.platform].label }}在本机浏览器未登录，请先登录一次"
+                                        {% endif %}>
+                                    {% if platform_login.get(entry.platform) is false %}⚠ {% endif %}📤 推送到{{ push_platforms[entry.platform].label }}草稿箱
+                                </button>
+                                <span class="agent-push-result small"
+                                      data-post-id="{{ entry.id }}"></span>
+                                <span class="d-inline-flex align-items-center gap-1 agent-schedule-row"
+                                      data-post-id="{{ entry.id }}"
+                                      data-platform="{{ entry.platform }}">
+                                    <input type="datetime-local"
+                                           class="form-control form-control-sm agent-schedule-at"
+                                           aria-label="定时推送时间">
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-success btn-agent-schedule"
+                                            title="到点后由本机 agent 推送草稿箱；现在入队，agent 离线也可以">
+                                        📅 定时推送
+                                    </button>
+                                </span>
+                            </span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
 
                         <div class="post-content-wrapper">
                             <pre class="social-copy-text" id="saved-post-{{ group.id }}" contenteditable="true" onfocus="enablePostEdit(this)" onblur="autoSavePost({{ group.id }}, this, 'standalone')">{{ group.content }}</pre>

@@ -455,8 +455,22 @@
 
     /* ---- Flat pass: toolbar discipline & layout rhythm ---- */
     .btn-agent-push { white-space: nowrap; }
-    .agent-schedule-row { flex-wrap: nowrap; }
-    .agent-schedule-row .form-control { max-width: 11.5rem; }
+    .push-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem 0.75rem;
+        margin: 0.45rem 0 0.35rem;
+    }
+    .push-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex: none;
+        max-width: 100%;
+    }
+    .push-group .btn { white-space: nowrap; flex: none; }
+    .push-group .agent-schedule-row .form-control { width: 10.5rem; }
     .post-header { flex-wrap: wrap; }
     .post-item .badge.bg-secondary {
         background: var(--brand-50, #F5F3FF) !important;
