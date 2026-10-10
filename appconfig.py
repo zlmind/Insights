@@ -109,6 +109,12 @@ SETTINGS: Dict[str, dict] = {
         "default": "wechat,zhihu,toutiao",
         "help": "逗号分隔；可推送 = 平台在列且本机 agent 在线。",
     },
+    "DOMESTIC_EXECUTORS": {
+        "group": "domestic", "label": "毕业到扩展的平台",
+        "default": "",
+        "help": 'JSON 映射，如 {"wechat": "extension"}。列出的平台由浏览器扩展执行，'
+                "其余走本机 agent。留空 = 全部走本机 agent。",
+    },
     # ── Image hosting & stock photos ──
     "CLOUDINARY_CLOUD_NAME": {
         "group": "media", "label": "Cloudinary cloud name",

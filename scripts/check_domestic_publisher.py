@@ -72,6 +72,38 @@ def main():
           and immediate["job_id"] != scheduled["job_id"],
           "an immediate push does not dedupe against a scheduled one")
 
+    # --- executor stamping: a graduated platform's jobs are marked for the
+    # extension, everyone else's stay on the old agent lane ---
+    database.set_setting("DOMESTIC_EXECUTORS", json.dumps({"wechat": "extension"}))
+    row4 = _seed_post(database)
+    stamped = dp.enqueue_card_push(row4)
+    payload = json.loads(database.get_agent_job(stamped["job_id"])["payload"])
+    check(payload.get("executor") == "extension",
+          "a graduated platform's payload is stamped for the extension")
+
+    row5 = database.add_standalone_post("freeform", "gate-seed", "zhihu", "正文")
+    row5 = database.get_standalone_post(row5)
+    unstamped = dp.enqueue_card_push(row5)
+    payload = json.loads(database.get_agent_job(unstamped["job_id"])["payload"])
+    check("executor" not in payload,
+          "an ungraduated platform's payload stays on the old agent lane")
+
+    database.set_setting("DOMESTIC_EXECUTORS", "{not json")
+    row6 = _seed_post(database)
+    broken = dp.enqueue_card_push(row6)
+    payload = json.loads(database.get_agent_job(broken["job_id"])["payload"])
+    check("executor" not in payload,
+          "a broken executor map reads as 'nothing graduated', not a 500")
+
+    # Dedupe still holds with stamping on: same setting, same payload string.
+    database.set_setting("DOMESTIC_EXECUTORS", json.dumps({"wechat": "extension"}))
+    row7 = _seed_post(database)
+    a = dp.enqueue_card_push(row7)
+    b = dp.enqueue_card_push(row7)
+    check(b["already"] is True and b["job_id"] == a["job_id"],
+          "stamped pushes dedupe like unstamped ones")
+    database.set_setting("DOMESTIC_EXECUTORS", "")
+
     print("DOMESTIC_PUBLISHER_OK")
 
 

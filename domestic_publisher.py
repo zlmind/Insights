@@ -49,14 +49,34 @@ def enabled_platforms(db_path=None) -> list[str]:
     return [p for p in DOMESTIC_ARTICLE_PLATFORMS if p in picked]
 
 
-def _payload_for(row) -> dict:
+def _executor_map(db_path=None) -> dict:
+    """``{platform: "extension"}`` for platforms graduated to the extension.
+
+    Anything unreadable reads as nothing graduated: a broken setting must
+    never block a push.
+    """
+    kwargs = {} if db_path is None else {"db_path": db_path}
+    raw = database.get_setting("DOMESTIC_EXECUTORS", "", **kwargs) or ""
+    try:
+        parsed = json.loads(raw) if raw.strip() else {}
+    except ValueError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {k: v for k, v in parsed.items() if v == "extension"}
+
+
+def _payload_for(row, db_path=None) -> dict:
     keys = row.keys() if hasattr(row, "keys") else ()
     title = row["title"] if "title" in keys else None
-    return {
+    payload = {
         "title": title or display_name(row["platform"]) + "草稿",
         "items": [{"target": row["platform"], "content": row["content"] or ""}],
         "post_id": row["id"],
     }
+    if _executor_map(db_path).get(row["platform"]) == "extension":
+        payload["executor"] = "extension"
+    return payload
 
 
 def enqueue_card_push(row, *, run_after=None, created_by=None, db_path=None):
@@ -70,7 +90,8 @@ def enqueue_card_push(row, *, run_after=None, created_by=None, db_path=None):
     exact match would then split one lane in two.
     """
     kwargs = {} if db_path is None else {"db_path": db_path}
-    payload = json.dumps(_payload_for(row), ensure_ascii=False)
+    payload = json.dumps(_payload_for(row, db_path=kwargs.get("db_path")),
+                         ensure_ascii=False)
     with database.sqlite3.connect(kwargs.get("db_path", database.DB_PATH)) as conn:
         existing = conn.execute(
             """
