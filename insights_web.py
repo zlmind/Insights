@@ -457,7 +457,8 @@ def allowed_video_file(filename):
 # activity_log via after_request; named auth events use log_event().
 
 PUBLIC_ENDPOINTS = {"login", "signup", "logout", "health",
-                    "agent_heartbeat", "agent_claim", "agent_job_events"}
+                    "agent_heartbeat", "agent_claim", "agent_job_events",
+                    "agent_pair"}
 
 # Auto-tracking writes a row for every non-GET request, but we suppress
 # rows for these endpoints because they're either covered by an explicit
@@ -10203,6 +10204,35 @@ def agent_job_json(job_id: int):
     if not job:
         return jsonify({"error": "not found"}), 404
     return jsonify(job)
+
+
+@app.route("/agent-jobs/pair-code", methods=["POST"])
+def agent_pair_code():
+    """Mint a pairing code for the queue page's「配对浏览器扩展」button.
+
+    Session-only by the login wall (not in PUBLIC_ENDPOINTS): minting is an
+    owner action, while redeeming on /agent/pair is the extension's one
+    unauthenticated bootstrap.
+    """
+    code = agent_hub.create_pairing_code()
+    return jsonify({"code": code, "expires_in": 300})
+
+
+@app.route("/agent/pair", methods=["POST"])
+def agent_pair():
+    """The extension's bootstrap: one live pairing code -> the bearer token.
+
+    Deliberately outside the bearer door — this is how a fresh extension
+    gets the token at all. The code's short life, single use and five-try
+    lockout are the rate limit; every redeem attempt lands in the activity
+    log via the auto-tracker, which is the audit trail here.
+    """
+    body = request.get_json(silent=True)
+    code = body.get("code") if isinstance(body, dict) else None
+    token = agent_hub.redeem_pairing_code(code)
+    if not token:
+        return jsonify({"error": "配对码无效或已过期"}), 403
+    return jsonify({"token": token})
 
 
 @app.route('/agent-jobs')

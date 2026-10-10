@@ -59,6 +59,8 @@ def main():
     page = client.get("/agent-jobs").get_data(as_text=True)
     check('已保存到草稿箱' in page and '公众号' in page,
           "the queue page renders per-platform results with display names")
+    check('pair-btn' in page and '配对浏览器扩展' in page,
+          "the queue page carries the pairing entry for a fresh extension")
 
     print("AGENT_UI_OK")
 

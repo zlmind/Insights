@@ -74,3 +74,49 @@ def platform_login_states() -> dict:
             if isinstance(entry, dict) and entry.get("id"):
                 states[entry["id"]] = bool(entry.get("logged_in"))
     return states
+
+
+# ── Pairing: the extension bootstraps its bearer token with a short code ────
+# In-memory, like the heartbeat: one pending code at a time, one process.
+# The code is what lets a fresh extension obtain AGENT_TOKEN without anyone
+# copying a 43-character secret by hand — so it is short-lived, single-use,
+# and dies after five wrong guesses.
+
+_PAIRING_TTL_SECONDS = 300
+_PAIRING_MAX_ATTEMPTS = 5
+_PAIRING_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"  # no 0/O/1/I/L to read aloud
+
+_PENDING_PAIRING: dict = {"code": None, "expires": 0.0, "attempts": 0}
+
+
+def create_pairing_code() -> str:
+    """Mint a fresh pairing code, replacing any pending one."""
+    import secrets
+    code = "".join(secrets.choice(_PAIRING_ALPHABET) for _ in range(8))
+    _PENDING_PAIRING["code"] = code
+    _PENDING_PAIRING["expires"] = time.time() + _PAIRING_TTL_SECONDS
+    _PENDING_PAIRING["attempts"] = 0
+    return code
+
+
+def redeem_pairing_code(code) -> str | None:
+    """The bearer token for one correct, live code; ``None`` otherwise.
+
+    Wrong guesses burn the code after ``_PAIRING_MAX_ATTEMPTS`` tries, so
+    the unauthenticated bootstrap endpoint cannot be brute-forced within
+    the code's lifetime. Matching ignores case and stray separators — the
+    code is typed by a human from a screen.
+    """
+    if not isinstance(code, str):
+        return None
+    normalized = code.strip().upper().replace(" ", "").replace("-", "")
+    pending = _PENDING_PAIRING["code"]
+    if pending is None or time.time() > _PENDING_PAIRING["expires"]:
+        return None
+    if normalized != pending:
+        _PENDING_PAIRING["attempts"] += 1
+        if _PENDING_PAIRING["attempts"] >= _PAIRING_MAX_ATTEMPTS:
+            _PENDING_PAIRING["code"] = None
+        return None
+    _PENDING_PAIRING["code"] = None
+    return agent_token()

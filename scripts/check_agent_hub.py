@@ -149,6 +149,46 @@ def main():
                                  db_path=database.DB_PATH) == [],
           "agent requests are not written to the activity log")
 
+    # --- pairing: the extension bootstraps its token with a one-time code ---
+    code = agent_hub.create_pairing_code()
+    check(len(code) == 8, "a pairing code is eight characters")
+    r = client.post("/agent/pair", json={"code": code})
+    check(r.status_code == 200 and r.get_json()["token"] == "secret-token",
+          "a valid code redeems the configured token exactly once")
+    r = client.post("/agent/pair", json={"code": code})
+    check(r.status_code == 403,
+          "a code is single-use — the second redeem is refused")
+
+    code = agent_hub.create_pairing_code()
+    r = client.post("/agent/pair", json={"code": code.lower()})
+    check(r.status_code == 200, "redeem tolerates case and is case-normalized")
+
+    code = agent_hub.create_pairing_code()
+    for _ in range(5):
+        r = client.post("/agent/pair", json={"code": "wrongwrong"})
+    check(r.status_code == 403 and agent_hub._PENDING_PAIRING["code"] is None,
+          "five wrong tries kill the pending code")
+    r = client.post("/agent/pair", json={"code": code})
+    check(r.status_code == 403, "a locked-out code no longer redeems")
+
+    code = agent_hub.create_pairing_code()
+    agent_hub._PENDING_PAIRING["expires"] = time.time() - 1
+    r = client.post("/agent/pair", json={"code": code})
+    check(r.status_code == 403, "an expired code is refused")
+
+    r = client.post("/agent/pair", json=["not", "an", "object"])
+    check(r.status_code == 403, "a non-object body is refused, not a 500")
+
+    # Minting a code is a session page action: an anonymous client gets the
+    # login wall, the logged-in one gets a code.
+    anon = web.app.test_client()
+    r = anon.post("/agent-jobs/pair-code")
+    check(r.status_code in (301, 302, 401),
+          "minting a code requires the session")
+    r = client.post("/agent-jobs/pair-code")
+    check(r.status_code == 200 and len(r.get_json()["code"]) == 8,
+          "a logged-in user mints an eight-character code")
+
     print("AGENT_HUB_OK")
 
 
