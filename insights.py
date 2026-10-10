@@ -1505,7 +1505,10 @@ def generate_posts_from_url(
     for lang, group in _group_platforms_by_lang(platforms).items():
         posts, meta = _generate_posts_from_url(
             url, group, tone, posts_per_platform, extra_context,
-            use_local, provider, model, lang)
+            use_local, provider, model, lang,
+            title=source_data.get("title") or "",
+            description=source_data.get("description") or "",
+            body_content=source_data.get("content") or "")
         if posts:
             merged.update(posts)
         if meta:
@@ -1516,7 +1519,8 @@ def generate_posts_from_url(
 
 def _generate_posts_from_url(url, platforms, tone, posts_per_platform,
                              extra_context, use_local, provider, model,
-                             lang: str):
+                             lang: str, title: str = "",
+                             description: str = "", body_content: str = ""):
     """One language group of :func:`generate_posts_from_url`.
 
     Returns ``(posts, condense_meta)``. ``posts`` maps each platform to its

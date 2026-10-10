@@ -11,6 +11,7 @@ error when the API dies, and the single message prefix (the doubled
 restructure retired).
 """
 
+import json
 import os
 import sys
 
@@ -121,6 +122,39 @@ def main():
               "and carries it exactly once — the doubled read is gone")
     finally:
         trafilatura.fetch_url = real_fetch
+
+    # --- the full generate path receives the extracted source ---
+    # The extraction refactor left the generation half reading locals that no
+    # longer exist (a NameError on body_content/title/description), and no
+    # gate drove the whole path, so the compose page 500'd on every URL.
+    insights._tweet_fetch_json = lambda endpoint: REAL_SHAPE
+    captured = {}
+
+    def fake_batch(client, model, messages_for, platforms, n, use_local, provider):
+        captured["messages"] = messages_for(platforms[0], n)
+        return {p: ["generated post"] for p in platforms}
+
+    real_client = getattr(insights, "_get_llm_client")
+    real_condense = getattr(insights, "condense_document_text", None)
+    insights._get_llm_client = lambda use_local, provider=None, model=None: (
+        object(), model or "test-model", provider or "openai")
+    insights._batch_generate = fake_batch
+    insights.condense_document_text = lambda text, **kw: (text, {"chunks": 1})
+    try:
+        result = insights.generate_posts_from_url(
+            "https://x.com/monicaa_AI/status/2108523986804158792",
+            platforms=["xiaohongshu"], posts_per_platform=1)
+        check(result["posts"]["xiaohongshu"] == ["generated post"],
+              "the tweet path generates posts end to end")
+        blob = json.dumps(captured["messages"], ensure_ascii=False)
+        check("Monica on X: 15 Sites" in blob,
+              "the prompt carries the extracted title")
+        check("15 Sites That Reveal Everything About Your Home" in blob,
+              "the prompt carries the tweet body")
+    finally:
+        insights._get_llm_client = real_client
+        if real_condense is not None:
+            insights.condense_document_text = real_condense
 
     print("X_FETCH_OK")
 
