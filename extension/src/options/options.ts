@@ -19,8 +19,14 @@ export function statusText(
   return "保存中…";
 }
 
+function el(id: string): HTMLElement {
+  const node = document.getElementById(id);
+  if (!node) throw new Error(`options page is missing #${id}`);
+  return node;
+}
+
 function setStatus(state: "ok" | "unauthorized" | "unreachable" | "saving"): void {
-  document.getElementById("status").textContent = statusText(state);
+  el("status").textContent = statusText(state);
 }
 
 function loginProbe(): Promise<{ id: string; logged_in: boolean }> {
@@ -40,14 +46,14 @@ async function testConnection(): Promise<void> {
   } catch (exc) {
     setStatus(String(exc).includes("401") ? "unauthorized" : "unreachable");
   }
-  const dot = document.getElementById("weixin-login");
+  const dot = el("weixin-login");
   dot.textContent = (await checkWeixinLogin()) ? "公众号：已登录" : "公众号：未登录";
 }
 
 async function render(): Promise<void> {
   const settings = await loadSettings(chrome.storage.local);
-  (document.getElementById("server-url") as HTMLInputElement).value = settings.serverUrl;
-  (document.getElementById("agent-token") as HTMLInputElement).value = settings.token;
+  (el("server-url") as HTMLInputElement).value = settings.serverUrl;
+  (el("agent-token") as HTMLInputElement).value = settings.token;
   if (configured(settings)) void testConnection();
   else setStatus("unreachable");
 }
@@ -60,13 +66,12 @@ document.getElementById("save")?.addEventListener("click", async () => {
   const token = (document.getElementById("agent-token") as HTMLInputElement).value;
   const pattern = originPattern(serverUrl);
   if (!pattern) {
-    document.getElementById("status").textContent = "服务器地址必须是 http(s) URL";
+    el("status").textContent = "服务器地址必须是 http(s) URL";
     return;
   }
   const granted = await chrome.permissions.request({ origins: [pattern] });
   if (!granted) {
-    document.getElementById("status").textContent =
-      "未授予该服务器的访问权限，设置未保存";
+    el("status").textContent = "未授予该服务器的访问权限，设置未保存";
     return;
   }
   setStatus("saving");

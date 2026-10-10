@@ -58,7 +58,7 @@ function waitTabComplete(tabId: number, timeoutMs = 30000): Promise<void> {
       chrome.tabs.onUpdated.removeListener(listener);
       reject(new Error("标签页加载超时"));
     }, timeoutMs);
-    const listener = (id: number, info: chrome.tabs.TabChangeInfo) => {
+    const listener = (id: number, info: chrome.tabs.OnUpdatedInfo) => {
       if (id === tabId && info.status === "complete") {
         clearTimeout(timer);
         chrome.tabs.onUpdated.removeListener(listener);

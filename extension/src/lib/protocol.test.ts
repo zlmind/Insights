@@ -15,7 +15,8 @@ describe("ProtocolClient", () => {
       .heartbeat({ agent: "insights-ext" });
     const [url, init] = f.mock.calls[0];
     expect(url).toBe("https://insights.example/agent/heartbeat");
-    expect((init as RequestInit).headers!["Authorization"]).toBe("Bearer t0");
+    expect((init as RequestInit).headers as Record<string, string>)
+      .toHaveProperty("Authorization", "Bearer t0");
     expect(JSON.parse((init as RequestInit).body as string))
       .toEqual({ agent: "insights-ext" });
   });
