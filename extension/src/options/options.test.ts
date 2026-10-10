@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { normalizePairCode, originPattern, statusText } from "./options";
 
 describe("originPattern", () => {
@@ -27,5 +28,19 @@ describe("normalizePairCode", () => {
   it("flags anything that is not eight alphanumeric characters", () => {
     expect(normalizePairCode("AB23")).toBeNull();
     expect(normalizePairCode("AB23CD4!")).toBeNull();
+  });
+});
+
+describe("options.html page contract", () => {
+  const html = readFileSync(
+    new URL("./options.html", import.meta.url), "utf-8");
+
+  it("actually loads the options script — a page without it renders dead buttons", () => {
+    expect(html).toMatch(/<script\s+src="options\.js"><\/script>/);
+  });
+  it("wires every button the page renders", () => {
+    for (const id of ["pair", "save"]) {
+      expect(html).toContain(`id="${id}"`);
+    }
   });
 });
