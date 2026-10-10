@@ -115,6 +115,8 @@ COMPOSE_GATES = [
     ("check_compose_js.py", "BULK_TOTALS_OK",
      "the bulk result's batch totals sum correctly in both directions, under node",
      ("totals",)),
+    ("check_channel_defaults.py", "CHANNEL_DEFAULTS_OK",
+     "the compose and article channel pickers ship with nothing pre-ticked"),
 ]
 
 # Video posting. One script holds a gate per claim and picks one by argument,

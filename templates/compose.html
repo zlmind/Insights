@@ -24,7 +24,7 @@
         border-color: #dee2e6;
     }
     .nav-pills-custom .nav-link.active {
-        background: var(--brand-500, #7C3AED);
+        background: var(--brand-500, #1447e6);
         color: white;
         border-color: transparent;
     }
@@ -40,14 +40,14 @@
         font-size: 0.9rem;
         cursor: pointer;
         transition: border-color 0.15s ease, background-color 0.15s ease;
-        border: 1px solid var(--line, #E7E4F0);
+        border: 1px solid var(--line, #dee1e8);
         background: #fff;
-        color: var(--text, #1F1B2E);
+        color: var(--text, #080a10);
         user-select: none;
     }
     .platform-checkbox-box:hover {
-        border-color: var(--brand-400, #A78BFA);
-        background: var(--brand-50, #F5F3FF);
+        border-color: var(--brand-400, #6d92ef);
+        background: var(--brand-50, #eef2fc);
     }
     .platform-checkbox-box .check-indicator {
         width: 16px;
@@ -103,12 +103,12 @@
         border: 2px solid #e9ecef;
     }
     .tone-option:hover {
-        border-color: var(--brand-500, #7C3AED);
+        border-color: var(--brand-500, #1447e6);
     }
     .tone-option.selected {
-        background: var(--brand-50, #F5F3FF);
-        color: var(--brand-600, #6D28D9);
-        border-color: var(--brand-500, #7C3AED);
+        background: var(--brand-50, #eef2fc);
+        color: var(--brand-600, #1039c4);
+        border-color: var(--brand-500, #1447e6);
     }
     
     /* Library image hover styles */
@@ -144,16 +144,16 @@
         transition: all 0.2s ease;
     }
     .add-post-toggle-btn:hover {
-        background: var(--brand-50, #F5F3FF);
-        border-color: var(--brand-500, #7C3AED);
-        color: var(--brand-600, #6D28D9);
+        background: var(--brand-50, #eef2fc);
+        border-color: var(--brand-500, #1447e6);
+        color: var(--brand-600, #1039c4);
     }
     
     /* Social copy card styles - matching article.html */
     .social-copy-card {
         border-radius: 8px;
         overflow: hidden;
-        border: 1px solid var(--line, #E7E4F0);
+        border: 1px solid var(--line, #dee1e8);
         box-shadow: none;
     }
     .social-copy-header {
@@ -473,13 +473,13 @@
     .push-group .agent-schedule-row .form-control { width: 10.5rem; }
     .post-header { flex-wrap: wrap; }
     .post-item .badge.bg-secondary {
-        background: var(--brand-50, #F5F3FF) !important;
-        color: var(--brand-600, #6D28D9) !important;
+        background: var(--brand-50, #eef2fc) !important;
+        color: var(--brand-600, #1039c4) !important;
         font-weight: 600;
     }
     #posts-filter-bar {
         background: #fff;
-        border: 1px solid var(--line, #E7E4F0);
+        border: 1px solid var(--line, #dee1e8);
         border-radius: 10px;
         padding: 0.6rem 0.75rem;
         margin-bottom: 1.25rem;
@@ -575,7 +575,7 @@
 
 <!-- Generator Card -->
 <div class="card mb-4" style="border-radius: 12px; overflow: hidden;">
-    <div class="card-header" style="background: var(--brand-500, #7C3AED); color: white;">
+    <div class="card-header" style="background: var(--brand-500, #1447e6); color: white;">
         <strong>✨ Create Posts</strong>
     </div>
     <div class="card-body position-relative" id="generator-body">
@@ -936,29 +936,29 @@
             <div class="col-md-8">
                 <label class="form-label fw-bold mb-3">发布渠道</label>
                 <div class="d-flex flex-wrap gap-3" id="platform-checkboxes">
-                    <label class="platform-checkbox-box selected" data-platform="xiaohongshu" title="生成小红书笔记草稿（中文），复制后手动发布">
+                    <label class="platform-checkbox-box" data-platform="xiaohongshu" title="生成小红书笔记草稿（中文），复制后手动发布">
                         <span class="check-indicator"></span>
-                        <input type="checkbox" class="d-none" value="xiaohongshu" id="platform-xiaohongshu" checked>
+                        <input type="checkbox" class="d-none" value="xiaohongshu" id="platform-xiaohongshu">
                         📕 小红书
                     </label>
-                    <label class="platform-checkbox-box selected" data-platform="douyin" title="生成抖音文案草稿（中文），复制后手动发布">
+                    <label class="platform-checkbox-box" data-platform="douyin" title="生成抖音文案草稿（中文），复制后手动发布">
                         <span class="check-indicator"></span>
-                        <input type="checkbox" class="d-none" value="douyin" id="platform-douyin" checked>
+                        <input type="checkbox" class="d-none" value="douyin" id="platform-douyin">
                         🎵 抖音
                     </label>
-                    <label class="platform-checkbox-box selected" data-platform="wechat" title="生成公众号推文草稿（中文），复制后手动发布">
+                    <label class="platform-checkbox-box" data-platform="wechat" title="生成公众号推文草稿（中文），复制后手动发布">
                         <span class="check-indicator"></span>
-                        <input type="checkbox" class="d-none" value="wechat" id="platform-wechat" checked>
+                        <input type="checkbox" class="d-none" value="wechat" id="platform-wechat">
                         💬 公众号
                     </label>
-                    <label class="platform-checkbox-box selected" data-platform="zhihu" title="生成知乎文章草稿（中文），可一键推送草稿箱">
+                    <label class="platform-checkbox-box" data-platform="zhihu" title="生成知乎文章草稿（中文），可一键推送草稿箱">
                         <span class="check-indicator"></span>
-                        <input type="checkbox" class="d-none" value="zhihu" id="platform-zhihu" checked>
+                        <input type="checkbox" class="d-none" value="zhihu" id="platform-zhihu">
                         📖 知乎
                     </label>
-                    <label class="platform-checkbox-box selected" data-platform="toutiao" title="生成头条号文章草稿（中文），可一键推送草稿箱">
+                    <label class="platform-checkbox-box" data-platform="toutiao" title="生成头条号文章草稿（中文），可一键推送草稿箱">
                         <span class="check-indicator"></span>
-                        <input type="checkbox" class="d-none" value="toutiao" id="platform-toutiao" checked>
+                        <input type="checkbox" class="d-none" value="toutiao" id="platform-toutiao">
                         📰 头条号
                     </label>
                 </div>
@@ -1375,7 +1375,7 @@
 <div class="modal fade" id="scheduleModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header" style="background: var(--brand-500, #7C3AED); color: white;">
+            <div class="modal-header" style="background: var(--brand-500, #1447e6); color: white;">
                 <h5 class="modal-title">📅 Schedule Post</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -1683,7 +1683,7 @@
 <div class="modal fade" id="searchReplaceModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header" style="background: var(--brand-500, #7C3AED); color: white;">
+            <div class="modal-header" style="background: var(--brand-500, #1447e6); color: white;">
                 <h5 class="modal-title">🔍 Find & Replace in Posts</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -7884,7 +7884,7 @@ function importFile() {
 <div class="modal fade" id="promptLibraryModal" tabindex="-1" aria-labelledby="promptLibraryModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content" style="border-radius: 12px; overflow: hidden;">
-      <div class="modal-header" style="background: var(--brand-500, #7C3AED); color: white;">
+      <div class="modal-header" style="background: var(--brand-500, #1447e6); color: white;">
         <h5 class="modal-title" id="promptLibraryModalLabel">📚 Prompt Library</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
