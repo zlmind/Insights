@@ -70,6 +70,52 @@ def main():
                       json={"type": "started"}).status_code == 401,
           "events endpoint checks the token too")
 
+    # --- executor filtering: the extension and the old agent never take
+    # each other's jobs, even though they share one queue ---
+    ext_job = database.enqueue_agent_job(
+        "article_sync", json.dumps({"items": [{"target": "wechat", "content": "x"}],
+                                    "executor": "extension"}))
+    old_job = database.enqueue_agent_job(
+        "article_sync", json.dumps({"items": [{"target": "zhihu", "content": "x"}]}))
+    r = client.post("/agent/jobs/claim", headers=AUTH,
+                    json={"agent": "insights-ext", "executor": "extension",
+                          "platforms": ["wechat"]})
+    check(r.status_code == 200 and r.get_json()["id"] == ext_job,
+          "the extension claims only extension-stamped jobs")
+    r = client.post("/agent/jobs/claim", headers=AUTH, json={"agent": "layne-win"})
+    check(r.status_code == 200 and r.get_json()["id"] == old_job,
+          "the old agent's unmarked body still claims unstamped jobs")
+
+    # A platform the extension does not declare is held, not handed over:
+    # graduation moved the platform to the extension, so the old agent must
+    # never pick it up, extension offline or not.
+    database.enqueue_agent_job(
+        "article_sync", json.dumps({"items": [{"target": "zhihu", "content": "x"}],
+                                    "executor": "extension"}))
+    r = client.post("/agent/jobs/claim", headers=AUTH,
+                    json={"agent": "insights-ext", "executor": "extension",
+                          "platforms": ["wechat"]})
+    check(r.status_code == 204,
+          "a stamped job beyond the claimant's platforms is held")
+
+    # A candidate with a broken payload must be skipped, not fatal.
+    database.enqueue_agent_job("article_sync", "{not json")
+    r = client.post("/agent/jobs/claim", headers=AUTH, json={"agent": "layne-win"})
+    check(r.status_code == 204,
+          "a broken payload in the candidate window is skipped, not a 500")
+
+    # An extension-shaped heartbeat (tools keyed by the extension's name)
+    # feeds the same login-state view; a tools-less heartbeat is tolerated.
+    client.post("/agent/heartbeat", headers=AUTH, json={
+        "agent": "insights-ext", "tools": {"extension": {
+            "available": True, "version": "0.1.0",
+            "platforms": [{"id": "wechat", "logged_in": True}]}}})
+    check(agent_hub.platform_login_states().get("wechat") is True,
+          "the extension's heartbeat feeds platform login states")
+    client.post("/agent/heartbeat", headers=AUTH, json={"agent": "x"})
+    check(agent_hub.platform_login_states() == {},
+          "a heartbeat without tools yields empty login states, not a crash")
+
     # --- heartbeat: snapshot and staleness ---
     r = client.post("/agent/heartbeat", headers=AUTH, json={
         "agent": "layne-win", "tools": {"wechatsync": {

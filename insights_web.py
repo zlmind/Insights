@@ -10372,13 +10372,21 @@ def agent_claim():
     # The body carries only the agent-name hint, so a foreign client posting a
     # truthy non-object (a bare list, say) is tolerated as {} rather than
     # blown up by `.get` into a 500 — unlike /events, where the body is the
-    # payload and a non-object is refused.
+    # payload and a non-object is refused. The executor and platform list are
+    # the extension's lane declaration; anything non-string/non-list reads as
+    # the old agent's unmarked body.
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
         body = {}
+    platforms = body.get("platforms")
+    if not isinstance(platforms, list) or not all(isinstance(p, str) for p in platforms):
+        platforms = None
+    raw_executor = body.get("executor")
     job = database.claim_agent_job(
         kinds=("article_sync", "video_publish"),
         agent=body.get("agent", ""),
+        executor=raw_executor if isinstance(raw_executor, str) else None,
+        platforms=platforms,
     )
     if not job:
         return "", 204

@@ -6611,8 +6611,31 @@ def enqueue_agent_job(kind, payload, *, run_after=None, max_attempts=5,
     return cur.lastrowid
 
 
+def _job_matches_executor(payload_text, executor, platforms):
+    """Whether one queued job may go to this claimant.
+
+    ``executor`` defaults to the old agent lane, so an unmarked request body
+    and an unstamped payload meet on "agent" without either side changing.
+    A payload that does not parse is nobody's job: skip it rather than let
+    one broken row wedge the claim transaction.
+    """
+    try:
+        payload = json.loads(payload_text or "{}")
+    except ValueError:
+        return False
+    if not isinstance(payload, dict):
+        return False
+    if (payload.get("executor") or "agent") != (executor or "agent"):
+        return False
+    if platforms is None:
+        return True
+    targets = [i.get("target") for i in payload.get("items") or []
+               if isinstance(i, dict)]
+    return bool(targets) and all(t in platforms for t in targets)
+
+
 def claim_agent_job(*, kinds=("article_sync",), agent="", stale_minutes=15,
-                    db_path=DB_PATH):
+                    executor=None, platforms=None, db_path=DB_PATH):
     """Hand the oldest due job to one agent, exactly once.
 
     A claim older than ``stale_minutes`` is recycled first, so a killed agent
@@ -6640,16 +6663,19 @@ def claim_agent_job(*, kinds=("article_sync",), agent="", stale_minutes=15,
                  (datetime.utcnow()
                   - timedelta(minutes=stale_minutes)).isoformat(timespec="seconds")),
             )
-            row = conn.execute(
+            rows = conn.execute(
                 f"""
-                SELECT id FROM agent_jobs
+                SELECT id, payload FROM agent_jobs
                 WHERE status = 'pending' AND kind IN ({marks})
                   AND (run_after IS NULL OR run_after <= ?)
-                ORDER BY id LIMIT 1
+                ORDER BY id LIMIT 100
                 """,
                 (*kinds, now),
-            ).fetchone()
-            if not row:
+            ).fetchall()
+            chosen = next((rid for rid, text in rows
+                           if _job_matches_executor(text, executor, platforms)),
+                          None)
+            if chosen is None:
                 conn.rollback()
                 return None
             conn.execute(
@@ -6657,13 +6683,13 @@ def claim_agent_job(*, kinds=("article_sync",), agent="", stale_minutes=15,
                 UPDATE agent_jobs SET status = 'claimed', claimed_by = ?,
                        claimed_at = ?, updated_at = ? WHERE id = ?
                 """,
-                (agent, now, now, row[0]),
+                (agent, now, now, chosen),
             )
             conn.commit()
         except Exception:
             conn.rollback()
             raise
-    return get_agent_job(row[0], db_path=db_path)
+    return get_agent_job(chosen, db_path=db_path)
 
 
 def record_agent_job_event(job_id, event, *, db_path=DB_PATH):
