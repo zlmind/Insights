@@ -58,7 +58,7 @@ def main():
     results = d.publish_article(payload)
     check(results[0]["success"] is True and results[0]["draft"] is True,
           "exit 0 is a draft success")
-    check(["wechatsync", "sync"] == cli.calls[0][:2] and
+    check(cli.calls[0][0] == d._bin and cli.calls[0][1] == "sync" and
           cli.calls[0][cli.calls[0].index("-p") + 1] == "weixin",
           "the repo id wechat maps to wechatsync's weixin, argv is list-form")
     check(cli.contents == ["# T\n\n正文"],
@@ -112,17 +112,20 @@ def main():
     check(results[2]["code"] == "unknown_target", "an unknown target says so")
 
     # --- platform listing (heartbeat payload) ---
-    # The fixture JSON goes through the real `platforms --auth` parse, so the
-    # assumed response shape is pinned here until the e2e gate meets the real
-    # CLI. _driver_with's canned login map is put back to the parser, and the
-    # expected map covers every REPO_TO_WS platform: one the CLI did not
-    # mention reads as logged out.
-    d = _driver_with(FakeCLI(lambda args: (0, json.dumps([
-        {"id": "weixin", "authorized": True},
-        {"id": "zhihu", "authorized": False}]), "")), tempfile.mkdtemp())
+    # The fixture is the real `wechatsync auth` text report (pinned against
+    # the live CLI on 2026-10-10: two sections whose indented lines start
+    # with the platform id) run through the real parser. The expected map
+    # covers every REPO_TO_WS platform: one the CLI did not mention reads
+    # as logged out.
+    d = _driver_with(FakeCLI(lambda args: (0,
+        "登录状态:\n\n已登录 (1):\n"
+        "  weixin        微信公众号 (demo)\n"
+        "  xiaohongshu   小红书 (火星亮面)\n"
+        "\n未登录 (1):\n"
+        "  zhihu         知乎\n", "")), tempfile.mkdtemp())
     d._logged_in_map = d._auth_map
     states = d.platforms()
-    check({"wechat": True, "xiaohongshu": False, "douyin": False,
+    check({"wechat": True, "xiaohongshu": True, "douyin": False,
            "zhihu": False, "toutiao": False} ==
           {s["id"]: s["logged_in"] for s in states},
           "platforms maps auth state onto repo ids")

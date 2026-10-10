@@ -5920,7 +5920,7 @@ def _inject_publish_targets():
             'push_platforms': {
                 p: {"label": domestic_publisher.display_name(p),
                     "enabled": p in domestic_publisher.enabled_platforms()}
-                for p in ("wechat", "zhihu", "toutiao")},
+                for p in domestic_publisher.DOMESTIC_ARTICLE_PLATFORMS},
             'agent_online': agent_hub.agent_online(),
             'platform_login': agent_hub.platform_login_states()}
 
@@ -6096,7 +6096,7 @@ def compose_page():
         push_platforms={
             p: {"label": domestic_publisher.display_name(p),
                 "enabled": p in domestic_publisher.enabled_platforms()}
-            for p in ("wechat", "zhihu", "toutiao")},
+            for p in domestic_publisher.DOMESTIC_ARTICLE_PLATFORMS},
         agent_online=agent_hub.agent_online(),
         platform_login=agent_hub.platform_login_states(),
         page_size=POSTS_PAGE_SIZE,

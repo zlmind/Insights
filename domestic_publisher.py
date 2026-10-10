@@ -18,7 +18,7 @@ import json
 
 import database
 
-DOMESTIC_ARTICLE_PLATFORMS = ("wechat", "zhihu", "toutiao")
+DOMESTIC_ARTICLE_PLATFORMS = ("wechat", "zhihu", "toutiao", "xiaohongshu")
 
 DISPLAY_NAMES = {
     "wechat": "公众号",

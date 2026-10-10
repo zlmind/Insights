@@ -11,8 +11,8 @@ copied, no library linked, so Insights' MIT stays clean.
 
 from __future__ import annotations
 
-import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -54,7 +54,7 @@ def _classify(code, out, err):
 
 
 class WechatSyncDriver:
-    """Drives @wechatsync/cli: platforms --auth for state, sync per target."""
+    """Drives @wechatsync/cli: `auth` for login state, `sync` per target."""
 
     name = "wechatsync"
 
@@ -87,23 +87,33 @@ class WechatSyncDriver:
 
     # --- platforms (heartbeat) -----------------------------------------
     def _auth_map(self):
-        """``{ws_id: logged_in}`` from `platforms --auth` JSON."""
+        """``{ws_id: logged_in}`` from the real `auth` command's text report.
+
+        The CLI prints two sections — 已登录 (N): and 未登录 (N): — whose
+        indented lines begin with the platform id; a platform the report
+        does not mention reads as logged out. The bridge wait is bounded by
+        the CLI's own --timeout, so ours only has to cover the rest.
+        """
         try:
-            code, out, _ = self._run([self._bin, "platforms", "--auth"], 30)
+            code, out, _ = self._run(
+                [self._bin, "--timeout", "35000", "auth"], 45)
         except (OSError, TimeoutError):
             return {}
         if code != 0:
             return {}
-        start = out.find("[")
-        end = out.rfind("]")
-        if start < 0 or end <= start:
-            return {}
-        try:
-            rows = json.loads(out[start:end + 1])
-        except ValueError:
-            return {}
-        return {str(r.get("id")): bool(r.get("authorized")) for r in rows
-                if isinstance(r, dict) and r.get("id")}
+        logged_in = set()
+        section = None
+        for line in (out or "").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("已登录"):
+                section = "in"
+            elif stripped.startswith("未登录"):
+                section = "out"
+            elif section and stripped:
+                first = stripped.split()[0] if stripped.split() else ""
+                if section == "in" and re.fullmatch(r"[a-z0-9-]+", first):
+                    logged_in.add(first)
+        return {ws: ws in logged_in for ws in set(REPO_TO_WS.values())}
 
     def platforms(self):
         auth = self._logged_in_map()
