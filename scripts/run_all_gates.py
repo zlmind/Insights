@@ -52,6 +52,11 @@ SETTINGS_GATES = [
 ]
 
 # The domestic-article agent: queue semantics on the server side.
+X_FETCH_GATES = [
+    ("check_x_fetch.py", "X_FETCH_OK",
+     "X/Twitter URLs extract via fxtwitter and errors read with one prefix"),
+]
+
 AGENT_GATES = [
     ("check_agent_jobs.py", "AGENT_JOBS_OK",
      "the agent job queue claims once, retries with backoff and reclaims stale claims"),
@@ -283,7 +288,7 @@ NOT_GATES = {
 }
 
 ALL_GATES = (ACCOUNT_GATES + ACCOUNT_JS_GATES + LIBRARY_GATES + SETTINGS_GATES
-             + AGENT_GATES + COMPOSE_GATES + VIDEO_GATES + MANUAL_POST_GATES
+             + X_FETCH_GATES + AGENT_GATES + COMPOSE_GATES + VIDEO_GATES + MANUAL_POST_GATES
              + QUEUE_GATES + PAGING_GATES + IG_PEOPLE_GATES)
 
 

@@ -1333,34 +1333,72 @@ def _generate_posts_from_prompt(prompt, platforms, tone, posts_per_platform,
         raise RuntimeError("Failed to generate posts from prompt") from exc
 
 
-def generate_posts_from_url(
-    url: str,
-    platforms: List[str] | None = None,
-    tone: str = "professional",
-    posts_per_platform: int = 10,
-    extra_context: str | None = None,
-    use_local: bool = False,
-    provider: str | None = None,
-    model: str | None = None,
-) -> dict:
-    """Generate social media posts based on content from a URL.
+_TWEET_URL_RE = re.compile(
+    r"^https?://(?:www\.|mobile\.)?(?:twitter\.com|x\.com)/"
+    r"([A-Za-z0-9_]{1,20})/status/(\d+)"
+)
 
-    Like the other post generators, a mixed platform selection is split into
-    per-language groups (``PLATFORM_LANGS``); each group generates in its own
-    language and the posts merge back into one dict.
+
+def _tweet_fetch_json(endpoint: str) -> dict:
+    """GET one fxtwitter endpoint and return its parsed JSON.
+
+    A seam, not indirection: the gate swaps this out so URL handling is
+    tested without touching the network.
     """
-    import re
+    import requests
+
+    resp = requests.get(endpoint, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _fetch_tweet_source(url: str) -> dict | None:
+    """X/Twitter URLs extract through fxtwitter's open API; other URLs get None.
+
+    x.com sits behind a login wall — and on a China-network host behind the
+    GFW besides — so the generic trafilatura path can never see a tweet.
+    api.fxtwitter.com serves the same public tweet as JSON without auth,
+    and is reachable where x.com itself is not.
+    """
+    match = _TWEET_URL_RE.match(url.strip())
+    if not match:
+        return None
+    handle, status_id = match.groups()
+    try:
+        payload = _tweet_fetch_json(
+            f"https://api.fxtwitter.com/{handle}/status/{status_id}")
+    except Exception as e:
+        raise RuntimeError(f"X/Twitter fetch failed via fxtwitter API: {e}") from e
+    tweet = (payload or {}).get("tweet") or {}
+    if payload.get("code") != 200 or not tweet:
+        raise RuntimeError(
+            f"X/Twitter fetch failed: fxtwitter returned "
+            f"{payload.get('code', 'no code')}")
+    text = (tweet.get("text") or "").strip()
+    author = (tweet.get("author") or {}).get("name") or handle
+    photos = ((tweet.get("media") or {}).get("photos") or [])
+    og_image = (photos[0].get("url") if photos else None)
+    return {
+        "url": url,
+        "title": f"{author} on X: {text[:100]}" + ("…" if len(text) > 100 else ""),
+        "description": text[:300],
+        "content": text,
+        "og_image": og_image,
+    }
+
+
+def _fetch_article_source(url: str) -> dict:
+    """Generic trafilatura extraction: fetch, extract, backfill metadata.
+
+    Raises with exactly one message prefix; the tweet path has its own.
+    """
     import trafilatura
 
-    if platforms is None:
-        platforms = ["linkedin", "threads", "twitter"]
-
-    # ── Fetch the URL content ──────────────────────────────────────────
     try:
         downloaded = trafilatura.fetch_url(url)
 
         if not downloaded:
-            raise RuntimeError(f"Failed to fetch content from URL: {url}")
+            raise RuntimeError(f"nothing downloaded from {url}")
 
         body_content = trafilatura.extract(
             downloaded,
@@ -1426,6 +1464,38 @@ def generate_posts_from_url(
     except Exception as e:
         logger.error("Failed to fetch URL %s: %s", url, e)
         raise RuntimeError(f"Failed to fetch content from URL: {e}") from e
+    return source_data
+
+
+def generate_posts_from_url(
+    url: str,
+    platforms: List[str] | None = None,
+    tone: str = "professional",
+    posts_per_platform: int = 10,
+    extra_context: str | None = None,
+    use_local: bool = False,
+    provider: str | None = None,
+    model: str | None = None,
+) -> dict:
+    """Generate social media posts based on content from a URL.
+
+    Like the other post generators, a mixed platform selection is split into
+    per-language groups (``PLATFORM_LANGS``); each group generates in its own
+    language and the posts merge back into one dict.
+    """
+    import re
+    import trafilatura
+
+    if platforms is None:
+        platforms = ["linkedin", "threads", "twitter"]
+
+    # ── Fetch the URL content ──────────────────────────────────────────
+    # X/Twitter URLs take the dedicated path (the generic one can never
+    # see through the login wall); everything else is trafilatura's job.
+    # Each path raises with exactly one message prefix.
+    source_data = _fetch_tweet_source(url)
+    if source_data is None:
+        source_data = _fetch_article_source(url)
 
     # ── Generate posts ─────────────────────────────────────────────────
     posts_per_platform = max(1, min(posts_per_platform, 10))
