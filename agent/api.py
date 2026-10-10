@@ -31,6 +31,11 @@ class AgentClient:
             raise AgentError(f"{path} -> HTTP {exc.code}") from exc
         except urllib.error.URLError as exc:
             raise AgentError(f"{path} -> {exc.reason}") from exc
+        except OSError as exc:
+            # Read-phase socket failures (connection reset mid-body, timeout
+            # while reading); URLError already subclasses OSError, so this
+            # only catches what the handlers above did not.
+            raise AgentError(f"{path} -> {exc}") from exc
 
     def heartbeat(self, payload: dict) -> None:
         self._post("/agent/heartbeat", payload)

@@ -10369,9 +10369,16 @@ def agent_heartbeat():
 def agent_claim():
     if not agent_hub.check_agent_auth():
         return jsonify({"error": "unauthorized"}), 401
+    # The body carries only the agent-name hint, so a foreign client posting a
+    # truthy non-object (a bare list, say) is tolerated as {} rather than
+    # blown up by `.get` into a 500 — unlike /events, where the body is the
+    # payload and a non-object is refused.
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        body = {}
     job = database.claim_agent_job(
         kinds=("article_sync", "video_publish"),
-        agent=(request.get_json(silent=True) or {}).get("agent", ""),
+        agent=body.get("agent", ""),
     )
     if not job:
         return "", 204

@@ -173,7 +173,8 @@ class Driver(Protocol):
 
 1. **预检**：`wechatsync platforms --auth` 解析 JSON → 目标平台登录态；未登录平台直接
    返回 `needs_login`，不浪费一次 sync
-2. **发布**：HTML 写临时文件（`%TEMP%/insights-agent/<job_id>.html`）→
+2. **发布**：内容写 Markdown 临时文件（`%TEMP%/insights-agent/push-<pid>-<ws_id>.md`，
+   以 `newline=""` 写入，避免 Windows 换行改写）→
    `wechatsync sync <file> -p weixin,zhihu -t <标题>`（超时 300s，`shell=False`）
 3. **解析**：CLI 输出 + 退出码 → 逐平台成败；崩溃/超时 → 整体 retryable 失败；
    部分成功 → partial，**已成功平台不重发**（服务器重试时 payload.targets 剔除已成功项）。
@@ -241,11 +242,17 @@ class Driver(Protocol):
 
 | 脚本 | 覆盖 |
 |------|------|
-| `scripts/check_agent_hub.py` | Flask test client：鉴权拒绝、原子认领不重复、事件改状态、partial 语义、退避重试、claimed 超时回收、心跳过期 |
-| `scripts/check_agent_drivers.py` | 假 subprocess + 输出 fixture：六种失败分类解析、部分成功不重发、临时文件清理、平台列表解析 |
+| `scripts/check_agent_jobs.py` | 真实数据库函数：原子认领不重复、事件改状态、退避重试、claimed 超时回收 |
+| `scripts/check_domestic_publisher.py` | 入队入口：payload 形状保真、在途去重（already=True） |
+| `scripts/check_agent_hub.py` | Flask test client：/agent/* 鉴权拒绝、claim 204/200、事件端点、心跳快照与过期 |
+| `scripts/check_agent_agent.py` | 本机 agent 对真实 HTTP 服务：认领→started→done 事件、错误如实上报、空队列继续轮询 |
+| `scripts/check_agent_drivers.py` | 假 subprocess + 输出 fixture：失败分类解析、CLI 二进制解析（npm 的 .cmd shim）、临时文件清理、平台列表解析 |
+| `scripts/check_agent_push.py` | compose 推送路由：agent 离线拒绝、经 domestic_publisher 去重、渠道白名单 |
 | `scripts/check_agent_ui.py` | compose 国内分组渲染、离线置灰、草稿文案、逐平台结果展示 |
 | `scripts/check_agent_e2e.py` | 真机门（`INSIGHTS_AGENT_E2E=1` 才跑，默认跳过）：真 CLI 推测试文到公众号草稿 |
-| `regression_suite.py` | 注册以上全部（e2e 除外） |
+
+以上门全部注册在 `scripts/run_all_gates.py` 的 `AGENT_GATES`（e2e 除外，列入 `NOT_GATES`）；
+`regression_suite.py` 是内容库的另一套回归，不聚合这些门。
 
 ## 10. 后续路线（不在本期）
 

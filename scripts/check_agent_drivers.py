@@ -4,7 +4,9 @@
 
 subprocess is faked, so this gate asserts what the driver does with what the
 CLI might say: exit codes, logged-out preflight, timeouts, interactive
-prompts, and that temp files never outlive a publish.
+prompts, and that temp files never outlive a publish. It also pins how the
+driver finds the CLI at all: npm's Windows shim is wechatsync.cmd, which the
+bare name cannot launch.
 """
 
 import json
@@ -124,6 +126,45 @@ def main():
            "zhihu": False, "toutiao": False} ==
           {s["id"]: s["logged_in"] for s in states},
           "platforms maps auth state onto repo ids")
+
+    # --- binary resolution: npm's Windows shim is wechatsync.cmd ---
+    # CreateProcess does not consult PATHEXT for an extensionless name, so the
+    # bare "wechatsync" raises FileNotFoundError forever; the driver must ask
+    # shutil.which once and launch the resolved path.
+    fake_dir = tempfile.mkdtemp()
+    bare = os.path.join(fake_dir, "wechatsync")
+    with open(bare, "w", encoding="utf-8") as fh:
+        fh.write("")
+    with open(os.path.join(fake_dir, "wechatsync.cmd"), "w",
+              encoding="utf-8") as fh:
+        fh.write("")
+    if os.name != "nt":
+        os.chmod(bare, 0o755)
+    saved_path = os.environ.get("PATH")
+    os.environ["PATH"] = fake_dir + os.pathsep + (saved_path or "")
+    try:
+        d = drivers.WechatSyncDriver(bin_name="wechatsync")
+        check(os.path.dirname(d._bin) == fake_dir and
+              os.path.basename(d._bin).startswith("wechatsync"),
+              "the CLI shim resolves to its real path via shutil.which")
+    finally:
+        if saved_path is None:
+            os.environ.pop("PATH", None)
+        else:
+            os.environ["PATH"] = saved_path
+
+    # --- no CLI installed: the fallback keeps the bare name ---
+    saved_path = os.environ.get("PATH")
+    os.environ["PATH"] = tempfile.mkdtemp()
+    try:
+        d = drivers.WechatSyncDriver(bin_name="wechatsync")
+        check(d._bin == "wechatsync",
+              "with nothing to resolve, the bare name survives")
+    finally:
+        if saved_path is None:
+            os.environ.pop("PATH", None)
+        else:
+            os.environ["PATH"] = saved_path
 
     print("AGENT_DRIVERS_OK")
 

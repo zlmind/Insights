@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 
@@ -58,7 +59,10 @@ class WechatSyncDriver:
     name = "wechatsync"
 
     def __init__(self, bin_name="wechatsync", timeout=300):
-        self._bin = bin_name
+        # npm installs the Windows shim as wechatsync.cmd, and CreateProcess
+        # does not consult PATHEXT for an extensionless name — so the bare
+        # name raises FileNotFoundError forever. Resolve the real path once.
+        self._bin = shutil.which(bin_name) or bin_name
         self._timeout = timeout
         self._run = _run_cli          # swapped by the gate
         self._logged_in_map = self._auth_map   # swapped by the gate
@@ -160,7 +164,7 @@ class WechatSyncDriver:
         return result
 
 
-def get_driver(kind):
+def get_driver(kind, bin_name="wechatsync", timeout=300):
     if kind == "article_sync":
-        return WechatSyncDriver()
+        return WechatSyncDriver(bin_name=bin_name, timeout=timeout)
     raise SystemExit(f"没有能执行 {kind!r} 的驱动")

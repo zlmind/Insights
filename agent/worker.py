@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import threading
 import time
 
@@ -110,9 +111,22 @@ def run_once(client, driver, config, state=None) -> bool:
 def main(client, driver, config) -> None:
     print(f"agent {config.agent_name} -> {config.server_url}，Ctrl+C 退出")
     start_heartbeat(client, driver, config)
+    last_error = None
     while True:
         try:
             run_once(client, driver, config)
-        except Exception:  # noqa: BLE001 - the loop outlives any one cycle
-            pass
+        except Exception as exc:  # noqa: BLE001 - the loop outlives any one cycle
+            # A stale proxy, a wrong token and a down server all look the same
+            # from outside; say so, but only when the failure is new — a 5s
+            # poll must not repeat one line forever.
+            key = repr(exc)
+            if key != last_error:
+                print(f"[agent] {time.strftime('%H:%M:%S')} cycle failed: {key}",
+                      file=sys.stderr)
+                last_error = key
+        else:
+            if last_error is not None:
+                print(f"[agent] {time.strftime('%H:%M:%S')} cycle recovered",
+                      file=sys.stderr)
+                last_error = None
         time.sleep(config.poll_seconds)

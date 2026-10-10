@@ -39,6 +39,11 @@ def main():
     # --- claim: empty queue is 204, a pending job comes back once ---
     check(client.post("/agent/jobs/claim", headers=AUTH).status_code == 204,
           "claim on an empty queue is 204")
+    # A valid token with a JSON list body must stay a clean 204, not an
+    # AttributeError 500 out of `.get` on a non-object body.
+    check(client.post("/agent/jobs/claim", headers=AUTH,
+                      json=[{"agent": "x"}]).status_code == 204,
+          "a JSON list body claims cleanly instead of a 500")
     jid = database.enqueue_agent_job(
         "article_sync", json.dumps({"items": [{"target": "wechat", "content": "x"}]}))
     r = client.post("/agent/jobs/claim", headers=AUTH)

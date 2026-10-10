@@ -10,4 +10,7 @@ from agent.worker import main as run_loop
 
 if __name__ == "__main__":
     cfg = load_config()
-    run_loop(AgentClient(cfg), get_driver("article_sync"), cfg)
+    run_loop(AgentClient(cfg),
+             get_driver("article_sync", bin_name=cfg.wechatsync_bin,
+                        timeout=cfg.sync_timeout),
+             cfg)
