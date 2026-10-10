@@ -10191,7 +10191,7 @@ def compose_push_post(post_id: int):
         except (ValueError, OverflowError):
             return jsonify({"error": "时间格式不对"}), 400
     elif not agent_hub.agent_online():
-        return jsonify({"error": "本机代理离线：请在本机启动 agent（python -m agent）"}), 409
+        return jsonify({"error": "推送离线：请启动浏览器扩展（Insights 发布助手），或本机 agent"}), 409
     outcome = domestic_publisher.enqueue_card_push(post, run_after=run_after)
     return jsonify({"job_id": outcome["job_id"], "already": outcome["already"],
                     "platform": target})

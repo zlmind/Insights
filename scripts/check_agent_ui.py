@@ -31,7 +31,7 @@ def main():
     # --- offline first: the button exists and says why it is disabled ---
     html = client.get("/compose").get_data(as_text=True)
     check('btn-agent-push' in html, "the push button renders")
-    check('本机代理离线' in html,
+    check('推送离线' in html,
           "while offline the disabled button names the reason")
     check('请到' in html and '确认发布' in html,
           "draft semantics are spelled out: go confirm on the platform")
@@ -43,7 +43,7 @@ def main():
         "platforms": [{"id": "wechat", "logged_in": True},
                       {"id": "zhihu", "logged_in": False}]}}})
     html = client.get("/compose").get_data(as_text=True)
-    check('本机代理离线' not in html,
+    check('推送离线' not in html,
           "a fresh heartbeat clears the offline reason")
     check('未登录' in html,
           "a logged-out platform surfaces its login state on the button")

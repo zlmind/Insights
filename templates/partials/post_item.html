@@ -180,7 +180,7 @@
                                         data-post-id="{{ entry.id }}"
                                         data-platform="{{ entry.platform }}"
                                         {% if not agent_online %}disabled
-                                            title="本机代理离线：请在本机运行 python -m agent"
+                                            title="推送离线：请启动浏览器扩展（Insights 发布助手）或本机 agent"
                                         {% elif not push_platforms[entry.platform].enabled %}disabled
                                             title="该平台未在设置页启用"
                                         {% elif platform_login.get(entry.platform) is false %}disabled
