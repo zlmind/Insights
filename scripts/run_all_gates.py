@@ -74,6 +74,8 @@ AGENT_GATES = [
      "the push button renders with its disabled reasons and results show per platform"),
     ("check_extension_tests.py", "EXTENSION_TESTS_OK",
      "the publisher extension's vitest suite passes and esbuild emits dist/"),
+    ("check_extension_protocol.py", "EXTENSION_PROTOCOL_OK",
+     "the compiled extension client heartbeats, claims only its lane and reports events over real HTTP"),
 ]
 
 # The Compose page's gates. Several scripts hold more than one gate and pick one
