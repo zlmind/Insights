@@ -1,0 +1,4 @@
+This extension includes code ported from MultiPost-Extension
+(https://github.com/leaperone/MultiPost-Extension), licensed under the
+Apache License, Version 2.0. Ported files carry their original header.
+Upstream commit at time of port: see extension/upstream/UPSTREAM_SHA.

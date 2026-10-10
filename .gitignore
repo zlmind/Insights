@@ -22,3 +22,6 @@ downloads/
 ANTI_PATTERNS_BREADTH.md
 static/threads_profile_25313868101646387.jpg
 static/instagram_profile_*.jpg
+extension/node_modules/
+extension/dist/
+extension/upstream/

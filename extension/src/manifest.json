@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Insights 发布助手",
+  "version": "0.1.0",
+  "description": "把 Insights 的文章推进公众号等国内平台草稿箱",
+  "permissions": ["storage", "alarms"],
+  "host_permissions": ["https://mp.weixin.qq.com/*"],
+  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "background": { "service_worker": "service-worker.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["https://mp.weixin.qq.com/*"],
+      "js": ["content/bridge.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "options/options.html"
+}
