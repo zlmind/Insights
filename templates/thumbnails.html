@@ -42,7 +42,7 @@
         background: #e9ecef;
     }
     .aspect-option.selected {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: var(--brand-50, #F5F3FF); color: var(--brand-600, #6D28D9);
         color: white;
         border-color: transparent;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -69,7 +69,7 @@
         transition: all 0.3s ease;
     }
     .thumb-preview-container.has-image {
-        border: 2px solid #667eea;
+        border: 2px solid var(--brand-500, #7C3AED);
         background: #fff;
     }
     .thumb-preview-container img {
@@ -122,7 +122,7 @@
         background: #fff;
     }
     .saved-thumb-card:hover {
-        border-color: #667eea;
+        border-color: var(--brand-500, #7C3AED);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
         transform: translateY(-2px);
     }

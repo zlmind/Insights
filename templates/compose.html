@@ -24,7 +24,7 @@
         border-color: #dee2e6;
     }
     .nav-pills-custom .nav-link.active {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: var(--brand-500, #7C3AED);
         color: white;
         border-color: transparent;
     }
@@ -33,44 +33,43 @@
     .platform-checkbox-box {
         display: inline-flex;
         align-items: center;
-        gap: 0.5rem;
-        padding: 0.6rem 1rem;
-        border-radius: 10px;
+        gap: 0.45rem;
+        padding: 0.4rem 0.8rem;
+        border-radius: 8px;
         font-weight: 500;
+        font-size: 0.9rem;
         cursor: pointer;
-        transition: all 0.2s ease;
-        border: 3px solid #dee2e6;
-        background: #f8f9fa;
-        color: #495057;
+        transition: border-color 0.15s ease, background-color 0.15s ease;
+        border: 1px solid var(--line, #E7E4F0);
+        background: #fff;
+        color: var(--text, #1F1B2E);
         user-select: none;
     }
     .platform-checkbox-box:hover {
-        border-color: #adb5bd;
-        background: #e9ecef;
+        border-color: var(--brand-400, #A78BFA);
+        background: var(--brand-50, #F5F3FF);
     }
     .platform-checkbox-box .check-indicator {
-        width: 22px;
-        height: 22px;
-        border-radius: 6px;
-        border: 2px solid #adb5bd;
-        background: white;
-        display: flex;
+        width: 16px;
+        height: 16px;
+        border-radius: 5px;
+        border: 1.5px solid #C6C2D4;
+        background: #fff;
+        display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: 14px;
-        transition: all 0.2s ease;
+        font-size: 11px;
+        line-height: 1;
+        color: #fff;
+        transition: background-color 0.15s ease, border-color 0.15s ease;
     }
     .platform-checkbox-box.selected {
         border-color: var(--platform-color);
-        background: var(--platform-bg);
-        color: white;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        transform: translateY(-2px);
+        background: color-mix(in srgb, var(--platform-color) 7%, #fff);
     }
     .platform-checkbox-box.selected .check-indicator {
-        background: white;
-        border-color: white;
-        color: var(--platform-color);
+        background: var(--platform-color);
+        border-color: var(--platform-color);
     }
     .platform-checkbox-box.selected .check-indicator::after {
         content: '✓';
@@ -104,12 +103,12 @@
         border: 2px solid #e9ecef;
     }
     .tone-option:hover {
-        border-color: #667eea;
+        border-color: var(--brand-500, #7C3AED);
     }
     .tone-option.selected {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border-color: transparent;
+        background: var(--brand-50, #F5F3FF);
+        color: var(--brand-600, #6D28D9);
+        border-color: var(--brand-500, #7C3AED);
     }
     
     /* Library image hover styles */
@@ -145,16 +144,17 @@
         transition: all 0.2s ease;
     }
     .add-post-toggle-btn:hover {
-        background: #e8f0fe;
-        border-color: #667eea;
-        color: #667eea;
+        background: var(--brand-50, #F5F3FF);
+        border-color: var(--brand-500, #7C3AED);
+        color: var(--brand-600, #6D28D9);
     }
     
     /* Social copy card styles - matching article.html */
     .social-copy-card {
         border-radius: 8px;
         overflow: hidden;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border: 1px solid var(--line, #E7E4F0);
+        box-shadow: none;
     }
     .social-copy-header {
         padding: 0.75rem 1rem;
@@ -452,6 +452,25 @@
         display: inline-block;
     }
     .ig-color-swatch.selected { border-color: #0d6efd; box-shadow: 0 0 0 2px rgba(13,110,253,0.35); }
+
+    /* ---- Flat pass: toolbar discipline & layout rhythm ---- */
+    .btn-agent-push { white-space: nowrap; }
+    .agent-schedule-row { flex-wrap: nowrap; }
+    .agent-schedule-row .form-control { max-width: 11.5rem; }
+    .post-header { flex-wrap: wrap; }
+    .post-item .badge.bg-secondary {
+        background: var(--brand-50, #F5F3FF) !important;
+        color: var(--brand-600, #6D28D9) !important;
+        font-weight: 600;
+    }
+    #posts-filter-bar {
+        background: #fff;
+        border: 1px solid var(--line, #E7E4F0);
+        border-radius: 10px;
+        padding: 0.6rem 0.75rem;
+        margin-bottom: 1.25rem;
+    }
+    #posts-filter-bar .form-select { min-width: 7.5rem; }
 </style>
 
 <!-- Platform Connections: summary strip, full cards fold away behind it -->
@@ -542,7 +561,7 @@
 
 <!-- Generator Card -->
 <div class="card mb-4" style="border-radius: 12px; overflow: hidden;">
-    <div class="card-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+    <div class="card-header" style="background: var(--brand-500, #7C3AED); color: white;">
         <strong>✨ Create Posts</strong>
     </div>
     <div class="card-body position-relative" id="generator-body">
@@ -1108,8 +1127,7 @@
 
         <!-- Generate Button -->
         <div class="d-grid ai-only">
-            <button type="button" class="btn btn-lg text-white" id="generate-btn" 
-                    style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"
+            <button type="button" class="btn btn-lg btn-primary" id="generate-btn"
                     onclick="generatePosts()">
                 ✨ Generate & Save Posts
             </button>
@@ -1343,7 +1361,7 @@
 <div class="modal fade" id="scheduleModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+            <div class="modal-header" style="background: var(--brand-500, #7C3AED); color: white;">
                 <h5 class="modal-title">📅 Schedule Post</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -1651,7 +1669,7 @@
 <div class="modal fade" id="searchReplaceModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+            <div class="modal-header" style="background: var(--brand-500, #7C3AED); color: white;">
                 <h5 class="modal-title">🔍 Find & Replace in Posts</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -7852,7 +7870,7 @@ function importFile() {
 <div class="modal fade" id="promptLibraryModal" tabindex="-1" aria-labelledby="promptLibraryModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content" style="border-radius: 12px; overflow: hidden;">
-      <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+      <div class="modal-header" style="background: var(--brand-500, #7C3AED); color: white;">
         <h5 class="modal-title" id="promptLibraryModalLabel">📚 Prompt Library</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
