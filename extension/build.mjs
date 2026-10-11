@@ -19,3 +19,4 @@ await esbuild.build({ ...common, entryPoints: ["src/lib/protocol.ts"],
                       outfile: "dist/lib/protocol.js", format: "esm" });
 cpSync("src/manifest.json", "dist/manifest.json");
 cpSync("src/options/options.html", "dist/options/options.html");
+cpSync("src/popup/popup.html", "dist/popup/popup.html");

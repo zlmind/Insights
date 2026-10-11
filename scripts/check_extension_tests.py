@@ -35,7 +35,8 @@ def main():
         print(out, file=sys.stderr)
         return 1
     for artifact in ("dist/manifest.json", "dist/service-worker.js",
-                     "dist/content/bridge.js", "dist/lib/protocol.js"):
+                     "dist/content/bridge.js", "dist/lib/protocol.js",
+                     "dist/popup/popup.html", "dist/options/options.html"):
         if not os.path.isfile(os.path.join(EXT, *artifact.split("/"))):
             print(f"build did not produce {artifact}", file=sys.stderr)
             return 1
