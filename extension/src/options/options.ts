@@ -51,7 +51,11 @@ async function testConnection(): Promise<void> {
     });
     setStatus("ok");
   } catch (exc) {
-    setStatus(String(exc).includes("401") ? "unauthorized" : "unreachable");
+    // Debug-first: the raw reason beats a guessed category — an unreachable
+    // fetch, a rejected token and an empty storage all look alike otherwise.
+    const text = String(exc);
+    setStatus(text.includes("401") ? "unauthorized" : "unreachable");
+    el("status").textContent += `（${text}｜地址=${settings.serverUrl || "空"}，token 长度=${settings.token.length}）`;
   }
   const dot = el("weixin-login");
   dot.textContent = (await checkWeixinLogin()) ? "公众号：已登录" : "公众号：未登录";
