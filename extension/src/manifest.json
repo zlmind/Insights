@@ -7,6 +7,7 @@
   "host_permissions": ["https://mp.weixin.qq.com/*"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
   "background": { "service_worker": "service-worker.js", "type": "module" },
+  "action": { "default_popup": "popup/popup.html", "default_title": "Insights 发布助手" },
   "content_scripts": [
     {
       "matches": ["https://mp.weixin.qq.com/*"],

@@ -44,3 +44,20 @@ describe("options.html page contract", () => {
     }
   });
 });
+
+describe("toolbar popup contract", () => {
+  const root = new URL("../", import.meta.url);
+  const manifest = JSON.parse(
+    readFileSync(new URL("manifest.json", root), "utf-8"));
+
+  it("opens the pairing view straight from the toolbar icon", () => {
+    expect(manifest.action?.default_popup).toBe("popup/popup.html");
+  });
+  it("popup.html loads its script and carries the pairing controls", () => {
+    const html = readFileSync(new URL("popup/popup.html", root), "utf-8");
+    expect(html).toMatch(/<script\s+src="popup\.js"><\/script>/);
+    for (const id of ["server-url", "pair-code", "pair", "status"]) {
+      expect(html).toContain(`id="${id}"`);
+    }
+  });
+});

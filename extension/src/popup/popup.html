@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Insights 发布助手</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: .75rem; width: 20rem; color: #1e293b; }
+    h1 { font-size: 1rem; margin: 0 0 .25rem; }
+    .sub { font-size: .75rem; color: #64748b; margin: 0 0 .75rem; }
+    label { display: block; margin: .5rem 0 .15rem; font-weight: 600; font-size: .8rem; }
+    input { width: 100%; box-sizing: border-box; padding: .4rem; font-size: .85rem; }
+    button { margin-top: .75rem; padding: .45rem 1rem; }
+    .primary { background: #2563eb; color: #fff; border: none; border-radius: .375rem; width: 100%; }
+    .status { margin-top: .6rem; font-weight: 600; font-size: .85rem; min-height: 1.2em; }
+    .login { margin-top: .3rem; color: #475569; font-size: .8rem; }
+    a { display: block; margin-top: .6rem; font-size: .78rem; color: #2563eb; }
+  </style>
+</head>
+<body>
+  <h1>Insights 发布助手</h1>
+  <p class="sub">把文章推进公众号草稿箱。配对一次即可。</p>
+  <label for="server-url">服务器地址</label>
+  <input id="server-url" type="url" placeholder="http://127.0.0.1:5001">
+  <label for="pair-code">配对码</label>
+  <input id="pair-code" inputmode="latin" maxlength="12" autocomplete="off"
+         placeholder="发布队列页 →「配对浏览器扩展」生成">
+  <button id="pair" type="button" class="primary">一键配对</button>
+  <div class="status" id="status"></div>
+  <div class="login" id="weixin-login"></div>
+  <a href="#" id="open-options">完整设置（手动填密钥等）</a>
+  <script src="popup.js"></script>
+</body>
+</html>
