@@ -41,7 +41,11 @@ export class ProtocolClient {
 
   constructor(settings: Settings, fetchImpl: typeof fetch = fetch) {
     this.s = settings;
-    this.f = fetchImpl;
+    // Stored as an instance field, so the call site reads `this.f(...)` —
+    // and native Window.fetch throws "Illegal invocation" for any receiver
+    // that is not the global. Bind once here; the injected test doubles
+    // don't care, which is exactly why the browser alone saw this.
+    this.f = fetchImpl.bind(globalThis);
   }
 
   private async post(path: string, payload: object,

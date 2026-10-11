@@ -76,3 +76,18 @@ describe("pairWithCode", () => {
       fEmpty as typeof fetch)).rejects.toThrow("密钥");
   });
 });
+
+describe("ProtocolClient fetch receiver", () => {
+  it("tolerates a native fetch that demands window as its receiver", async () => {
+    // A bound-method call on Window.fetch throws "Illegal invocation" in a
+    // real browser; vi.fn() never noticed, so pin the receiver explicitly.
+    const nativeLike = function (this: unknown) {
+      if (this !== undefined && this !== globalThis) {
+        return Promise.reject(new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation"));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    } as unknown as typeof fetch;
+    const client = new ProtocolClient(settings, nativeLike);
+    await expect(client.heartbeat({ agent: "x" })).resolves.toBeUndefined();
+  });
+});
