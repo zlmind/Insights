@@ -58,17 +58,23 @@ async function uploadImages(imageUrl: string): Promise<void> {
 
 export async function publishRednoteNote(payload: RednotePayload): Promise<RednotePublishResult> {
   try {
-    await waitForElement('span[class="title"]');
-    await sleep(1000);
-
-    // 进入图文模式
-    const uploadButtons = document.querySelectorAll('span[class="title"]');
-    const uploadButton = Array.from(uploadButtons).find((element) =>
-      element.textContent?.includes("上传图文")) as HTMLElement | undefined;
-    if (!uploadButton) return { ok: false, code: "sync_failed", error: "未找到「上传图文」入口" };
-    uploadButton.click();
-    uploadButton.dispatchEvent(new Event("click", { bubbles: true }));
-    await sleep(1000);
+    // target=image opens straight into the image-note flow: when the file
+    // input is already there there is no 上传图文 tab to click. Otherwise
+    // find the tab by its text — the markup around it changes, the label
+    // does not.
+    const existingInput = document.querySelector('input[type="file"]');
+    if (!existingInput) {
+      const uploadButton = Array.from(
+        document.querySelectorAll<HTMLElement>("span, div, button, a"),
+      ).find((element) =>
+        (element.textContent || "").trim().includes("上传图文")
+        && element.offsetParent !== null);
+      if (!uploadButton) return { ok: false, code: "sync_failed",
+                                  error: "未找到「上传图文」入口，页面可能已改版" };
+      uploadButton.click();
+      uploadButton.dispatchEvent(new Event("click", { bubbles: true }));
+      await sleep(1000);
+    }
 
     await uploadImages(payload.imageUrl);
 
