@@ -52,12 +52,6 @@ export function uploadSummary(_total: number,
   return { ok: failed === 0, failed };
 }
 
-// A 300x300 gray PNG: the draft API wants some cover, and mp's filetransfer
-// answers questionably-sized uploads with the generic err_msg "default" —
-// a 1x1 placeholder did exactly that. Content quality is owned by the
-// author's images, not this fallback.
-const PLACEHOLDER_COVER =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAAAAABcFtGpAAABpElEQVR42u3QQREAAAwCIPsnNYYV9t5BBFLOokCWLFmyZMlSIEuWLFmyZCmQJUuWLFmyFMiSJUuWLFkKZMmSJUuWLAWyZMmSJUuWAlmyZMmSJUuBLFmyZMmSpUCWLFmyZMlSIEuWLFmyZCmQJUuWLFmyFMiSJUuWLFkKZMmSJUuWLAWyZMmSJUuWAlmyZMmSJUuBLFmyZMmSpUCWLFmyZMlSIEuWLFmyZCmQJUuWLFmyFMiSJUuWLFkKZMmSJUuWLAWyZMmSJUuWAlmyZMmSJUuBLFmyZMmSpUCWLFmyZMlSIEuWLFmyZCmQJUuWLFmyFMiSJUuWLFkKZMmSJUuWLAWyZMmSJUuWAlmyZMmSJUuBLFmyZMmSpUCWLFmyZMlSIEuWLFmyZCmQJUuWLFmyFMiSJUuWLFkKZMmSJUuWLAWyZMmSJUuWAlmyZMmSJUuBLFmyZMmSpUCWLFmyZMlSIEuWLFk/DVDZrSNRkhC2AAAAAElFTkSuQmCC";
 
 const ADAPTER_TIMEOUT_MS = 240000;
 
@@ -216,22 +210,29 @@ export async function publishWeixinArticle(payload: {
       }
       const processedContent = doc.body.innerHTML;
 
-      // Cover: first content image when there is one, placeholder otherwise.
-      const coverUrl = firstUpload ? firstUpload.url : PLACEHOLDER_COVER;
-      const info = await getImageInfo(coverUrl);
-      const uploadResult = await uploadImage({ url: coverUrl }, 8,
-        { userName, ticket, token });
-      if (!uploadResult) return { ok: false, code: "sync_failed",
-                                  error: `封面图片上传失败（${uploadRejection || "无详情"}）` };
+      // Cover: the first content image, when there is one. With none, create
+      // the draft without cover fields — createArticle degrades them to empty
+      // strings. mp's filetransfer answers data:-derived placeholder blobs
+      // with the generic ret 200039 (differential test, 2026-10-13): the
+      // placeholder path never worked and is gone.
+      let cropedImages: CropedImage[] = [];
+      if (firstUpload) {
+        const info = await getImageInfo(firstUpload.url);
+        const uploadResult = await uploadImage({ url: firstUpload.url }, 8,
+          { userName, ticket, token });
+        if (!uploadResult) return { ok: false, code: "sync_failed",
+                                    error: `封面图片上传失败（${uploadRejection || "无详情"}）` };
 
-      const ratios = [16 / 9, 1, 3 / 4];
-      const cropConfigs = ratios.map((ratio) =>
-        calculateCropConfig(ratio, info.width, info.height));
-      const cropedImages = await cropImage(uploadResult, cropConfigs, token);
-      if (!cropedImages) return { ok: false, code: "sync_failed", error: "封面图片裁剪失败" };
-      cropedImages.forEach((img, index) => {
-        img.ratio = ["16:9", "1:1", "3:4"][index];
-      });
+        const ratios = [16 / 9, 1, 3 / 4];
+        const cropConfigs = ratios.map((ratio) =>
+          calculateCropConfig(ratio, info.width, info.height));
+        const cropped = await cropImage(uploadResult, cropConfigs, token);
+        if (!cropped) return { ok: false, code: "sync_failed", error: "封面图片裁剪失败" };
+        cropped.forEach((img, index) => {
+          img.ratio = ["16:9", "1:1", "3:4"][index];
+        });
+        cropedImages = cropped;
+      }
 
       const appMsgId = await createArticle({
         token, nickname, title, digest, content: processedContent, cropedImages,
