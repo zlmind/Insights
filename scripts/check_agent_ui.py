@@ -45,6 +45,8 @@ def main():
     # carries the selector on every page.
     check('class="pair-strip"' in html and '/agent-jobs#pair' in html,
           "offline: the strip shows under the nav and links to /agent-jobs#pair")
+    check('浏览器扩展未连接' not in html and '推送到公众号等平台需要它' in html,
+          "the pair strip speaks the fixed vocabulary, no jargon")
     check('class="pair-strip"' not in client.get("/agent-jobs").get_data(as_text=True),
           "the queue page does not repeat the strip")
 

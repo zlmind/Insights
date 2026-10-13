@@ -16,10 +16,17 @@ export function zhihuVerdict(status: number, body: string): LoginVerdict {
   }
 }
 
-export async function checkZhihuLogin(fetchImpl: typeof fetch = fetch): Promise<LoginVerdict> {
+// Every probe carries its own timeout: the heartbeat fires before the claim,
+// so one hung portal would stall the whole cycle — no beat, no pushes. A
+// timed-out probe degrades to unknown like any other failure.
+const PROBE_TIMEOUT_MS = 8000;
+
+export async function checkZhihuLogin(fetchImpl: typeof fetch = fetch,
+                                      timeoutMs = PROBE_TIMEOUT_MS): Promise<LoginVerdict> {
   try {
     const r = await fetchImpl("https://www.zhihu.com/api/v4/me",
-                              { credentials: "include" });
+                              { credentials: "include",
+                                signal: AbortSignal.timeout(timeoutMs) });
     return zhihuVerdict(r.status, await r.text());
   } catch {
     return "unknown";
@@ -37,9 +44,11 @@ export function portalVerdict(finalUrl: string, ok: boolean): LoginVerdict {
 }
 
 export async function checkPortalLogin(url: string,
-                                       fetchImpl: typeof fetch = fetch): Promise<LoginVerdict> {
+                                       fetchImpl: typeof fetch = fetch,
+                                       timeoutMs = PROBE_TIMEOUT_MS): Promise<LoginVerdict> {
   try {
-    const r = await fetchImpl(url, { credentials: "include", redirect: "follow" });
+    const r = await fetchImpl(url, { credentials: "include", redirect: "follow",
+                                     signal: AbortSignal.timeout(timeoutMs) });
     return portalVerdict(r.url, r.ok);
   } catch {
     return "unknown";

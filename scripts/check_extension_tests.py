@@ -30,6 +30,12 @@ def main():
     if code != 0:
         print(out, file=sys.stderr)
         return 1
+    # esbuild and vitest both strip types, so neither catches a type error;
+    # tsc is the only check that reads the annotations at all.
+    code, out = _run(["npx", "tsc", "--noEmit"])
+    if code != 0:
+        print(out, file=sys.stderr)
+        return 1
     code, out = _run(["npm", "run", "build"])
     if code != 0:
         print(out, file=sys.stderr)

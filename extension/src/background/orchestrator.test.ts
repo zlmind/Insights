@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { LoginVerdict } from "../lib/platform-login";
 import { backoffSeconds, buildHeartbeat, cachedCheckLogins, claimBody, publishJob, runCycle } from "./orchestrator";
+import type { LoginVerdicts } from "./orchestrator";
 
 const job = (id: number, executor?: string) => ({
   id,
@@ -71,7 +72,7 @@ describe("cachedCheckLogins", () => {
 describe("runCycle", () => {
   it("heartbeats then claims; an idle queue returns false", async () => {
     const client = makeClient(null);
-    const deps = { client, checkLogins: async () => ({ wechat: "yes" }),
+    const deps = { client, checkLogins: async (): Promise<LoginVerdicts> => ({ wechat: "yes" }),
                    busy: { current: null } };
     expect(await runCycle(deps)).toBe(false);
     expect(client.heartbeat.mock.calls[0][0].tools.extension.available).toBe(true);
@@ -99,7 +100,7 @@ describe("runCycle", () => {
 
   it("keeps beating while a job is running, with its id as busy", async () => {
     const client = makeClient(null);
-    const deps = { client, checkLogins: vi.fn(async () => ({ wechat: "yes" })),
+    const deps = { client, checkLogins: vi.fn(async (): Promise<LoginVerdicts> => ({ wechat: "yes" })),
                    busy: { current: 42 }, beatClock: { lastBeat: 0 },
                    publishOne: vi.fn() };
     await runCycle(deps);
@@ -119,7 +120,7 @@ describe("runCycle", () => {
   it("keeps the heartbeat on its own 30s cadence while claiming every cycle",
     async () => {
       const client = makeClient(null);
-      const deps = { client, checkLogins: vi.fn(async () => ({ wechat: "yes" })),
+      const deps = { client, checkLogins: vi.fn(async (): Promise<LoginVerdicts> => ({ wechat: "yes" })),
                      busy: { current: null }, beatClock: { lastBeat: Date.now() } };
       await runCycle(deps);
       await runCycle(deps);

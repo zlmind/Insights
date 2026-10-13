@@ -3,6 +3,9 @@
 // readInfo). One parser, two consumers: heartbeat dots and the adapter.
 import type { LoginVerdict } from "./platform-login";
 
+// Re-exported: the pairing view speaks in verdicts but imports from here.
+export type { LoginVerdict };
+
 const TOKEN_PATTERNS = [
   /window\.wx\.commonData\s*=\s*\{[^}]*?\bt:\s*["'](\d+)["']/,
   /"&token\s*=\s*(\d+)"/,
@@ -22,9 +25,11 @@ export function weixinVerdict(token: string): LoginVerdict {
   return token ? "yes" : "no";
 }
 
-export async function checkWeixinVerdict(fetchImpl: typeof fetch = fetch): Promise<LoginVerdict> {
+export async function checkWeixinVerdict(fetchImpl: typeof fetch = fetch,
+                                         timeoutMs = 8000): Promise<LoginVerdict> {
   try {
-    const resp = await fetchImpl(WEIXIN_HOME, { credentials: "include" });
+    const resp = await fetchImpl(WEIXIN_HOME, { credentials: "include",
+                                                signal: AbortSignal.timeout(timeoutMs) });
     // The homepage answers 200 either way; only its shape knows.
     if (!resp.ok) return "unknown";
     return weixinVerdict(parseWeixinToken(await resp.text()));

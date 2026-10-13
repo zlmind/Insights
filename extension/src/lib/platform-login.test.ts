@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { portalVerdict, zhihuVerdict } from "./platform-login";
+import { checkPortalLogin, checkZhihuLogin, portalVerdict, zhihuVerdict } from "./platform-login";
 
 describe("zhihuVerdict", () => {
   it("is yes when /api/v4/me answers 200 with an id", () => {
@@ -27,5 +27,24 @@ describe("portalVerdict", () => {
   });
   it("is unknown when the fetch did not succeed", () => {
     expect(portalVerdict("https://creator.xiaohongshu.com/", false)).toBe("unknown");
+  });
+});
+
+describe("probe timeouts", () => {
+  // A hanging portal must degrade to unknown on its own clock — the beat
+  // runs before the claim, so one stuck fetch would stall the whole
+  // extension: no heartbeat, no pushes (review: Important-2).
+  const hanging = (url: URL | RequestInfo, init?: RequestInit): Promise<Response> =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort",
+        () => reject(new DOMException("aborted", "AbortError")));
+    });
+
+  it("checkZhihuLogin resolves unknown when its timeout aborts", async () => {
+    await expect(checkZhihuLogin(hanging, 5)).resolves.toBe("unknown");
+  });
+  it("checkPortalLogin resolves unknown when its timeout aborts", async () => {
+    await expect(checkPortalLogin("https://creator.douyin.com/", hanging, 5))
+      .resolves.toBe("unknown");
   });
 });
