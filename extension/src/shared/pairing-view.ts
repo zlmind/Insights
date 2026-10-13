@@ -69,9 +69,13 @@ async function testConnection(): Promise<void> {
     : verdict === "no" ? "公众号：未登录" : "公众号：检测失败";
 }
 
+// The owner's own machine is the overwhelmingly common case: prefill it so
+// pairing is one code away, and a stored value always wins over the default.
+const DEFAULT_SERVER_URL = "http://localhost:5001";
+
 async function render(): Promise<void> {
   const settings = await loadSettings(chrome.storage.local);
-  (el("server-url") as HTMLInputElement).value = settings.serverUrl;
+  (el("server-url") as HTMLInputElement).value = settings.serverUrl || DEFAULT_SERVER_URL;
   // The popup omits the manual token field on purpose — pairing is its only
   // path onto a token — so this lookup must stay soft where el() would throw.
   const tokenInput = document.getElementById("agent-token") as HTMLInputElement | null;

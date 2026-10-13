@@ -148,6 +148,14 @@ export async function publishWeixinArticle(payload: {
              error: "公众号未登录，请在本浏览器登录 mp.weixin.qq.com" };
   }
   const { nickname, ticket, userName } = readAccount(pageHtml);
+  // mp's own rejection reason for the last upload, surfaced in error strings.
+  let uploadRejection = "";
+  if (!ticket || !userName) {
+    // The filetransfer upload is signed with these; without them every
+    // upload is rejected server-side. Say so instead of a generic failure.
+    return { ok: false, code: "sync_failed",
+             error: "页面上没有 ticket/user_name：mp 页面结构可能已变化，无法上传素材" };
+  }
 
   const race = <T,>(work: Promise<T>): Promise<T> =>
     Promise.race([
@@ -197,7 +205,8 @@ export async function publishWeixinArticle(payload: {
       const info = await getImageInfo(coverUrl);
       const uploadResult = await uploadImage({ url: coverUrl }, 8,
         { userName, ticket, token });
-      if (!uploadResult) return { ok: false, code: "sync_failed", error: "封面图片上传失败" };
+      if (!uploadResult) return { ok: false, code: "sync_failed",
+                                  error: `封面图片上传失败（${uploadRejection || "无详情"}）` };
 
       const ratios = [16 / 9, 1, 3 / 4];
       const cropConfigs = ratios.map((ratio) =>
@@ -231,6 +240,7 @@ export async function publishWeixinArticle(payload: {
     file: { url: string }, scene = 8,
     auth: { userName: string; ticket: string; token: string },
   ): Promise<WeixinUploadResult | null> {
+    uploadRejection = "";
     const formData = new FormData();
     const blob = await (await fetch(file.url)).blob();
 
@@ -258,7 +268,13 @@ export async function publishWeixinArticle(payload: {
 
     const response = await fetch(url.toString(), { method: "POST", body: formData });
     const result = await response.json();
-    if (result.base_resp.err_msg !== "ok") return null;
+    if (result.base_resp.err_msg !== "ok") {
+      // Surface mp's own words: the caller's generic string hides whether
+      // this was a bad ticket, a freq cap or a permission change.
+      uploadRejection = `mp 回复 ${result.base_resp.err_msg || JSON.stringify(result.base_resp)}`;
+      console.warn("[insights] weixin upload rejected:", result.base_resp, result);
+      return null;
+    }
     return { fileId: Number.parseInt(result.content, 10), url: result.cdn_url };
   }
 
