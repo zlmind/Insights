@@ -1,7 +1,10 @@
 import type { Job } from "../lib/protocol";
+import type { LoginVerdict } from "../lib/platform-login";
 
 export const AGENT_NAME = "insights-ext";
-export const PLATFORM_IDS = ["wechat"];
+export const PLATFORM_IDS = ["wechat", "zhihu", "toutiao", "xiaohongshu", "douyin"];
+
+export type LoginVerdicts = Record<string, LoginVerdict>;
 
 export interface PlatformResult {
   platform: string;
@@ -16,10 +19,10 @@ export interface Heartbeat {
   agent: string;
   busy: number | null;
   tools: { extension: { available: boolean; platformIds: string[];
-    platforms: { id: string; logged_in: boolean }[] } };
+    platforms: { id: string; logged_in: boolean; probed: boolean }[] } };
 }
 
-export function buildHeartbeat(logins: Record<string, boolean>,
+export function buildHeartbeat(verdicts: LoginVerdicts,
                                busyJobId: number | null): Heartbeat {
   return {
     agent: AGENT_NAME,
@@ -28,7 +31,11 @@ export function buildHeartbeat(logins: Record<string, boolean>,
       extension: {
         available: true,
         platformIds: PLATFORM_IDS,
-        platforms: PLATFORM_IDS.map((id) => ({ id, logged_in: !!logins[id] })),
+        platforms: PLATFORM_IDS.map((id) => ({
+          id,
+          logged_in: verdicts[id] === "yes",
+          probed: verdicts[id] === "yes" || verdicts[id] === "no",
+        })),
       },
     },
   };
@@ -52,7 +59,7 @@ interface BaseClient {
 
 export interface CycleDeps {
   client: BaseClient;
-  checkLogins(): Promise<Record<string, boolean>>;
+  checkLogins(): Promise<LoginVerdicts>;
   busy: { current: number | null };
   beatClock?: { lastBeat: number };
   beatEverySeconds?: number;
@@ -68,7 +75,7 @@ export async function runCycle(deps: CycleDeps): Promise<boolean> {
   const every = (deps.beatEverySeconds ?? 30) * 1000;
   if (Date.now() - clock.lastBeat >= every) {
     clock.lastBeat = Date.now();
-    let logins: Record<string, boolean> = {};
+    let logins: LoginVerdicts = {};
     try {
       logins = await deps.checkLogins();
     } catch { /* a lost login probe must not kill the beat */ }
@@ -141,4 +148,25 @@ export async function publishJob(deps: PublishDeps, job: Job): Promise<void> {
     : ok === results.length ? "succeeded"
     : ok > 0 ? "partial" : "failed";
   await deps.client.sendEvent(job.id, { type: "done", status, results });
+}
+
+export interface LoginCache { at: number; value: LoginVerdicts; }
+
+// One shared 30s cache for the five login probes; a probe that throws reads
+// as "unknown" and must not retry inside the ttl — the beat runs every 5s
+// and five live fetches each tick would hammer the portals.
+export async function cachedCheckLogins(
+  checks: Record<string, () => Promise<LoginVerdict>>,
+  cache: LoginCache, now: number, ttlMs = 30000): Promise<LoginVerdicts> {
+  if (now - cache.at < ttlMs) return cache.value;
+  const entries = await Promise.all(Object.keys(checks).map(async (id) => {
+    try {
+      return [id, await checks[id]()] as const;
+    } catch {
+      return [id, "unknown" as const];
+    }
+  }));
+  cache.at = now;
+  cache.value = Object.fromEntries(entries) as LoginVerdicts;
+  return cache.value;
 }

@@ -1,21 +1,25 @@
-import { checkWeixinLogin } from "../lib/login";
+import { checkWeixinVerdict } from "../lib/login";
+import { checkPortalLogin, checkZhihuLogin, LoginVerdict } from "../lib/platform-login";
 import { configured, loadSettings, ProtocolClient } from "../lib/protocol";
-import { backoffSeconds, PLATFORM_IDS, PlatformResult, runCycle } from "./orchestrator";
+import { backoffSeconds, cachedCheckLogins, LoginCache, LoginVerdicts,
+         PLATFORM_IDS, PlatformResult, runCycle } from "./orchestrator";
 
 const busy = { current: null as number | null };
 const beatClock = { lastBeat: 0 };
-// Login probes hit the mp homepage: cache for 30s so the 5s claim loop and
-// the 30s heartbeat share one fetch at most.
-let loginCache = { at: 0, value: {} as Record<string, boolean> };
+// One shared 30s cache: the 5s claim loop and the 30s heartbeat share at
+// most one round of the five probes.
+const loginCache: LoginCache = { at: 0, value: {} };
 
-async function checkLogins(): Promise<Record<string, boolean>> {
-  if (Date.now() - loginCache.at < 30000) return loginCache.value;
-  const logins: Record<string, boolean> = {};
-  for (const id of PLATFORM_IDS) {
-    logins[id] = id === "wechat" ? await checkWeixinLogin() : false;
-  }
-  loginCache = { at: Date.now(), value: logins };
-  return logins;
+const PLATFORM_CHECKS: Record<string, () => Promise<LoginVerdict>> = {
+  wechat: () => checkWeixinVerdict(),
+  zhihu: () => checkZhihuLogin(),
+  toutiao: () => checkPortalLogin("https://mp.toutiao.com/"),
+  xiaohongshu: () => checkPortalLogin("https://creator.xiaohongshu.com/"),
+  douyin: () => checkPortalLogin("https://creator.douyin.com/"),
+};
+
+async function checkLogins(): Promise<LoginVerdicts> {
+  return cachedCheckLogins(PLATFORM_CHECKS, loginCache, Date.now());
 }
 
 const WEIXIN_HOME = "https://mp.weixin.qq.com/";

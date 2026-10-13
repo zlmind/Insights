@@ -1,4 +1,4 @@
-import { checkWeixinLogin } from "../lib/login";
+import { checkWeixinVerdict, LoginVerdict } from "../lib/login";
 import { configured, loadSettings, pairWithCode, ProtocolClient, saveSettings } from "../lib/protocol";
 
 // The pairing form lives on two surfaces — the options page and the toolbar
@@ -41,8 +41,9 @@ function setStatus(state: "ok" | "unauthorized" | "unreachable" | "saving"): voi
   el("status").textContent = statusText(state);
 }
 
-function loginProbe(): Promise<{ id: string; logged_in: boolean }> {
-  return checkWeixinLogin().then((logged_in) => ({ id: "wechat", logged_in }));
+function loginProbe(): Promise<{ id: string; logged_in: boolean; probed: boolean }> {
+  return checkWeixinVerdict().then((v: LoginVerdict) => (
+    { id: "wechat", logged_in: v === "yes", probed: v !== "unknown" }));
 }
 
 async function testConnection(): Promise<void> {
@@ -63,7 +64,9 @@ async function testConnection(): Promise<void> {
     el("status").textContent += `（${text}｜地址=${settings.serverUrl || "空"}，token 长度=${settings.token.length}）`;
   }
   const dot = el("weixin-login");
-  dot.textContent = (await checkWeixinLogin()) ? "公众号：已登录" : "公众号：未登录";
+  const verdict = await checkWeixinVerdict();
+  dot.textContent = verdict === "yes" ? "公众号：已登录"
+    : verdict === "no" ? "公众号：未登录" : "公众号：检测失败";
 }
 
 async function render(): Promise<void> {

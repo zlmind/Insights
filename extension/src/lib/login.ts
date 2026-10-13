@@ -33,12 +33,3 @@ export async function checkWeixinVerdict(fetchImpl: typeof fetch = fetch): Promi
   }
 }
 
-export async function checkWeixinLogin(fetchImpl: typeof fetch = fetch): Promise<boolean> {
-  try {
-    const resp = await fetchImpl(WEIXIN_HOME, { credentials: "include" });
-    if (!resp.ok) return false;
-    return Boolean(parseWeixinToken(await resp.text()));
-  } catch {
-    return false;
-  }
-}

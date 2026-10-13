@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { backoffSeconds, buildHeartbeat, claimBody, publishJob, runCycle } from "./orchestrator";
+import type { LoginVerdict } from "../lib/platform-login";
+import { backoffSeconds, buildHeartbeat, cachedCheckLogins, claimBody, publishJob, runCycle } from "./orchestrator";
 
 const job = (id: number, executor?: string) => ({
   id,
@@ -17,15 +18,22 @@ function makeClient(claimResult: unknown) {
 }
 
 describe("heartbeat and claim shapes", () => {
-  it("builds the same heartbeat shape as the python agent", () => {
-    expect(buildHeartbeat({ wechat: true }, null)).toEqual({
+  it("carries probed only for platforms the cycle really probed", () => {
+    expect(buildHeartbeat({ wechat: "yes", zhihu: "no", douyin: "unknown" }, null)).toEqual({
       agent: "insights-ext", busy: null,
-      tools: { extension: { available: true, platformIds: ["wechat"],
-        platforms: [{ id: "wechat", logged_in: true }] } },
+      tools: { extension: { available: true,
+        platformIds: ["wechat", "zhihu", "toutiao", "xiaohongshu", "douyin"],
+        platforms: [
+          { id: "wechat", logged_in: true, probed: true },
+          { id: "zhihu", logged_in: false, probed: true },
+          { id: "toutiao", logged_in: false, probed: false },
+          { id: "xiaohongshu", logged_in: false, probed: false },
+          { id: "douyin", logged_in: false, probed: false },
+        ] } },
     });
   });
   it("carries the job id while a publish holds the worker", () => {
-    expect(buildHeartbeat({ wechat: true }, 7).busy).toBe(7);
+    expect(buildHeartbeat({ wechat: "yes" }, 7).busy).toBe(7);
   });
   it("claims as the extension with its platform capabilities", () => {
     expect(claimBody(["wechat"])).toEqual({
@@ -39,10 +47,31 @@ describe("heartbeat and claim shapes", () => {
   });
 });
 
+describe("cachedCheckLogins", () => {
+  it("a failing probe reads unknown without poisoning the shared cache", async () => {
+    const cache = { at: 0, value: {} as Record<string, LoginVerdict> };
+    let zhihuCalls = 0;
+    const checks = {
+      wechat: async () => "yes" as LoginVerdict,
+      zhihu: async () => {
+        zhihuCalls++;
+        throw new Error("down");
+      },
+    };
+    const first = await cachedCheckLogins(checks, cache, 40000); // at=0, ttl long past
+    expect(first).toEqual({ wechat: "yes", zhihu: "unknown" });
+    const second = await cachedCheckLogins(checks, cache, 50000); // within ttl
+    expect(second).toEqual({ wechat: "yes", zhihu: "unknown" });
+    expect(zhihuCalls).toBe(1); // served from cache, not re-probed
+    const third = await cachedCheckLogins(checks, cache, 80000); // ttl passed
+    expect(zhihuCalls).toBe(2);
+  });
+});
+
 describe("runCycle", () => {
   it("heartbeats then claims; an idle queue returns false", async () => {
     const client = makeClient(null);
-    const deps = { client, checkLogins: async () => ({ wechat: true }),
+    const deps = { client, checkLogins: async () => ({ wechat: "yes" }),
                    busy: { current: null } };
     expect(await runCycle(deps)).toBe(false);
     expect(client.heartbeat.mock.calls[0][0].tools.extension.available).toBe(true);
@@ -70,7 +99,7 @@ describe("runCycle", () => {
 
   it("keeps beating while a job is running, with its id as busy", async () => {
     const client = makeClient(null);
-    const deps = { client, checkLogins: vi.fn(async () => ({ wechat: true })),
+    const deps = { client, checkLogins: vi.fn(async () => ({ wechat: "yes" })),
                    busy: { current: 42 }, beatClock: { lastBeat: 0 },
                    publishOne: vi.fn() };
     await runCycle(deps);
@@ -90,7 +119,7 @@ describe("runCycle", () => {
   it("keeps the heartbeat on its own 30s cadence while claiming every cycle",
     async () => {
       const client = makeClient(null);
-      const deps = { client, checkLogins: vi.fn(async () => ({ wechat: true })),
+      const deps = { client, checkLogins: vi.fn(async () => ({ wechat: "yes" })),
                      busy: { current: null }, beatClock: { lastBeat: Date.now() } };
       await runCycle(deps);
       await runCycle(deps);
