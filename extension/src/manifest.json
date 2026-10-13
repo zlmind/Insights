@@ -13,7 +13,8 @@
   "action": { "default_popup": "popup/popup.html", "default_title": "Insights 发布助手" },
   "content_scripts": [
     {
-      "matches": ["https://mp.weixin.qq.com/*", "https://creator.xiaohongshu.com/*"],
+      "matches": ["https://mp.weixin.qq.com/*", "https://creator.xiaohongshu.com/*",
+                  "https://zhuanlan.zhihu.com/*", "https://mp.toutiao.com/*"],
       "js": ["content/bridge.js"],
       "run_at": "document_idle"
     }

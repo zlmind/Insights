@@ -47,11 +47,13 @@ async function closeLeftoverTab(): Promise<void> {
 }
 
 const PUBLISH_PAGES: Record<string, { url: string; keepTab: boolean }> = {
-  // weixin's flow resolves inside the tab, so it closes; xiaohongshu's ends
-  // at a filled composer the author must confirm — the tab stays open.
+  // weixin's flow resolves inside the tab, so it closes; the other three end
+  // at a filled editor the author must confirm — their tabs stay open.
   wechat: { url: WEIXIN_HOME, keepTab: false },
   xiaohongshu: { url: "https://creator.xiaohongshu.com/publish/publish?target=image",
                  keepTab: true },
+  zhihu: { url: "https://zhuanlan.zhihu.com/write", keepTab: true },
+  toutiao: { url: "https://mp.toutiao.com/profile_v4/graphic/publish", keepTab: true },
 };
 
 // The bundled cover, as a data URL. The SW reads its own resource freely;
