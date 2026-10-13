@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { checkPortalLogin, checkZhihuLogin, portalVerdict, zhihuVerdict } from "./platform-login";
+import { checkPortalLogin, checkZhihuLogin, douyinVerdict, portalVerdict,
+         rednoteVerdict, zhihuVerdict } from "./platform-login";
 
 describe("zhihuVerdict", () => {
   it("is yes when /api/v4/me answers 200 with an id", () => {
@@ -27,6 +28,42 @@ describe("portalVerdict", () => {
   });
   it("is unknown when the fetch did not succeed", () => {
     expect(portalVerdict("https://creator.xiaohongshu.com/", false)).toBe("unknown");
+  });
+});
+
+describe("douyinVerdict", () => {
+  // MultiPost account/douyin.ts: creator.douyin.com/web/api/media/user/info/
+  // answers 200 with a user object only for a live session.
+  it("is yes when the user info carries a user", () => {
+    expect(douyinVerdict(200, JSON.stringify({ user: { sec_uid: "x", nickname: "n" } }))).toBe("yes");
+  });
+  it("is no on a 200 without a user", () => {
+    expect(douyinVerdict(200, "{}")).toBe("no");
+  });
+  it("is no on 401/403 and unknown otherwise", () => {
+    expect(douyinVerdict(401, "")).toBe("no");
+    expect(douyinVerdict(403, "")).toBe("no");
+    expect(douyinVerdict(500, "")).toBe("unknown");
+    expect(douyinVerdict(200, "not json")).toBe("unknown");
+  });
+});
+
+describe("rednoteVerdict", () => {
+  // MultiPost account/rednote.ts: www.xiaohongshu.com/explore embeds
+  // window.__INITIAL_STATE__ whose user.loggedIn flag is the session truth.
+  const page = (flag: string) =>
+    `<html><script>window.__INITIAL_STATE__={"user":{"loggedIn":${flag},` +
+    `"userInfo":{"user_id":"1","nickname":"n"}}};</script></html>`;
+
+  it("is yes when the explore page's state says logged in", () => {
+    expect(rednoteVerdict(page("true"))).toBe("yes");
+  });
+  it("is no when it says logged out", () => {
+    expect(rednoteVerdict(page("false"))).toBe("no");
+  });
+  it("is unknown without a state blob or a loggedIn flag", () => {
+    expect(rednoteVerdict("<html>login page</html>")).toBe("unknown");
+    expect(rednoteVerdict('<script>window.__INITIAL_STATE__={"other":1};</script>')).toBe("unknown");
   });
 });
 
