@@ -31,8 +31,8 @@ def main():
     # --- offline first: the button exists and says why it is disabled ---
     html = client.get("/compose").get_data(as_text=True)
     check('btn-agent-push' in html, "the push button renders")
-    check('推送离线' in html,
-          "while offline the disabled button names the reason")
+    check('检测离线：发布助手未连接，去发布队列页恢复' in html,
+          "while offline the disabled button names the reason in strip vocabulary")
     check('请到' in html and '确认发布' in html,
           "draft semantics are spelled out: go confirm on the platform")
     check('/agent-jobs' in html, "the queue page is linked")
@@ -63,12 +63,15 @@ def main():
         "platforms": [{"id": "wechat", "logged_in": True},
                       {"id": "zhihu", "logged_in": False}]}}})
     html = client.get("/compose").get_data(as_text=True)
-    check('推送离线' not in html,
-          "a fresh heartbeat clears the offline reason")
+    check('推送离线' not in html
+          and '检测离线：发布助手未连接，去发布队列页恢复' not in html,
+          "a fresh heartbeat clears the button's offline reason")
     check('未登录' in html,
           "a logged-out platform surfaces its login state on the button")
     check('class="pair-strip"' not in html,
           "a live heartbeat clears the pair strip")
+    check('本机 agent' not in html,
+          "client-facing copy never says agent")
 
     # A finished job shows per-platform results on the queue page.
     jid = database.enqueue_agent_job(

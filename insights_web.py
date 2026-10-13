@@ -5923,10 +5923,7 @@ def _inject_publish_targets():
                     "enabled": p in domestic_publisher.enabled_platforms()}
                 for p in domestic_publisher.DOMESTIC_ARTICLE_PLATFORMS},
             'agent_online': agent_hub.agent_online(),
-            # Compat bool map for the card buttons until they read the merged
-            # view (Task 5): the three-valued entries flatten to logged_in.
-            'platform_login': {pid: entry["logged_in"] for pid, entry
-                               in agent_hub.platform_login_states().items()}}
+            'login_states': agent_hub.login_states_view()}
 
 
 def _row_account_label(row):
@@ -6102,8 +6099,7 @@ def compose_page():
                 "enabled": p in domestic_publisher.enabled_platforms()}
             for p in domestic_publisher.DOMESTIC_ARTICLE_PLATFORMS},
         agent_online=agent_hub.agent_online(),
-        platform_login={pid: entry["logged_in"] for pid, entry
-                        in agent_hub.platform_login_states().items()},
+        login_states=agent_hub.login_states_view(),
         page_size=POSTS_PAGE_SIZE,
         max_batch=POSTS_MAX_BATCH,
         brief_filter_options=brief_filter_options,

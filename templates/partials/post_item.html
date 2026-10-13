@@ -174,18 +174,21 @@
                         <div class="push-bar" role="group" aria-label="推送到草稿箱">
                             {% for entry in push_entries %}
                             <span class="push-group">
+                                {% set ls = login_states.platforms.get(entry.platform) if login_states else none %}
                                 <button type="button"
                                         class="btn btn-sm btn-success btn-agent-push"
                                         data-post-id="{{ entry.id }}"
                                         data-platform="{{ entry.platform }}"
-                                        {% if not agent_online %}disabled
-                                            title="推送离线：请启动浏览器扩展（Insights 发布助手）或本机 agent"
+                                        {% if ls and ls.state == 'offline' %}disabled
+                                            title="检测离线：发布助手未连接，去发布队列页恢复"
                                         {% elif not push_platforms[entry.platform].enabled %}disabled
                                             title="该平台未在设置页启用"
-                                        {% elif platform_login.get(entry.platform) is false %}disabled
-                                            title="{{ push_platforms[entry.platform].label }}在本机浏览器未登录，请先登录一次"
+                                        {% elif ls and ls.state == 'logged_out' %}disabled
+                                            title="{{ push_platforms[entry.platform].label }}未登录，请先在浏览器登录一次"
+                                        {% elif ls and ls.state == 'unknown' %}
+                                            title="登录状态未知：该平台暂不支持登录检测，推送前请自行确认已登录"
                                         {% endif %}>
-                                    {% if platform_login.get(entry.platform) is false %}⚠ {% endif %}📤 推送到{{ push_platforms[entry.platform].label }}草稿箱
+                                    {% if ls and ls.state == 'logged_out' %}⚠ {% endif %}📤 推送到{{ push_platforms[entry.platform].label }}草稿箱
                                 </button>
                                 <span class="agent-push-result small"
                                       data-post-id="{{ entry.id }}"></span>
@@ -197,7 +200,7 @@
                                            aria-label="定时推送时间">
                                     <button type="button"
                                             class="btn btn-sm btn-outline-success btn-agent-schedule"
-                                            title="到点后由本机 agent 推送草稿箱；现在入队，agent 离线也可以">
+                                            title="到点后自动推送草稿箱；现在入队，离线也可以">
                                         📅 定时推送
                                     </button>
                                 </span>
