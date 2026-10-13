@@ -6,7 +6,7 @@
 {% macro num(v) -%}{{ '{:,}'.format((v or 0)|int) }}{%- endmacro %}
 {% macro mode_badge(m) -%}
     {% if m == 'proactive' %}
-        <span class="badge" style="background:#6f42c1;">proactive</span>
+        <span class="badge" style="background:#0f766e;">proactive</span>
     {% elif m == 'reactive' %}
         <span class="badge" style="background:#0d6efd;">reactive</span>
     {% else %}
@@ -17,7 +17,7 @@
 {% block content %}
 <p class="results-count mb-3">
     AI 内容生成的花费，按触发方式拆分。
-    <strong style="color:#6f42c1;">主动</strong> = 自动后台工作（单集转写、摘要、待办事项）。
+    <strong style="color:#0f766e;">主动</strong> = 自动后台工作（单集转写、摘要、待办事项）。
     <strong style="color:#0d6efd;">被动</strong> = 你自己触发的生成（撰写页帖子、文章、润色、缩略图）。
     费用按本地价格表<em>估算</em> —— token 数是精确的。
     可用 <code>USAGE_PRICE_*</code> 环境变量调整价格。
@@ -77,10 +77,10 @@
         </div>
     </div>
     <div class="col-md-4">
-        <div class="card h-100 shadow-sm" style="border-top:3px solid #6f42c1;">
+        <div class="card h-100 shadow-sm" style="border-top:3px solid #0f766e;">
             <div class="card-body">
                 <div class="text-uppercase text-muted" style="font-size:0.75rem; letter-spacing:0.5px;">Proactive (automated)</div>
-                <div style="font-size:2rem; font-weight:600; color:#6f42c1;">{{ money(proactive.cost_usd) }}</div>
+                <div style="font-size:2rem; font-weight:600; color:#0f766e;">{{ money(proactive.cost_usd) }}</div>
                 <div class="results-count">{{ num(proactive.total_tokens) }} tokens · {{ num(proactive.events) }} calls</div>
             </div>
         </div>
@@ -115,7 +115,7 @@
                     {% for c in by_category %}
                     <tr>
                         <td><code>{{ c.category }}</code></td>
-                        <td class="text-end" style="color:#6f42c1;">{{ money(c.proactive_cost) }}</td>
+                        <td class="text-end" style="color:#0f766e;">{{ money(c.proactive_cost) }}</td>
                         <td class="text-end" style="color:#0d6efd;">{{ money(c.reactive_cost) }}</td>
                         <td class="text-end fw-semibold">{{ money(c.cost_usd) }}</td>
                         <td class="text-end" style="font-variant-numeric: tabular-nums;">{{ num(c.total_tokens) }}</td>
@@ -180,7 +180,7 @@
             {% for d in daily %}
             <tr>
                 <td style="font-variant-numeric: tabular-nums;">{{ d.day }}</td>
-                <td class="text-end" style="color:#6f42c1;">{{ money(d.proactive_cost) }}</td>
+                <td class="text-end" style="color:#0f766e;">{{ money(d.proactive_cost) }}</td>
                 <td class="text-end" style="color:#0d6efd;">{{ money(d.reactive_cost) }}</td>
                 <td class="text-end fw-semibold">{{ money(d.cost_usd) }}</td>
                 <td class="text-end" style="font-variant-numeric: tabular-nums;">{{ num(d.total_tokens) }}</td>

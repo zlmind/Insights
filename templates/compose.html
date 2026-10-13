@@ -5,8 +5,7 @@
 {% block content %}
 {# with context: the card macro reads PUBLISH_TARGETS, which the app injects
    per request, and an import without context would not see it. #}
-{% from 'partials/post_item.html' import render_post_item, PLATFORM_META, PLATFORM_ORDER with context %}
-{% from 'partials/connection_strip.html' import connection_strip %}
+{% from 'partials/post_item.html' import render_post_item, PLATFORM_META with context %}
 <style>
     /* Command Center specific styles */
     /* Tab styling */
@@ -487,92 +486,6 @@
     #posts-filter-bar .form-select { min-width: 7.5rem; }
 </style>
 
-<!-- Platform Connections: summary strip, full cards fold away behind it -->
-{% call connection_strip() %}
-<div class="row mb-4">
-    <div class="col-md mb-3 mb-md-0">
-        <div class="card h-100">
-            <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #0077B5 0%, #005885 100%); color: white;">
-                <strong>💼 LinkedIn</strong>
-                <span id="linkedin-status-badge" class="badge bg-secondary">Checking...</span>
-            </div>
-            <div class="card-body py-2">
-                <div id="linkedin-status-content">
-                    <div class="d-flex align-items-center">
-                        <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
-                        <span>Checking connection...</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md mb-3 mb-md-0">
-        <div class="card h-100">
-            <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #000 0%, #333 100%); color: white;">
-                <strong>🧵 Threads</strong>
-                <span id="threads-status-badge" class="badge bg-secondary">Checking...</span>
-            </div>
-            <div class="card-body py-2">
-                <div id="threads-status-content">
-                    <div class="d-flex align-items-center">
-                        <div class="spinner-border spinner-border-sm text-dark me-2" role="status"></div>
-                        <span>Checking connection...</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md mb-3 mb-md-0">
-        <div class="card h-100">
-            <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #1877F2 0%, #0d5bbf 100%); color: white;">
-                <strong>📘 Facebook</strong>
-                <span id="facebook-status-badge" class="badge bg-secondary">Checking...</span>
-            </div>
-            <div class="card-body py-2">
-                <div id="facebook-status-content">
-                    <div class="d-flex align-items-center">
-                        <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
-                        <span>Checking connection...</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md mb-3 mb-md-0">
-        <div class="card h-100">
-            <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #1DA1F2 0%, #0d8ecf 100%); color: white;">
-                <strong>𝕏 Twitter</strong>
-                <span id="twitter-status-badge" class="badge bg-secondary">Checking...</span>
-            </div>
-            <div class="card-body py-2">
-                <div id="twitter-status-content">
-                    <div class="d-flex align-items-center">
-                        <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
-                        <span>Checking connection...</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md">
-        <div class="card h-100">
-            <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #833AB4 0%, #E4405F 100%); color: white;">
-                <strong>📷 Instagram</strong>
-                <span id="instagram-status-badge" class="badge bg-secondary">Checking...</span>
-            </div>
-            <div class="card-body py-2">
-                <div id="instagram-status-content">
-                    <div class="d-flex align-items-center">
-                        <div class="spinner-border spinner-border-sm text-danger me-2" role="status"></div>
-                        <span>Checking connection...</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-{% endcall %}
-
 <!-- Generator Card -->
 <div class="card mb-4" style="border-radius: 12px; overflow: hidden;">
     <div class="card-header" style="background: var(--brand-500, #1447e6); color: white;">
@@ -678,7 +591,7 @@
                                 onclick="clearManualVideo()" title="Remove the video">✕</button>
                     </div>
                     <div class="small text-muted mt-1 d-none" id="manual-video-note">
-                        🎬 The video posts instead of any image; Instagram sends it as a Reel.
+                        🎬 The video posts instead of any image.
                     </div>
                 </div>
                 {# Instagram only: shown while an Instagram account is ticked below. #}
@@ -973,13 +886,13 @@
                 {% if multi %}
                 <div class="mt-3" id="account-checkboxes">
                     <label class="form-label fw-bold mb-2 d-block">Accounts</label>
-                    {% for platform in ['linkedin', 'threads', 'twitter', 'facebook', 'instagram'] %}
+                    {% for platform in ['xiaohongshu', 'douyin', 'wechat', 'zhihu', 'toutiao'] %}
                     {% set options = multi | selectattr('platform', 'equalto', platform) | list %}
                     {% if options %}
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2 account-target-row"
                          data-platform="{{ platform }}">
                         <span class="text-muted small" style="min-width: 5.5rem;">
-                            {{ {'linkedin':'LinkedIn','threads':'Threads','twitter':'X','facebook':'Facebook','instagram':'Instagram'}[platform] }}
+                            {{ {'xiaohongshu':'小红书','douyin':'抖音','wechat':'公众号','zhihu':'知乎','toutiao':'头条号'}[platform] }}
                         </span>
                         {% for option in options %}
                         <label class="btn btn-sm {{ 'btn-primary' if option.is_default else 'btn-outline-secondary' }} account-target-btn"
@@ -1069,7 +982,7 @@
                             ✕
                         </button>
                     </div>
-                    <small class="text-muted">Enter a public URL accessible by LinkedIn/Threads</small>
+                    <small class="text-muted">Enter a public URL accessible by the target platforms</small>
                 </div>
                 
                 <!-- Library Tab -->
@@ -1757,11 +1670,6 @@
 </div>
 
 <script>
-let linkedinConnected = false;
-let threadsConnected = false;
-let facebookConnected = false;
-let twitterConnected = false;
-let instagramConnected = false;
 let selectModeActive = false;
 
 // Image lightbox function
@@ -1773,11 +1681,6 @@ function openImageLightbox(imageUrl) {
 
 document.addEventListener('DOMContentLoaded', function() {
     applyPostFilters();
-    checkLinkedInStatus();
-    checkThreadsStatus();
-    checkFacebookStatus();
-    checkTwitterStatus();
-    checkInstagramStatus();
     
     // Platform checkbox toggle
     document.querySelectorAll('.platform-checkbox-box').forEach(box => {
@@ -1820,242 +1723,6 @@ function selectedAccountTargets() {
     return Array.from(document.querySelectorAll('.account-target-checkbox:checked'))
                 .filter(cb => platforms.has(cb.dataset.platform))
                 .map(cb => cb.value);
-}
-
-function checkLinkedInStatus() {
-    fetch('{{ url_for("linkedin_status") }}')
-        .then(response => response.json())
-        .then(data => {
-            const badge = document.getElementById('linkedin-status-badge');
-            const content = document.getElementById('linkedin-status-content');
-            
-            if (data.connected && !data.needs_configuration) {
-                linkedinConnected = true;
-                badge.className = 'badge bg-success';
-                badge.textContent = 'Connected';
-                content.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span><strong>${data.display_name || 'LinkedIn User'}</strong></span>
-                        <a href="{{ url_for('linkedin_disconnect') }}" class="btn btn-sm btn-outline-danger" 
-                           onclick="return confirm('Disconnect LinkedIn?');">Disconnect</a>
-                    </div>
-                `;
-            } else if (data.connected && data.needs_configuration) {
-                badge.className = 'badge bg-warning text-dark';
-                badge.textContent = 'Needs Setup';
-                content.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span class="text-warning">Member ID needed</span>
-                        <a href="{{ url_for('linkedin_configure') }}" class="btn btn-sm btn-warning">Configure</a>
-                    </div>
-                `;
-            } else if (data.configured) {
-                badge.className = 'badge bg-warning text-dark';
-                badge.textContent = 'Not Connected';
-                content.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span>Connect to post to LinkedIn</span>
-                        <a href="{{ url_for('linkedin_auth') }}" class="btn btn-sm btn-primary">Connect</a>
-                    </div>
-                `;
-            } else {
-                badge.className = 'badge bg-secondary';
-                badge.textContent = 'Not Configured';
-                content.innerHTML = '<small class="text-muted">Set LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET</small>';
-            }
-        })
-        .catch(() => {
-            document.getElementById('linkedin-status-badge').textContent = 'Error';
-        });
-}
-
-function checkThreadsStatus() {
-    fetch('{{ url_for("threads_status") }}')
-        .then(response => response.json())
-        .then(data => {
-            const badge = document.getElementById('threads-status-badge');
-            const content = document.getElementById('threads-status-content');
-            
-            if (data.connected) {
-                threadsConnected = true;
-                badge.className = 'badge bg-success';
-                badge.textContent = 'Connected';
-                content.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span><strong>@${data.username || 'Threads User'}</strong></span>
-                        <button class="btn btn-sm btn-outline-danger" onclick="disconnectThreads()">Disconnect</button>
-                    </div>
-                `;
-            } else if (data.configured) {
-                badge.className = 'badge bg-warning text-dark';
-                badge.textContent = 'Not Connected';
-                content.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span>Connect to post to Threads</span>
-                        <a href="{{ url_for('threads_auth') }}" class="btn btn-sm btn-dark">Connect</a>
-                    </div>
-                `;
-            } else {
-                badge.className = 'badge bg-secondary';
-                badge.textContent = 'Not Configured';
-                content.innerHTML = '<small class="text-muted">Set THREADS_APP_ID and THREADS_APP_SECRET</small>';
-            }
-        })
-        .catch(() => {
-            document.getElementById('threads-status-badge').textContent = 'Error';
-        });
-}
-
-function disconnectThreads() {
-    if (!confirm('Disconnect Threads?')) return;
-    fetch('{{ url_for("threads_disconnect") }}', { method: 'POST' })
-        .then(() => {
-            threadsConnected = false;
-            checkThreadsStatus();
-        });
-}
-
-function checkFacebookStatus() {
-    fetch('{{ url_for("facebook_status") }}')
-        .then(response => response.json())
-        .then(data => {
-            const badge = document.getElementById('facebook-status-badge');
-            const content = document.getElementById('facebook-status-content');
-
-            if (data.connected) {
-                facebookConnected = true;
-                badge.className = 'badge bg-success';
-                badge.textContent = 'Connected';
-                const pageName = data.page_name || 'No page selected';
-                content.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span><strong>${data.user_name}</strong> <small class="text-muted">(${pageName})</small></span>
-                        <div class="btn-group btn-group-sm">
-                            <a href="{{ url_for('facebook_configure') }}" class="btn btn-outline-secondary" title="Change Page">⚙️</a>
-                            <button class="btn btn-outline-danger" onclick="disconnectFacebook()">Disconnect</button>
-                        </div>
-                    </div>
-                `;
-            } else if (data.configured) {
-                badge.className = 'badge bg-warning text-dark';
-                badge.textContent = 'Not Connected';
-                content.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span>Connect to post to Facebook</span>
-                        <a href="{{ url_for('facebook_auth') }}" class="btn btn-sm btn-primary">Connect</a>
-                    </div>
-                `;
-            } else {
-                badge.className = 'badge bg-secondary';
-                badge.textContent = 'Not Configured';
-                content.innerHTML = '<small class="text-muted">Set FACEBOOK_APP_ID and FACEBOOK_APP_SECRET</small>';
-            }
-        })
-        .catch(() => {
-            document.getElementById('facebook-status-badge').textContent = 'Error';
-        });
-}
-
-function disconnectFacebook() {
-    if (!confirm('Disconnect Facebook?')) return;
-    fetch('{{ url_for("facebook_disconnect") }}', { method: 'POST' })
-        .then(() => {
-            facebookConnected = false;
-            checkFacebookStatus();
-        });
-}
-
-function checkInstagramStatus() {
-    fetch('{{ url_for("instagram_status") }}')
-        .then(response => response.json())
-        .then(data => {
-            const badge = document.getElementById('instagram-status-badge');
-            const content = document.getElementById('instagram-status-content');
-
-            if (data.connected) {
-                instagramConnected = true;
-                badge.className = 'badge bg-success';
-                badge.textContent = 'Connected';
-                content.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span><strong>@${data.username || 'Instagram User'}</strong></span>
-                        <button class="btn btn-sm btn-outline-danger" onclick="disconnectInstagram()">Disconnect</button>
-                    </div>
-                    ${data.warning ? '<small class="text-danger">' + data.warning + '</small>' : ''}
-                `;
-            } else if (data.configured) {
-                badge.className = 'badge bg-warning text-dark';
-                badge.textContent = 'Not Connected';
-                content.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span>Connect to post to Instagram</span>
-                        <a href="{{ url_for('instagram_auth') }}" class="btn btn-sm btn-danger">Connect</a>
-                    </div>
-                `;
-            } else {
-                badge.className = 'badge bg-secondary';
-                badge.textContent = 'Not Configured';
-                content.innerHTML = '<small class="text-muted">Set INSTAGRAM_APP_ID and INSTAGRAM_APP_SECRET</small>';
-            }
-        })
-        .catch(() => {
-            document.getElementById('instagram-status-badge').textContent = 'Error';
-        });
-}
-
-function disconnectInstagram() {
-    if (!confirm('Disconnect Instagram?')) return;
-    fetch('{{ url_for("instagram_disconnect") }}', { method: 'POST' })
-        .then(() => {
-            instagramConnected = false;
-            checkInstagramStatus();
-        });
-}
-
-function checkTwitterStatus() {
-    fetch('{{ url_for("twitter_status") }}')
-        .then(response => response.json())
-        .then(data => {
-            const badge = document.getElementById('twitter-status-badge');
-            const content = document.getElementById('twitter-status-content');
-
-            if (data.connected) {
-                twitterConnected = true;
-                badge.className = 'badge bg-success';
-                badge.textContent = 'Connected';
-                content.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <small>@${data.username || data.display_name || 'X User'}</small>
-                        <button class="btn btn-sm btn-outline-danger" onclick="disconnectTwitter()">Disconnect</button>
-                    </div>
-                `;
-            } else if (data.configured) {
-                badge.className = 'badge bg-warning text-dark';
-                badge.textContent = 'Not Connected';
-                content.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span>Connect to post to X</span>
-                        <a href="{{ url_for('twitter_auth') }}" class="btn btn-sm btn-info">Connect</a>
-                    </div>
-                `;
-            } else {
-                badge.className = 'badge bg-secondary';
-                badge.textContent = 'Not Configured';
-                content.innerHTML = '<small class="text-muted">Set TWITTER_CLIENT_ID and TWITTER_CLIENT_SECRET</small>';
-            }
-        })
-        .catch(() => {
-            document.getElementById('twitter-status-badge').textContent = 'Error';
-        });
-}
-
-function disconnectTwitter() {
-    if (!confirm('Disconnect X/Twitter?')) return;
-    fetch('{{ url_for("twitter_disconnect") }}', { method: 'POST' })
-        .then(() => {
-            twitterConnected = false;
-            checkTwitterStatus();
-        });
 }
 
 function adjustPostCount(delta) {
@@ -2302,7 +1969,7 @@ function updateManualComposerCount() {
         return;
     }
     // Each ticked platform against its own limit: one long post can be fine for
-    // LinkedIn and too long for X, and that is worth seeing before saving.
+    // 公众号 and too long for 小红书, and that is worth seeing before saving.
     platforms.forEach(p => {
         const limit = platformCharLimits[p] || 5000;
         const over = length > limit;
@@ -3716,16 +3383,6 @@ Object.entries(PLATFORM_META).forEach(([platform, meta]) => {
     PLATFORM_CHIP_COLORS[platform] = meta.color;
 });
 
-function platformConnected(platform) {
-    return {
-        linkedin: () => linkedinConnected,
-        threads: () => threadsConnected,
-        facebook: () => facebookConnected,
-        twitter: () => twitterConnected,
-        instagram: () => instagramConnected,
-    }[platform]?.() ?? false;
-}
-
 function postedUrlFrom(platform, data) {
     if (platform !== 'linkedin') return data.permalink || '';
     const urn = data.post_urn;
@@ -3752,6 +3409,16 @@ function markChipPosted(postItem, platform, url, accountId) {
     link.title = 'Posted just now — click to view';
     link.textContent = '🔗';
     chip.appendChild(link);
+}
+
+// Platform connectedness lives on the bulk picker's chips now: one chip per
+// account target, data-connected="false" when the platform has no live
+// account. Publishing must refuse before it fetches — the restyle dropped
+// this guard and a disconnected platform went straight to the server.
+function platformConnected(platform) {
+    const chip = document.querySelector(
+        `#bulk-platform-targets .platform-chip[data-platform="${platform}"]`);
+    return chip ? chip.dataset.connected !== 'false' : true;
 }
 
 // Publish one platform of a card. Resolves to true when it went out, so
@@ -5345,10 +5012,6 @@ function setChipQueuedUI(btn, queued, scheduledFor) {
 // Add or remove one platform's queue entry. `btn` is that platform's chip
 // control, so the card can be queued for X while Threads waits.
 function toggleQueue(postId, postType, platform, btn, isQueued) {
-    if (!platformConnected(platform)) {
-        alert(`Please connect ${PLATFORM_LABELS[platform] || platform} first`);
-        return;
-    }
 
     const originalText = btn.innerHTML;
     btn.innerHTML = '\u23f3';
@@ -5394,23 +5057,6 @@ function addToQueue(postId, postType, platform, btn) {
 }
 
 function openScheduleModal(postId, postType, platform) {
-    if (platform === 'linkedin' && !linkedinConnected) {
-        alert('Please connect LinkedIn first');
-        return;
-    }
-    if (platform === 'threads' && !threadsConnected) {
-        alert('Please connect Threads first');
-        return;
-    }
-    if (platform === 'facebook' && !facebookConnected) {
-        alert('Please connect Facebook first');
-        return;
-    }
-    if (platform === 'twitter' && !twitterConnected) {
-        alert('Please connect X/Twitter first');
-        return;
-    }
-    
     document.getElementById('schedule-post-id').value = postId;
     document.getElementById('schedule-post-type').value = postType;
     document.getElementById('schedule-platform').value = platform;

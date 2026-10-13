@@ -3,12 +3,12 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#0F0A1F">
+    <meta name="theme-color" content="#f9fafb">
     <title>{% block title %}Insights{% endblock %}</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
         rel="stylesheet"
@@ -25,47 +25,50 @@
        parses, then watches the DOM so JS-rendered content translates too. #}
     <script src="{{ url_for('static', filename='i18n.js') }}"></script>
     <style>
-        /* ---------- Design tokens ---------- */
+        /* ---------- Design tokens ----------
+           Light palette borrowed from spawnpost.com: near-black ink, a
+           gray-white canvas, white surfaces, hairline borders and one vivid
+           blue for everything actionable. */
         :root {
-            --ink-900: #0F0A1F;
-            --ink-800: #1a1033;
-            --ink-700: #2a2040;
-            --panel:   #1a1428;
-            --panel-line: #2d2640;
+            --ink-900: #080a10;
+            --ink-800: #14171e;
+            --ink-700: #242a38;
+            --panel:   #ffffff;
+            --panel-line: #dee1e8;
 
-            --brand-700: #5B21B6;
-            --brand-600: #6D28D9;
-            --brand-500: #7C3AED;
-            --brand-400: #A78BFA;
-            --brand-300: #C4B5FD;
-            --brand-100: #EDE9FE;
-            --brand-50:  #F5F3FF;
+            --brand-700: #0d2f9e;
+            --brand-600: #1039c4;
+            --brand-500: #1447e6;
+            --brand-400: #6d92ef;
+            --brand-300: #a3bdf8;
+            --brand-100: #e3ebff;
+            --brand-50:  #eef2fc;
 
-            --canvas:      #F6F5FA;
+            --canvas:      #f9fafb;
             --surface:     #ffffff;
-            --line:        #E7E4F0;
-            --line-strong: #D4CFE3;
-            --text:        #1F1B2E;
-            --muted:       #6B6680;
+            --line:        #dee1e8;
+            --line-strong: #c9cfd9;
+            --text:        #080a10;
+            --muted:       #5f636f;
 
             --radius:    10px;
             --radius-lg: 14px;
             --shadow-sm: none;
-            --shadow-md: 0 1px 2px rgba(31, 27, 46, .07);
+            --shadow-md: 0 1px 2px rgba(8, 10, 16, .06);
 
             /* Point Bootstrap at the palette so every page inherits it. */
             --bs-primary: var(--brand-500);
-            --bs-primary-rgb: 124, 58, 237;
+            --bs-primary-rgb: 20, 71, 230;
             --bs-body-color: var(--text);
             --bs-secondary-color: var(--muted);
             --bs-border-color: var(--line);
-            --bs-link-color: var(--brand-600);
-            --bs-link-color-rgb: 109, 40, 217;
-            --bs-link-hover-color: var(--brand-700);
-            --bs-link-hover-color-rgb: 91, 33, 182;
+            --bs-link-color: var(--brand-500);
+            --bs-link-color-rgb: 20, 71, 230;
+            --bs-link-hover-color: var(--brand-600);
+            --bs-link-hover-color-rgb: 16, 57, 196;
             --bs-border-radius: 8px;
             --bs-border-radius-lg: var(--radius-lg);
-            --bs-focus-ring-color: rgba(124, 58, 237, .28);
+            --bs-focus-ring-color: rgba(20, 71, 230, .25);
         }
 
         /* ---------- Page ---------- */
@@ -73,7 +76,7 @@
             margin: 0;
             background: var(--canvas);
             color: var(--text);
-            font-family: Inter, -apple-system, "Segoe UI", "PingFang SC",
+            font-family: Geist, -apple-system, "Segoe UI", "PingFang SC",
                 "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
             -webkit-font-smoothing: antialiased;
         }
@@ -88,7 +91,7 @@
         :focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
         .form-control:focus, .form-select:focus {
             border-color: var(--brand-400);
-            box-shadow: 0 0 0 .2rem rgba(124, 58, 237, .18);
+            box-shadow: 0 0 0 .2rem rgba(20, 71, 230, .15);
         }
 
         /* ---------- Page header ---------- */
@@ -106,11 +109,14 @@
         .page-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
         .page-actions:empty { display: none; }
 
-        /* ---------- Navigation ---------- */
+        /* ---------- Navigation ----------
+           Glassy light bar: translucent canvas over a blur, hairline bottom
+           border, quiet gray links that darken on hover, blue active pill. */
         .app-nav {
             position: sticky; top: 0; z-index: 1050;
-            background: var(--ink-900);
-            border-bottom: 1px solid rgba(167, 139, 250, .16);
+            background: rgba(249, 250, 251, .8);
+            -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(222, 225, 232, .5);
             padding: .4rem 0;
         }
         .app-nav .navbar-brand {
@@ -118,54 +124,54 @@
             padding: 0; margin-right: 1.25rem;
         }
         .app-nav .brand-word {
-            font-weight: 700; letter-spacing: -.01em; color: #C4B5FD;
+            font-weight: 600; letter-spacing: -.01em; color: var(--text);
         }
         .app-nav .nav-link {
-            color: #C9C2DE; font-weight: 500; font-size: .93rem;
+            color: var(--muted); font-weight: 500; font-size: .93rem;
             padding: .5rem .8rem; border-radius: 8px;
             transition: background-color .15s ease, color .15s ease;
         }
         .app-nav .nav-link:hover,
         .app-nav .nav-link:focus-visible,
-        .app-nav .nav-link.show { color: #fff; background: rgba(167, 139, 250, .14); }
-        .app-nav .nav-link.is-active { color: #fff; background: rgba(139, 92, 246, .30); }
+        .app-nav .nav-link.show { color: var(--text); background: rgba(8, 10, 16, .045); }
+        .app-nav .nav-link.is-active { color: var(--brand-600); background: rgba(20, 71, 230, .08); }
         .app-nav .dropdown-toggle::after { margin-left: .4em; vertical-align: .2em; opacity: .7; }
         .app-nav .dropdown-menu {
             background: var(--panel); border: 1px solid var(--panel-line);
             border-radius: 12px; padding: .4rem; min-width: 17rem;
-            box-shadow: 0 16px 40px rgba(0, 0, 0, .35);
+            box-shadow: 0 12px 32px rgba(8, 10, 16, .12);
             margin-top: .55rem;
         }
         .app-nav .dropdown-item {
-            border-radius: 8px; padding: .5rem .7rem; color: #E8E4F0;
+            border-radius: 8px; padding: .5rem .7rem; color: var(--ink-800);
             display: flex; flex-direction: column; gap: .05rem; white-space: normal;
         }
-        .app-nav .dropdown-item small { color: #9b92b0; font-size: .78rem; }
+        .app-nav .dropdown-item small { color: var(--muted); font-size: .78rem; }
         .app-nav .dropdown-item:hover,
-        .app-nav .dropdown-item:focus { background: rgba(167, 139, 250, .14); color: #fff; }
-        .app-nav .dropdown-item.is-active { background: rgba(139, 92, 246, .30); color: #fff; }
-        .app-nav .dropdown-item.is-active small { color: #C9C2DE; }
+        .app-nav .dropdown-item:focus { background: var(--brand-50); color: var(--ink-900); }
+        .app-nav .dropdown-item.is-active { background: var(--brand-100); color: var(--brand-700); }
+        .app-nav .dropdown-item.is-active small { color: var(--brand-600); }
         .app-nav .dropdown-divider { border-color: var(--panel-line); margin: .35rem .2rem; }
-        .app-nav .navbar-toggler { border-color: rgba(167, 139, 250, .3); padding: .3rem .55rem; }
-        .app-nav .navbar-toggler:focus { box-shadow: 0 0 0 .2rem rgba(167, 139, 250, .35); }
+        .app-nav .navbar-toggler { border-color: var(--line); padding: .3rem .55rem; }
+        .app-nav .navbar-toggler:focus { box-shadow: 0 0 0 .2rem rgba(20, 71, 230, .25); }
 
         .nav-jump {
             display: inline-flex; align-items: center; gap: .6rem;
-            background: rgba(255, 255, 255, .06);
-            border: 1px solid rgba(167, 139, 250, .22);
-            color: #A79FBD; border-radius: 8px;
+            background: var(--surface);
+            border: 1px solid var(--line);
+            color: var(--muted); border-radius: 8px;
             padding: .38rem .7rem; font-size: .86rem; line-height: 1.2;
             transition: border-color .15s ease, color .15s ease;
         }
-        .nav-jump:hover { border-color: rgba(167, 139, 250, .5); color: #fff; }
+        .nav-jump:hover { border-color: var(--brand-300); color: var(--text); }
         .nav-jump kbd {
-            background: rgba(255, 255, 255, .1); color: #C9C2DE;
+            background: var(--brand-50); color: var(--muted);
             border-radius: 5px; padding: .05rem .4rem; font-size: .75rem;
-            font-family: inherit;
+            font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
         }
         .user-btn {
             display: inline-flex; align-items: center; gap: .55rem;
-            color: #E8E4F0; padding: .25rem .5rem .25rem .3rem !important;
+            color: var(--text); padding: .25rem .5rem .25rem .3rem !important;
         }
         .avatar {
             width: 28px; height: 28px; border-radius: 50%;
@@ -180,10 +186,29 @@
             .nav-jump kbd { display: none; }   /* no keyboard on a phone */
         }
 
+        /* ---------- Pair strip ----------
+           The extension pairs once and then heartbeats every 30 seconds, so
+           a missing heartbeat is exactly "never paired on this browser, or
+           just dropped". Server-rendered only: the strip shows while the
+           heartbeat is missing and goes away on the first one — nothing to
+           dismiss, nothing to remember. */
+        .pair-strip {
+            background: #FFFBEB;
+            border-bottom: 1px solid rgba(245, 158, 11, .35);
+            font-size: .88rem; color: #92400E;
+        }
+        .pair-strip .pair-dot {
+            width: 9px; height: 9px; border-radius: 50%; flex: none;
+            background: #F59E0B; box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
+        }
+        .pair-strip a { color: #B45309; font-weight: 600; white-space: nowrap; }
+        .pair-strip a:hover,
+        .pair-strip a:focus-visible { color: #92400E; }
+
         /* ---------- Jump palette (Ctrl/Cmd+K) ---------- */
         .palette-backdrop {
             position: fixed; inset: 0; z-index: 2100;
-            background: rgba(15, 10, 31, .55);
+            background: rgba(8, 10, 16, .4);
             -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
             display: flex; justify-content: center; align-items: flex-start;
             padding: 12vh 1rem 1rem;
@@ -192,25 +217,25 @@
         .palette {
             width: min(560px, 100%); background: var(--panel);
             border: 1px solid var(--panel-line); border-radius: 14px;
-            box-shadow: 0 24px 70px rgba(0, 0, 0, .5); overflow: hidden; color: #E8E4F0;
+            box-shadow: 0 24px 70px rgba(8, 10, 16, .25); overflow: hidden; color: var(--text);
         }
         .palette input {
             width: 100%; background: transparent; border: 0;
             border-bottom: 1px solid var(--panel-line);
-            color: #fff; padding: 1rem 1.1rem; font-size: 1.05rem; outline: 0;
+            color: var(--text); padding: 1rem 1.1rem; font-size: 1.05rem; outline: 0;
         }
-        .palette input::placeholder { color: #8a819e; }
+        .palette input::placeholder { color: #9aa1ad; }
         .palette ul { list-style: none; margin: 0; padding: .4rem; max-height: 50vh; overflow-y: auto; }
         .palette li a {
             display: flex; justify-content: space-between; align-items: baseline; gap: 1rem;
-            padding: .55rem .7rem; border-radius: 8px; color: #E8E4F0; text-decoration: none;
+            padding: .55rem .7rem; border-radius: 8px; color: var(--ink-800); text-decoration: none;
         }
-        .palette li a small { color: #8a819e; }
-        .palette li[aria-selected="true"] a { background: rgba(139, 92, 246, .32); color: #fff; }
-        .palette .palette-empty { padding: 1rem 1.1rem; color: #8a819e; }
+        .palette li a small { color: var(--muted); }
+        .palette li[aria-selected="true"] a { background: var(--brand-100); color: var(--brand-700); }
+        .palette .palette-empty { padding: 1rem 1.1rem; color: var(--muted); }
         .palette-foot {
             border-top: 1px solid var(--panel-line); padding: .5rem 1rem;
-            font-size: .75rem; color: #8a819e; display: flex; gap: 1rem;
+            font-size: .75rem; color: var(--muted); display: flex; gap: 1rem;
         }
 
         /* ---------- Components (skin over Bootstrap) ---------- */
@@ -220,14 +245,14 @@
             --bs-btn-hover-bg: var(--brand-600); --bs-btn-hover-border-color: var(--brand-600);
             --bs-btn-active-bg: var(--brand-700); --bs-btn-active-border-color: var(--brand-700);
             --bs-btn-disabled-bg: var(--brand-500); --bs-btn-disabled-border-color: var(--brand-500);
-            --bs-btn-focus-shadow-rgb: 124, 58, 237;
+            --bs-btn-focus-shadow-rgb: 20, 71, 230;
         }
         .btn-outline-primary {
             --bs-btn-color: var(--brand-600); --bs-btn-border-color: var(--brand-500);
             --bs-btn-hover-bg: var(--brand-500); --bs-btn-hover-border-color: var(--brand-500);
             --bs-btn-active-bg: var(--brand-600); --bs-btn-active-border-color: var(--brand-600);
             --bs-btn-disabled-color: var(--brand-500); --bs-btn-disabled-border-color: var(--brand-500);
-            --bs-btn-focus-shadow-rgb: 124, 58, 237;
+            --bs-btn-focus-shadow-rgb: 20, 71, 230;
         }
         .btn-success {
             --bs-btn-color: #fff;
@@ -238,7 +263,7 @@
             --bs-btn-focus-shadow-rgb: 22, 163, 74;
         }
         .form-check-input:checked { background-color: var(--brand-500); border-color: var(--brand-500); }
-        .form-check-input:focus { border-color: var(--brand-400); box-shadow: 0 0 0 .2rem rgba(124, 58, 237, .18); }
+        .form-check-input:focus { border-color: var(--brand-400); box-shadow: 0 0 0 .2rem rgba(20, 71, 230, .15); }
         .nav-pills { --bs-nav-pills-link-active-bg: var(--brand-500); }
         .progress { --bs-progress-bar-bg: var(--brand-500); }
         .dropdown-menu { --bs-dropdown-link-active-bg: var(--brand-500); }
@@ -247,7 +272,7 @@
         .card { border-color: var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
         .card-header:first-child { border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0; }
         .alert { border-radius: var(--radius); }
-        .modal-content { border-radius: var(--radius-lg); border: 0; box-shadow: 0 20px 60px rgba(31, 27, 46, .25); }
+        .modal-content { border-radius: var(--radius-lg); border: 0; box-shadow: 0 20px 60px rgba(8, 10, 16, .18); }
         .breadcrumb { font-size: .875rem; --bs-breadcrumb-divider-color: var(--muted); }
         .breadcrumb a { text-decoration: none; }
 
@@ -290,14 +315,14 @@
 
         /* Sortable column headers */
         .sortable { cursor: pointer; user-select: none; white-space: nowrap; }
-        .sortable:hover { background-color: rgba(124, 58, 237, .06); }
+        .sortable:hover { background-color: rgba(20, 71, 230, .06); }
         .sortable::after { content: ' ↕'; opacity: .3; font-size: .75em; }
         .sortable.asc::after { content: ' ↑'; opacity: 1; }
         .sortable.desc::after { content: ' ↓'; opacity: 1; }
 
         /* Type badges */
-        .badge-audio { background: #6f42c1; }
-        .badge-text { background: #0d6efd; }
+        .badge-audio { background: #0f766e; }
+        .badge-text { background: #475569; }
         .badge-unknown { background: #6c757d; }
 
         /* Markdown content */
@@ -307,13 +332,13 @@
         .summary-content p { margin-bottom: .75rem; }
         .summary-content ul, .summary-content ol { margin-bottom: .75rem; padding-left: 1.5rem; }
         .summary-content strong { font-weight: 600; }
-        .summary-content code { background: #e9ecef; padding: .1rem .3rem; border-radius: 3px; font-size: .9em; }
+        .summary-content code { background: var(--brand-50); padding: .1rem .3rem; border-radius: 3px; font-size: .9em; }
 
         /* Full-page "Processing..." overlay */
         #loadingOverlay {
             position: fixed; inset: 0; z-index: 2200;
             display: flex; align-items: center; justify-content: center;
-            background: rgba(246, 245, 250, .78);
+            background: rgba(249, 250, 251, .8);
             -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
         }
         #loadingOverlay.d-none { display: none !important; }
@@ -364,7 +389,7 @@
         {%- for pre in item.get('prefixes', []) %}{% if p.startswith(pre) %}1{% endif %}{% endfor -%}
     {%- endmacro %}
 
-    <nav class="navbar navbar-expand-lg app-nav" data-bs-theme="dark" aria-label="Main">
+    <nav class="navbar navbar-expand-lg app-nav" aria-label="Main">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('index') }}">
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="" height="32" width="32">
@@ -412,7 +437,7 @@
                             <span class="d-lg-none">{{ current_user['username'] }}</span>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-lg-end">
-                            <li class="px-3 py-2 small" style="color:#9b92b0;">Signed in as <strong style="color:#E8E4F0;">{{ current_user['username'] }}</strong></li>
+                            <li class="px-3 py-2 small" style="color:var(--muted);">Signed in as <strong style="color:var(--text);">{{ current_user['username'] }}</strong></li>
                             <li><hr class="dropdown-divider"></li>
                             {% for sub in ACCOUNT_NAV %}
                             <li><a class="dropdown-item{% if on(sub)|trim %} is-active{% endif %}" href="{{ sub.href }}"
@@ -432,6 +457,20 @@
             </div>
         </div>
     </nav>
+
+    {% if current_user and not agent_online and request.endpoint != 'agent_jobs_page' %}
+    {# No heartbeat means the extension never paired on this browser, or just
+       dropped. Pairing happens once per browser; once the 30s heartbeat
+       resumes the strip is gone without anyone dismissing it. The queue page
+       is excluded — it already carries the offline badge and the button. #}
+    <div class="pair-strip" role="status">
+        <div class="container d-flex flex-wrap align-items-center gap-2 py-2">
+            <span class="pair-dot" aria-hidden="true"></span>
+            <span>浏览器扩展未连接 —— 推送到公众号等平台需要它。</span>
+            <a class="ms-auto" href="{{ url_for('agent_jobs_page') }}#pair">去配对 →</a>
+        </div>
+    </div>
+    {% endif %}
 
     <div id="paletteBackdrop" class="palette-backdrop" hidden>
         <div class="palette" id="palette" role="dialog" aria-modal="true" aria-label="Jump to a page">

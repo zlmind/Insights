@@ -52,5 +52,11 @@ document.getElementById('pair-btn')?.addEventListener('click', async () => {
         }, (body.expires_in || 300) * 1000);
     } catch { alert('生成配对码失败'); btn.disabled = false; }
 });
+
+// Landed from the pair strip's「去配对 →」link (#pair): mint the code right
+// away, so the visitor sees it without hunting for the button.
+if (location.hash === '#pair') {
+    document.getElementById('pair-btn')?.click();
+}
 </script>
 {% endblock %}

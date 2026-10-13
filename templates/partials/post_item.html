@@ -6,10 +6,10 @@
    row. Every element id keys off `group.id` — the card's primary row — so the
    per-post JS (image editor, Instagram builder, inline edit) needs no notion of
    groups at all. #}
-{# The one platform table: the chips here, the chip CSS and the JS tables in
-   compose.html, and the Find & Replace badges all read from it. The domestic
-   platforms come first — they are what the app offers; the Western ones stay
-   in the table only so posts saved against them keep rendering. #}
+{# The one platform table: the per-card chips, the chip CSS and the JS tables
+   in compose.html, and the Find & Replace badges all read from it. Only the
+   domestic platforms are offered; the Western ones stay in the table only so
+   posts saved against them keep rendering. #}
 {% set PLATFORM_META = {
     'xiaohongshu': {'label': '小红书', 'icon': '📕', 'color': '#FF2442', 'tint': 'rgba(255, 36, 66, 0.08)'},
     'douyin':      {'label': '抖音',   'icon': '🎵', 'color': '#FE2C55', 'tint': 'rgba(254, 44, 85, 0.08)'},
@@ -22,7 +22,6 @@
     'facebook':  {'label': 'Facebook',  'icon': '📘', 'color': '#1877F2', 'tint': 'rgba(24, 119, 242, 0.08)'},
     'instagram': {'label': 'Instagram', 'icon': '📷', 'color': '#E4405F', 'tint': 'rgba(228, 64, 95, 0.08)'},
 } %}
-{% set PLATFORM_ORDER = ['xiaohongshu', 'douyin', 'wechat', 'zhihu', 'toutiao', 'linkedin', 'threads', 'twitter', 'facebook', 'instagram'] %}
 
 {% macro render_post_item(group) %}
 {# Destinations are keyed by platform AND account, because a platform can hold

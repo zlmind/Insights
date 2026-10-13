@@ -69,7 +69,9 @@ async function testConnection(): Promise<void> {
 async function render(): Promise<void> {
   const settings = await loadSettings(chrome.storage.local);
   (el("server-url") as HTMLInputElement).value = settings.serverUrl;
-  const tokenInput = el("agent-token") as HTMLInputElement | null;
+  // The popup omits the manual token field on purpose — pairing is its only
+  // path onto a token — so this lookup must stay soft where el() would throw.
+  const tokenInput = document.getElementById("agent-token") as HTMLInputElement | null;
   if (tokenInput) tokenInput.value = settings.token;
   if (configured(settings)) void testConnection();
   else setStatus("unreachable");
@@ -103,7 +105,7 @@ async function onPair(): Promise<void> {
   try {
     const token = await pairWithCode(serverUrl.trim().replace(/\/+$/, ""), code);
     await saveSettings(chrome.storage.local, { serverUrl, token });
-    const tokenInput = el("agent-token") as HTMLInputElement | null;
+    const tokenInput = document.getElementById("agent-token") as HTMLInputElement | null;
     if (tokenInput) tokenInput.value = token;
     await testConnection();
   } catch (exc) {
@@ -115,7 +117,7 @@ async function onPair(): Promise<void> {
 
 async function onSave(): Promise<void> {
   const serverUrl = (el("server-url") as HTMLInputElement).value;
-  const tokenInput = el("agent-token") as HTMLInputElement | null;
+  const tokenInput = document.getElementById("agent-token") as HTMLInputElement | null;
   const token = tokenInput ? tokenInput.value : "";
   if (!await ensurePermission(serverUrl)) return;
   setStatus("saving");

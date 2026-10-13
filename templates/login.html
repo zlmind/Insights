@@ -13,34 +13,31 @@
     >
     <style>
         body {
-            background: linear-gradient(135deg, #0F0A1F 0%, #1a1033 100%);
+            background: #f9fafb;
             min-height: 100vh;
-            color: #e8e4f0;
+            color: #080a10;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 2rem;
         }
         .auth-card {
-            background: #1a1428;
-            border: 1px solid #2d2640;
-            border-radius: 12px;
+            background: #fff;
+            border: 1px solid #dee1e8;
+            border-radius: 14px;
             padding: 2.25rem;
             width: 100%;
             max-width: 380px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+            box-shadow: 0 12px 32px rgba(8, 10, 16, .08);
         }
         .auth-card h1 {
             font-size: 1.5rem;
             font-weight: 600;
+            letter-spacing: -0.01em;
             margin: 0 0 0.25rem;
-            background: linear-gradient(135deg, #A78BFA, #7C3AED);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
         }
         .auth-card .subtitle {
-            color: #9b92b0;
+            color: #5f636f;
             font-size: 0.9rem;
             margin: 0 0 1.5rem;
         }
@@ -48,29 +45,30 @@
             font-size: 0.8125rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            color: #9b92b0;
+            color: #5f636f;
             margin-bottom: 0.25rem;
             font-weight: 600;
         }
         .auth-card .form-control {
-            background: #221a33;
-            border: 1px solid #2d2640;
-            color: #e8e4f0;
+            background: #fff;
+            border: 1px solid #dee1e8;
+            color: #080a10;
         }
         .auth-card .form-control:focus {
-            background: #221a33;
-            border-color: #7C3AED;
-            color: #e8e4f0;
-            box-shadow: 0 0 0 0.2rem rgba(124, 58, 237, 0.25);
+            background: #fff;
+            border-color: #6d92ef;
+            color: #080a10;
+            box-shadow: 0 0 0 0.2rem rgba(20, 71, 230, 0.15);
         }
-        .btn-purple {
-            background: linear-gradient(135deg, #A78BFA, #7C3AED);
+        .btn-brand {
+            background: #1447e6;
             color: #fff;
             border: 0;
-            font-weight: 600;
+            font-weight: 500;
             width: 100%;
         }
-        .btn-purple:hover { color: #fff; opacity: 0.92; }
+        .btn-brand:hover { background: #2b59e8; color: #fff; }
+        .btn-brand:focus { box-shadow: 0 0 0 0.2rem rgba(20, 71, 230, 0.25); color: #fff; }
         .brand {
             display: flex;
             align-items: center;
@@ -80,12 +78,9 @@
         .brand img { height: 36px; }
         .brand span {
             font-weight: 600;
-            background: linear-gradient(135deg, #A78BFA, #7C3AED);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            letter-spacing: -0.01em;
         }
-        .signup-link a { color: #A78BFA; text-decoration: none; }
+        .signup-link a { color: #1447e6; text-decoration: none; }
         .signup-link a:hover { text-decoration: underline; }
     </style>
 </head>
@@ -114,11 +109,11 @@
                 <label class="form-label" for="password">Password</label>
                 <input type="password" id="password" name="password" class="form-control" required autocomplete="current-password">
             </div>
-            <button type="submit" class="btn btn-purple">Sign in</button>
+            <button type="submit" class="btn btn-brand">Sign in</button>
         </form>
 
         {% if signups_allowed %}
-        <p class="signup-link text-center mt-3 mb-0" style="font-size: 0.875rem; color: #9b92b0;">
+        <p class="signup-link text-center mt-3 mb-0" style="font-size: 0.875rem; color: #5f636f;">
             Need an account? <a href="{{ url_for('signup') }}">Create one</a>
         </p>
         {% endif %}

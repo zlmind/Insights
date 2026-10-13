@@ -37,6 +37,17 @@ def main():
           "draft semantics are spelled out: go confirm on the platform")
     check('/agent-jobs' in html, "the queue page is linked")
 
+    # The pair strip rides under the nav on every page while the extension
+    # has no heartbeat, and hands the visitor straight to a minted code via
+    # the #pair anchor. The queue page itself already carries the offline
+    # badge and the button, so it does not repeat the strip. The checks match
+    # the div's class attribute, not bare "pair-strip" — the stylesheet
+    # carries the selector on every page.
+    check('class="pair-strip"' in html and '/agent-jobs#pair' in html,
+          "offline: the strip shows under the nav and links to /agent-jobs#pair")
+    check('class="pair-strip"' not in client.get("/agent-jobs").get_data(as_text=True),
+          "the queue page does not repeat the strip")
+
     # --- online: the same button is enabled and login dots show up ---
     agent_hub.record_heartbeat({"tools": {"wechatsync": {
         "available": True,
@@ -47,6 +58,8 @@ def main():
           "a fresh heartbeat clears the offline reason")
     check('未登录' in html,
           "a logged-out platform surfaces its login state on the button")
+    check('class="pair-strip"' not in html,
+          "a live heartbeat clears the pair strip")
 
     # A finished job shows per-platform results on the queue page.
     jid = database.enqueue_agent_job(

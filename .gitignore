@@ -27,3 +27,9 @@ extension/dist/
 extension/upstream/*
 !extension/upstream/UPSTREAM_SHA
 !extension/E2E.md
+
+# scratch and local artifacts
+node_modules/
+11.png
+misses.json
+.superpowers/
