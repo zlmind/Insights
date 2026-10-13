@@ -1,5 +1,11 @@
 # Notes for Claude Code
 
+MultiPost-Extension  路径：D:\git3\MultiPost-Extension
+
+
+
+可以直接拷贝里面插件的代码和实现逻辑
+
 ## Commits, pull requests and GitHub comments carry no attribution
 
 This applies to commit messages, to pull request titles and descriptions, and to

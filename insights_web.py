@@ -10212,6 +10212,18 @@ def agent_login_states_json():
     return jsonify(agent_hub.login_states_view())
 
 
+@app.route('/agent/status.json')
+def agent_status_json():
+    """One boolean for the queue page's connection pill: is the助手 alive.
+
+    age is seconds since the last heartbeat the process saw, null when none
+    ever arrived — the pill's tooltip reads it as「N 秒前有心跳」.
+    """
+    snap = agent_hub.heartbeat_snapshot()
+    return jsonify({"online": agent_hub.agent_online(),
+                    "age": None if snap is None else snap.get("age")})
+
+
 @app.route("/agent-jobs/pair-code", methods=["POST"])
 def agent_pair_code():
     """Mint a pairing code for the queue page's「配对浏览器扩展」button.

@@ -89,6 +89,25 @@ def main():
     check('pair-btn' in page and '配对浏览器扩展' in page,
           "the queue page carries the pairing entry for a fresh extension")
 
+    # The connection pill: green with a pulse while the助手 answers, red when
+    # it does not — and /agent/status.json is what its poll repaints from.
+    page = client.get("/agent-jobs").get_data(as_text=True)
+    check('conn-pill is-on' in page and '发布助手已连接' in page,
+          "a live heartbeat paints the pill green with 已连接")
+    status = client.get("/agent/status.json").get_json()
+    check(status.get("online") is True and isinstance(status.get("age"), float),
+          "status.json reads online with the heartbeat age")
+
+    for stale in list(agent_hub._TOOL_BEATS):
+        agent_hub._TOOL_BEATS[stale]["t"] = 0
+    agent_hub._LAST_HEARTBEAT["t"] = 0
+    page = client.get("/agent-jobs").get_data(as_text=True)
+    check('conn-pill is-off' in page and '发布助手未连接' in page,
+          "a stale heartbeat paints the pill red with 未连接")
+    status = client.get("/agent/status.json").get_json()
+    check(status.get("online") is False and status.get("age") is not None,
+          "status.json reads offline while the last beat is in the past")
+
     print("AGENT_UI_OK")
 
 

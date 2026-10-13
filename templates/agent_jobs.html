@@ -3,10 +3,31 @@
 {% block header %}发布队列{% endblock %}
 {% block content %}
 <div class="container py-4">
+    <style>
+        {# 连接状态胶囊：色板沿用登录状态条的绿/红系，绿态加呼吸光环让
+           「已连接」自己跳进视野；reduce-motion 下退回纯色点。 #}
+        .conn-pill { display: inline-flex; align-items: center; gap: .5rem; margin-left: .9rem;
+                     padding: .32rem .85rem .32rem .7rem; border-radius: 999px;
+                     font-size: .85rem; font-weight: 600; line-height: 1.4; }
+        .conn-pill .dot { width: .55rem; height: .55rem; border-radius: 999px; flex: 0 0 auto; }
+        .conn-pill.is-on { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+        .conn-pill.is-on .dot { background: #16a34a; animation: conn-pulse 2s ease-out infinite; }
+        .conn-pill.is-off { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+        .conn-pill.is-off .dot { background: #dc2626; }
+        @keyframes conn-pulse {
+            0%   { box-shadow: 0 0 0 0 rgba(22, 163, 74, .45); }
+            70%  { box-shadow: 0 0 0 .45rem rgba(22, 163, 74, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .conn-pill.is-on .dot { animation: none; }
+        }
+    </style>
     <div class="d-flex align-items-center mb-3">
         <h1 class="h3 mb-0">发布队列</h1>
-        <span class="ms-3 small {{ 'text-success' if agent_online else 'text-danger' }}">
-            {{ '推送端在线' if agent_online else '推送端离线' }}
+        <span class="conn-pill {{ 'is-on' if agent_online else 'is-off' }}" id="conn-pill" role="status">
+            <span class="dot" aria-hidden="true"></span>
+            <span id="conn-text">{{ '发布助手已连接' if agent_online else '发布助手未连接' }}</span>
         </span>
         <span class="ms-auto d-flex align-items-center gap-2">
             <button type="button" id="pair-btn" class="btn btn-sm btn-outline-primary">配对浏览器扩展</button>
@@ -58,5 +79,27 @@ document.getElementById('pair-btn')?.addEventListener('click', async () => {
 if (location.hash === '#pair') {
     document.getElementById('pair-btn')?.click();
 }
+
+// The connection pill is server-painted once; poll so it turns green on its
+// own while the visitor is watching the pairing happen (10s, tab visible).
+(function () {
+    const pill = document.getElementById('conn-pill');
+    const text = document.getElementById('conn-text');
+    function renderConn(d) {
+        const on = !!d.online;
+        pill.classList.toggle('is-on', on);
+        pill.classList.toggle('is-off', !on);
+        text.textContent = on ? '发布助手已连接' : '发布助手未连接';
+        pill.title = (on && d.age !== null && d.age !== undefined)
+            ? Math.round(d.age) + ' 秒前有心跳' : '';
+    }
+    function pollConn() {
+        fetch('/agent/status.json')
+            .then(r => r.json())
+            .then(renderConn)
+            .catch(() => { /* a lost poll keeps the last render */ });
+    }
+    setInterval(() => { if (!document.hidden) pollConn(); }, 10000);
+})();
 </script>
 {% endblock %}
