@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原型 v3：平台登录状态条（对齐竞品词汇：平台 + 登录状态）</title>
+<style>
+  :root {
+    --ink-900: #080a10; --panel: #ffffff; --panel-line: #dee1e8;
+    --brand-500: #1447e6; --brand-400: #6d92ef; --brand-50: #eef2fc;
+    --canvas: #f9fafb; --line: #dee1e8; --line-strong: #c9cfd9;
+    --text: #080a10; --muted: #5f636f;
+    --ok: #16a34a; --ok-bg: #f0fdf4; --ok-line: #bbf7d0;
+    --bad: #dc2626; --bad-bg: #fef2f2;
+    --na: #9ca3af; --na-bg: #f9fafb;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 2rem 1.25rem 4rem; background: var(--canvas);
+         color: var(--text); font: 14px/1.5 "Geist", "Inter", "Microsoft YaHei", system-ui, sans-serif; }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 1.05rem; margin: 0 0 .25rem; }
+  .sub { color: var(--muted); font-size: .85rem; margin-bottom: 1.5rem; }
+  .scene-label { font-size: .78rem; font-weight: 600; letter-spacing: .04em;
+                 text-transform: uppercase; color: var(--muted); margin: 2rem 0 .5rem; }
+
+  .conn { background: var(--surface); border: 1px solid var(--panel-line);
+          border-radius: 12px; padding: .6rem .9rem; }
+  .conn-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .9rem; }
+  .conn-head { display: flex; flex-direction: column; line-height: 1.2; min-width: 8.5rem; }
+  .conn-title { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
+                font-weight: 600; color: var(--muted); }
+  .conn-summary { font-size: .9rem; font-weight: 600; }
+  .conn-summary small { font-weight: 400; color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: .4rem; list-style: none;
+           margin: 0; padding: 0; flex: 1 1 auto; }
+
+  /* 一平台一枚 chip：名字 + 一个状态词，竞品式「平台 → 登录状态」 */
+  .chip { display: inline-flex; align-items: center; gap: .4rem; padding: .28rem .75rem .28rem .6rem;
+          border: 1px solid var(--line-strong); border-radius: 999px; background: #fff;
+          font-size: .84rem; }
+  .chip .dot { width: .5rem; height: .5rem; border-radius: 999px; flex: 0 0 auto; }
+  .chip .name { font-weight: 600; }
+  .chip.ok   { background: var(--ok-bg); border-color: var(--ok-line); color: #166534; }
+  .chip.ok .dot { background: var(--ok); }
+  .chip.bad  { background: var(--bad-bg); border-color: #fecaca; color: #991b1b; }
+  .chip.bad .dot { background: var(--bad); }
+  .chip.na   { color: var(--muted); }
+  .chip.na .dot { background: transparent; border: 1.5px solid var(--na); }
+  .chip.off  { background: var(--na-bg); color: var(--muted); }
+  .chip.off .dot { background: var(--na-bg); border: 1.5px dashed var(--na); }
+
+  a.chip { text-decoration: none; cursor: pointer; }
+  a.chip:hover { border-color: var(--brand-400); background: var(--brand-50); }
+  a.chip .act { font-size: .74rem; font-weight: 600; color: var(--bad); }
+  a.chip.off .act { color: #6b7280; }
+  a.chip .act { display: none; }
+  a.chip:hover .act { display: inline; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; margin-top: .6rem;
+            padding-top: .6rem; border-top: 1px solid var(--line);
+            font-size: .76rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: .35rem; }
+  code { background: #f1f3f7; border-radius: 4px; padding: .05rem .3rem; font-size: .82em; }
+  .note { color: var(--muted); font-size: .78rem; margin-top: .5rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>原型 v3 · 平台登录状态（写作页连接条内新增一行）</h1>
+  <p class="sub">对齐竞品词汇：wechatsync 的「平台登录状态」、蚁小二的「账号授权」。每平台<b>一个</b>状态；
+     通道/执行器等实现细节只出现在悬停解释里（悬停任意 chip 试试）。</p>
+
+  <!-- ═══ 场景 A：常态 ═══ -->
+  <div class="scene-label">场景 A · 正常在线</div>
+  <section class="conn">
+    <div class="conn-bar">
+      <div class="conn-head">
+        <span class="conn-title">账号登录</span>
+        <span class="conn-summary">3 个平台可推送 <small>· 刚刚检测</small></span>
+      </div>
+      <ul class="chips">
+        <li class="chip ok" title="已登录：浏览器扩展检测到你在 Chrome 里登录了 mp.weixin.qq.com（12 秒前）">公众号</li>
+        <li class="chip ok" title="已登录：推送通道检测到小红书创作者中心登录态（20 秒前）">小红书</li>
+        <li class="chip ok" title="已登录：知乎登录态有效（20 秒前）">知乎</li>
+        <li>
+          <a class="chip bad" href="https://mp.toutiao.com/" target="_blank"
+             title="在浏览器里登录头条号后，这里约 30 秒内自动变绿。点击打开头条号登录页">
+            头条号 <span class="act">去登录 ↗</span></a>
+        </li>
+        <li>
+          <a class="chip bad" href="https://creator.douyin.com/" target="_blank"
+             title="点击打开抖音创作者中心登录页">
+            抖音 <span class="act">去登录 ↗</span></a>
+        </li>
+      </ul>
+    </div>
+    <div class="legend">
+      <span><span class="dot ok"></span>已登录，可推送</span>
+      <span><span class="dot bad"></span>未登录（点击去登录）</span>
+      <span><span class="dot na"></span>暂不支持检测</span>
+      <span><span class="dot off"></span>检测服务离线</span>
+    </div>
+  </section>
+
+  <!-- ═══ 场景 B：检测服务整体离线（昨天的事故形态） ═══ -->
+  <div class="scene-label">场景 B · 检测服务离线（昨天：扩展被重装后没重新配对）</div>
+  <section class="conn">
+    <div class="conn-bar">
+      <div class="conn-head">
+        <span class="conn-title">账号登录</span>
+        <span class="conn-summary" style="color:var(--bad)">检测离线 <small>· 无法确认登录状态</small></span>
+      </div>
+      <ul class="chips">
+        <li>
+          <a class="chip off" href="http://localhost:5001/agent-jobs" target="_blank"
+             title="浏览器里的发布助手扩展没有心跳（可能未配对或浏览器未开），登录状态无法检测。点击打开发布队列页重新配对">
+            公众号 <span class="act">去恢复 ↗</span></a>
+        </li>
+        <li>
+          <a class="chip off" href="http://localhost:5001/agent-jobs" target="_blank" title="同上">
+            小红书 <span class="act">去恢复 ↗</span></a>
+        </li>
+        <li>
+          <a class="chip off" href="http://localhost:5001/agent-jobs" target="_blank" title="同上">
+            知乎 <span class="act">去恢复 ↗</span></a>
+        </li>
+      </ul>
+    </div>
+    <div class="note">没有执行器在线时，不假装知道登录状态 —— 整条转灰、条头说明原因、给恢复入口。
+       这正是昨天按钮灰掉时用户最缺的信息。</div>
+  </section>
+
+  <!-- ═══ 场景 C：部分平台没有检测能力 ═══ -->
+  <div class="scene-label">场景 C · 部分平台暂无检测能力（探测未实现时的诚实降级）</div>
+  <section class="conn">
+    <div class="conn-bar">
+      <div class="conn-head">
+        <span class="conn-title">账号登录</span>
+        <span class="conn-summary">1 个平台可推送 <small>· 刚刚检测</small></span>
+      </div>
+      <ul class="chips">
+        <li class="chip ok" title="已登录：浏览器扩展检测到 mp.weixin.qq.com 登录态">公众号</li>
+        <li class="chip na" title="扩展暂未实现该平台的登录检测，状态未知（不是未登录）">头条号</li>
+        <li class="chip na" title="扩展暂未实现该平台的登录检测">抖音</li>
+      </ul>
+    </div>
+    <div class="note">「暂不支持检测 ≠ 未登录」。v1 方案里扩展对没探测的平台硬报「未登录」是错的，这里改为显式灰态。
+       spec 阶段决定是否给知乎/头条/抖音/小红书补真实探测。</div>
+  </section>
+
+  <p class="sub" style="margin-top:2rem">
+    <b>行为注记</b>（写 spec 时固定）：
+    ① 状态接口 <code>GET /agent/login-states.json</code>：每平台 <code>{state: ok|logged_out|unknown|offline, at, login_url}</code>，由在线执行器的心跳汇总而来；
+    ② 词汇表对齐竞品：平台 / 登录 / 已登录 / 未登录 / 去登录 / 检测；「agent」「扩展」「通道」不进客户文案；
+    ③ 未登录 → 点击直达该平台登录页，登录后 ≤30s 自动转绿（心跳周期决定）；
+    ④ 检测离线 → 条头说原因，chip 给恢复入口（发布队列页的配对）；
+    ⑤ 悬停细节保留执行器来源（浏览器扩展 / 推送程序，X 秒前）——排障信息收进 tooltip，不占版面。
+  </p>
+</div>
+</body>
+</html>
