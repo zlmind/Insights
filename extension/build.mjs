@@ -18,5 +18,7 @@ await esbuild.build({ ...common, entryPoints: ["src/popup/popup.ts"],
 await esbuild.build({ ...common, entryPoints: ["src/lib/protocol.ts"],
                       outfile: "dist/lib/protocol.js", format: "esm" });
 cpSync("src/manifest.json", "dist/manifest.json");
+mkdirSync("dist/assets", { recursive: true });
+cpSync("src/assets/default-cover.png", "dist/assets/default-cover.png");
 cpSync("src/options/options.html", "dist/options/options.html");
 cpSync("src/popup/popup.html", "dist/popup/popup.html");

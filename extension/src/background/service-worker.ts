@@ -46,29 +46,43 @@ async function closeLeftoverTab(): Promise<void> {
   }
 }
 
+const PUBLISH_PAGES: Record<string, { url: string; keepTab: boolean }> = {
+  // weixin's flow resolves inside the tab, so it closes; xiaohongshu's ends
+  // at a filled composer the author must confirm — the tab stays open.
+  wechat: { url: WEIXIN_HOME, keepTab: false },
+  xiaohongshu: { url: "https://creator.xiaohongshu.com/publish/publish?target=image",
+                 keepTab: true },
+};
+
 async function publishViaBridge(target: string,
                                 item: { target: string; content: string },
                                 title: string): Promise<PlatformResult> {
-  if (target !== "wechat") {
+  const page = PUBLISH_PAGES[target];
+  if (!page) {
     return { platform: target, success: false, draft: false,
              code: "unknown_target", error: `未知平台 ${target}` };
   }
-  const tab = await chrome.tabs.create({ url: WEIXIN_HOME, active: false });
+  const tab = await chrome.tabs.create({ url: page.url, active: false });
   await rememberTab(tab.id!);
   try {
     await waitTabComplete(tab.id!);
     const resp = await chrome.tabs.sendMessage(tab.id!,
-      { type: "publish", payload: { title, content: item.content } });
+      { type: "publish", payload: {
+          target, title, content: item.content,
+          imageUrl: chrome.runtime.getURL("assets/default-cover.png"),
+        } });
     return resp?.ok
-      ? { platform: "wechat", success: true, draft: true, detail: resp.detail }
-      : { platform: "wechat", success: false, draft: false,
+      ? { platform: target, success: true, draft: true, detail: resp.detail }
+      : { platform: target, success: false, draft: false,
           code: resp?.code || "sync_failed", error: resp?.error || "适配器无响应" };
   } catch (exc) {
-    return { platform: "wechat", success: false, draft: false, code: "sync_failed",
+    return { platform: target, success: false, draft: false, code: "sync_failed",
              error: String(exc) };
   } finally {
-    chrome.tabs.remove(tab.id!).catch(() => {});
-    await forgetTab();
+    if (!page.keepTab) {
+      chrome.tabs.remove(tab.id!).catch(() => {});
+      await forgetTab();
+    }
   }
 }
 
