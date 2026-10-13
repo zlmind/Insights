@@ -34,6 +34,20 @@ def main():
           "payload carries the row's copy verbatim, one item per target")
     check(job["kind"] == "article_sync", "push jobs are article_sync")
 
+    # A card's own image travels with the push: xiaohongshu notes require a
+    # picture and the publisher adapters re-host it per platform.
+    import sqlite3 as _s3
+    img_pid = database.add_standalone_post("freeform", "gate-img", "xiaohongshu",
+                                           "有图卡片")
+    with _s3.connect(database.DB_PATH) as conn:
+        conn.execute("UPDATE standalone_posts SET image_url = ? WHERE id = ?",
+                     ("http://localhost:5001/static/uploads/gate.png", img_pid))
+    img_row = database.get_standalone_post(img_pid)
+    img_push = dp.enqueue_card_push(img_row)
+    img_payload = json.loads(database.get_agent_job(img_push["job_id"])["payload"])
+    check(img_payload["items"][0]["image_url"] == img_row["image_url"],
+          "the card's image_url rides along in the item")
+
     second = dp.enqueue_card_push(row)
     check(second["job_id"] == first["job_id"] and second["already"] is True,
           "a queued repeat push returns the same job with already=True")

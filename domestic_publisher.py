@@ -69,9 +69,14 @@ def _executor_map(db_path=None) -> dict:
 def _payload_for(row, db_path=None) -> dict:
     keys = row.keys() if hasattr(row, "keys") else ()
     title = row["title"] if "title" in keys else None
+    item = {"target": row["platform"], "content": row["content"] or ""}
+    if "image_url" in keys and row["image_url"]:
+        # The card's own picture rides along: xiaohongshu notes require one
+        # and the publisher adapters re-host it per platform.
+        item["image_url"] = row["image_url"]
     payload = {
         "title": title or display_name(row["platform"]) + "草稿",
-        "items": [{"target": row["platform"], "content": row["content"] or ""}],
+        "items": [item],
         "post_id": row["id"],
     }
     if _executor_map(db_path).get(row["platform"]) == "extension":

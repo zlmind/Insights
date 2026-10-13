@@ -58,17 +58,34 @@ const PUBLISH_PAGES: Record<string, { url: string; keepTab: boolean }> = {
 // handing the content script a data URL sidesteps page-CORS entirely — a
 // direct chrome-extension:// fetch from the tab is what "Failed to fetch"
 // was (job 18/19/20).
-async function coverDataUrl(): Promise<string> {
-  const blob = await (await fetch(chrome.runtime.getURL("assets/default-cover.png"))).blob();
-  return new Promise((resolve) => {
+async function toDataUrl(url: string): Promise<string> {
+  const blob = await (await fetch(url)).blob();
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("图片读取失败"));
     reader.readAsDataURL(blob);
   });
 }
 
+// A card with its own picture sends that picture; the bundled cover is the
+// fallback for text-only cards on platforms that require an image. Both
+// travel as data URLs — the SW fetches cross-origin freely, the content
+// script cannot.
+async function imageDataUrl(item: { image_url?: string }): Promise<string> {
+  if (item.image_url) {
+    try {
+      return await toDataUrl(item.image_url);
+    } catch {
+      // fall through to the bundled cover
+    }
+  }
+  return toDataUrl(chrome.runtime.getURL("assets/default-cover.png"));
+}
+
 async function publishViaBridge(target: string,
-                                item: { target: string; content: string },
+                                item: { target: string; content: string;
+                                        image_url?: string },
                                 title: string): Promise<PlatformResult> {
   const page = PUBLISH_PAGES[target];
   if (!page) {
@@ -79,7 +96,7 @@ async function publishViaBridge(target: string,
   await rememberTab(tab.id!);
   const message = { type: "publish", payload: {
       target, title, content: item.content,
-      imageUrl: await coverDataUrl(),
+      imageUrl: await imageDataUrl(item),
     } };
   try {
     await waitTabComplete(tab.id!);
