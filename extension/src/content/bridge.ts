@@ -2,6 +2,10 @@ import { publishRednoteNote } from "./adapters/rednote";
 import { publishWeixinArticle } from "./adapters/weixin";
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === "ping") {
+    sendResponse({ type: "pong" });
+    return false;
+  }
   if (msg?.type !== "publish") return false;
   const payload = msg.payload ?? {};
   const work = payload.target === "xiaohongshu"

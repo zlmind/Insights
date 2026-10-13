@@ -64,17 +64,31 @@ async function publishViaBridge(target: string,
   }
   const tab = await chrome.tabs.create({ url: page.url, active: false });
   await rememberTab(tab.id!);
+  const message = { type: "publish", payload: {
+      target, title, content: item.content,
+      imageUrl: chrome.runtime.getURL("assets/default-cover.png"),
+    } };
   try {
     await waitTabComplete(tab.id!);
-    const resp = await chrome.tabs.sendMessage(tab.id!,
-      { type: "publish", payload: {
-          target, title, content: item.content,
-          imageUrl: chrome.runtime.getURL("assets/default-cover.png"),
-        } });
-    return resp?.ok
-      ? { platform: target, success: true, draft: true, detail: resp.detail }
-      : { platform: target, success: false, draft: false,
-          code: resp?.code || "sync_failed", error: resp?.error || "适配器无响应" };
+    await waitBridgeReady(tab.id!);
+    try {
+      const resp = await chrome.tabs.sendMessage(tab.id!, message);
+      return resp?.ok
+        ? { platform: target, success: true, draft: true, detail: resp.detail }
+        : { platform: target, success: false, draft: false,
+            code: resp?.code || "sync_failed", error: resp?.error || "适配器无响应" };
+    } catch (firstError) {
+      // A late SPA navigation can close the channel mid-work; one retry on
+      // the (by then) settled document.
+      const text = String(firstError);
+      if (!text.includes("message channel closed")) throw firstError;
+      await waitBridgeReady(tab.id!, 10000);
+      const resp = await chrome.tabs.sendMessage(tab.id!, message);
+      return resp?.ok
+        ? { platform: target, success: true, draft: true, detail: resp.detail }
+        : { platform: target, success: false, draft: false,
+            code: resp?.code || "sync_failed", error: resp?.error || "适配器无响应" };
+    }
   } catch (exc) {
     return { platform: target, success: false, draft: false, code: "sync_failed",
              error: String(exc) };
@@ -101,6 +115,27 @@ function waitTabComplete(tabId: number, timeoutMs = 30000): Promise<void> {
     };
     chrome.tabs.onUpdated.addListener(listener);
   });
+}
+
+// SPA pages keep navigating after "complete" (XHS rewrites its own URL and
+// rebuilds its DOM), and a message sent into a dying document closes the
+// channel with the adapter's work lost. Ping until the bridge answers, then
+// give the page a beat to settle before the real send.
+async function waitBridgeReady(tabId: number, timeoutMs = 20000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const resp = await chrome.tabs.sendMessage(tabId, { type: "ping" });
+      if (resp?.type === "pong") {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return;
+      }
+    } catch {
+      // no listener yet — the document is still coming up
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error("适配器未就绪（页面加载超时）");
 }
 
 // One cycle at a time, decided synchronously: busy is only set after the
