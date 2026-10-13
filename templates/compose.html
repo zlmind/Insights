@@ -6,6 +6,7 @@
 {# with context: the card macro reads PUBLISH_TARGETS, which the app injects
    per request, and an import without context would not see it. #}
 {% from 'partials/post_item.html' import render_post_item, PLATFORM_META with context %}
+{% include 'partials/login_status_strip.html' %}
 <style>
     /* Command Center specific styles */
     /* Tab styling */

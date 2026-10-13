@@ -48,6 +48,15 @@ def main():
     check('class="pair-strip"' not in client.get("/agent-jobs").get_data(as_text=True),
           "the queue page does not repeat the strip")
 
+    # The login strip mounts above the generator and carries the vocabulary
+    # the spec fixes: platform names, 暂不支持检测, the title 账号登录.
+    check('id="loginStrip"' in html, "the login strip mounts on compose")
+    check('/agent/login-states.json' in html,
+          "the strip polls the login-states endpoint")
+    check('暂不支持检测' in html,
+          "the strip knows the unknown state's wording")
+    check('账号登录' in html, "the strip's title uses the fixed vocabulary")
+
     # --- online: the same button is enabled and login dots show up ---
     agent_hub.record_heartbeat({"tools": {"wechatsync": {
         "available": True,
