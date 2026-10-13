@@ -1,0 +1,98 @@
+name: issue-fix
+
+# Turn an issue into a pull request, without a human in the loop.
+#
+# The owner files an issue; this workflow hands it to a headless Claude Code
+# session that implements it on its own branch, opens a pull request, and
+# reports back on the issue. Real verification happens in the gates workflow,
+# which runs on every pull request -- which is exactly why the push and the
+# PR creation here use the GH_PAT secret instead of the job token: a pull
+# request opened with GITHUB_TOKEN does not trigger further workflows.
+#
+# The repository is public, so anyone can open an issue. The author gate on
+# the job makes sure only issues from accounts with write access ever reach
+# Claude; everyone else's issues are ignored. Nothing here ever merges.
+
+on:
+  issues:
+    types: [opened, reopened]
+
+# The job token only reads. Every write (push, PR, issue comment) goes
+# through the fine-grained PAT.
+permissions:
+  contents: read
+  issues: read
+
+# Different issues run in parallel on their own branches; the same issue
+# never runs twice at once (reopen spam).
+concurrency:
+  group: issue-fix-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    # Author gate: only write-access accounts (the owner, in practice).
+    if: >-
+      github.event.issue.author_association == 'OWNER' ||
+      github.event.issue.author_association == 'MEMBER' ||
+      github.event.issue.author_association == 'COLLABORATOR'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install claude CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      # Repository rule: commits are authored as l0lsec with the GitHub
+      # no-reply address, never as the runner defaults or a model identity.
+      - name: Set git identity
+        run: |
+          git config user.name l0lsec
+          git config user.email 51931886+l0lsec@users.noreply.github.com
+
+      # The issue body is never interpolated into the command line; the
+      # session reads it itself with gh, so there is no quoting to get wrong.
+      - name: Implement the issue
+        env:
+          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
+          ANTHROPIC_MODEL: glm-5.3-flash
+          ANTHROPIC_DEFAULT_OPUS_MODEL: glm-5.3
+          ANTHROPIC_DEFAULT_SONNET_MODEL: glm-5.3-flash
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: glm-5.3-flash
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh auth setup-git
+          claude -p "Implement GitHub issue #${ISSUE_NUMBER} in this repository. First read it in full: gh issue view ${ISSUE_NUMBER}. The issue may be written in Chinese. Then:
+          1. Create the branch claude/issue-${ISSUE_NUMBER} from main.
+          2. Implement what the issue asks for. Follow CLAUDE.md, keep the change minimal, and match the surrounding code.
+          3. Sanity-check the files you touched (python -m py_compile for Python, node --check for JavaScript). Full verification happens in the gates workflow on the pull request, so keep this light.
+          4. Commit with a short imperative message in the repository's existing style. No Co-Authored-By, Claude-Session or model trailers of any kind.
+          5. Push the branch and open a pull request into main with gh pr create; the body explains the change and ends with 'Closes #${ISSUE_NUMBER}'.
+          6. Comment on the issue with the pull request link.
+          If the issue is unclear or not actionable as written, skip steps 3-6, comment on the issue asking for clarification, and stop. Never push to main and never merge anything." \
+            --permission-mode acceptEdits \
+            --max-turns 40 \
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git checkout*),Bash(git branch*),Bash(git add*),Bash(git commit*),Bash(git push*),Bash(gh issue view*),Bash(gh pr create*),Bash(gh issue comment*),Bash(python *),Bash(node --check *)"
+
+      - name: Report failure on the issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          gh issue comment ${ISSUE_NUMBER}
+          --body "Automatic fix failed -- see ${RUN_URL}. The issue stays open; close and reopen it to retry, or handle it by hand."
