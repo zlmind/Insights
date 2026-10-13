@@ -1,9 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { classifyWeixinError, uploadSummary } from "./weixin";
+import { classifyWeixinError, readAccount, uploadSummary } from "./weixin";
 
 const loggedOut = readFileSync(
   new URL("../../lib/fixtures/weixin-logged-out.html", import.meta.url), "utf-8");
+
+describe("readAccount", () => {
+  it("keeps whole ticket and user_name values, including `=` and `-`", () => {
+    const page = `window.wx.commonData = { t: "1888899577",
+      ticket: "MzA3NTQ4NzQzNQ==_aB-cd", user_name: "gh_9f2e1a47b8c6",
+      nick_name: "%E5%A4%A7%E5%AE%B6%E5%A5%BD" };`;
+    expect(readAccount(page)).toEqual({
+      nickname: "大家好",
+      ticket: "MzA3NTQ4NzQzNQ==_aB-cd",
+      userName: "gh_9f2e1a47b8c6",
+    });
+  });
+  it("returns empty strings when the page has no credentials", () => {
+    expect(readAccount("<html>logged out</html>")).toEqual({
+      nickname: "", ticket: "", userName: "" });
+  });
+});
 
 describe("classifyWeixinError", () => {
   it("maps login-ish base_resp messages to needs_login", () => {

@@ -73,12 +73,15 @@ export function classifyWeixinError(
   return { code: "sync_failed", error: message || "公众号创建草稿失败" };
 }
 
-function readAccount(pageHtml: string): { nickname: string; ticket: string; userName: string } {
+export function readAccount(pageHtml: string): { nickname: string; ticket: string; userName: string } {
   const nickname = decodeURIComponent(
     pageHtml.match(/nick_name\s*:\s*["']([^"']+)["']/)?.[1]
     || pageHtml.match(/&nick_name\s*=\s*([^&"' ]+)/)?.[1] || "");
-  const ticket = pageHtml.match(/ticket\s*:\s*["'](\w+)["']/)?.[1] || "";
-  const userName = pageHtml.match(/user_name\s*:\s*["'](\w+)["']/)?.[1] || "";
+  // `[^"']+`, not `\w+`: mp tickets are long tokens that can carry `=` and
+  // other non-word characters — a \w match truncates them and the upload is
+  // rejected server-side with the generic err_msg "default".
+  const ticket = pageHtml.match(/ticket\s*:\s*["']([^"']+)["']/)?.[1] || "";
+  const userName = pageHtml.match(/user_name\s*:\s*["']([^"']+)["']/)?.[1] || "";
   return { nickname, ticket, userName };
 }
 
