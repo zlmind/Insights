@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { checkPortalLogin, checkZhihuLogin, douyinVerdict, portalVerdict,
-         rednoteVerdict, zhihuVerdict } from "./platform-login";
+import { checkPortalLogin, checkXiaohongshuLogin, checkZhihuLogin, douyinVerdict,
+         portalVerdict, rednoteVerdict, zhihuVerdict } from "./platform-login";
 
 describe("zhihuVerdict", () => {
   it("is yes when /api/v4/me answers 200 with an id", () => {
@@ -64,6 +64,60 @@ describe("rednoteVerdict", () => {
   it("is unknown without a state blob or a loggedIn flag", () => {
     expect(rednoteVerdict("<html>login page</html>")).toBe("unknown");
     expect(rednoteVerdict('<script>window.__INITIAL_STATE__={"other":1};</script>')).toBe("unknown");
+  });
+});
+
+describe("checkXiaohongshuLogin", () => {
+  // The 去登录 link points at creator.xiaohongshu.com, and a login there may
+  // not share cookies with www — while the reverse holds too. The probe asks
+  // both surfaces and counts a yes from either (the strip's login_url and
+  // MultiPost's own flow both live on the creator portal).
+  const fake = (responses: Record<string, { ok: boolean; url: string; body: string }>) =>
+    ((url: string | URL) => {
+      const r = responses[String(url)];
+      if (!r) return Promise.reject(new Error("no reply"));
+      return Promise.resolve({ ok: r.ok, url: r.url, text: async () => r.body } as Response);
+    }) as unknown as typeof fetch;
+
+  const explore = (flag: "true" | "false") =>
+    `https://www.xiaohongshu.com/explore`;
+
+  it("counts a creator-portal session even when www says logged out", async () => {
+    const f = fake({
+      "https://www.xiaohongshu.com/explore": {
+        ok: true, url: "https://www.xiaohongshu.com/explore",
+        body: '<script>window.__INITIAL_STATE__={"user":{"loggedIn":false}};</script>' },
+      "https://creator.xiaohongshu.com/": {
+        ok: true, url: "https://creator.xiaohongshu.com/",
+        body: "<html>creator ui</html>" },
+    });
+    await expect(checkXiaohongshuLogin(f)).resolves.toBe("yes");
+  });
+
+  it("counts a www session when the creator portal bounces", async () => {
+    const f = fake({
+      "https://www.xiaohongshu.com/explore": {
+        ok: true, url: "https://www.xiaohongshu.com/explore",
+        body: '<script>window.__INITIAL_STATE__={"user":{"loggedIn":true}};</script>' },
+      "https://creator.xiaohongshu.com/": {
+        ok: true, url: "https://passport.xiaohongshu.com/?service=creator",
+        body: "login" },
+    });
+    await expect(checkXiaohongshuLogin(f)).resolves.toBe("yes");
+  });
+
+  it("is no when both surfaces say logged out, unknown when neither answers", async () => {
+    const noBoth = fake({
+      "https://www.xiaohongshu.com/explore": {
+        ok: true, url: "https://www.xiaohongshu.com/explore",
+        body: '<script>window.__INITIAL_STATE__={"user":{"loggedIn":false}};</script>' },
+      "https://creator.xiaohongshu.com/": {
+        ok: true, url: "https://passport.xiaohongshu.com/login", body: "" },
+    });
+    await expect(checkXiaohongshuLogin(noBoth)).resolves.toBe("no");
+
+    const dead = fake({});
+    await expect(checkXiaohongshuLogin(dead)).resolves.toBe("unknown");
   });
 });
 

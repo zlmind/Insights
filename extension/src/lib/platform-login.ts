@@ -95,15 +95,32 @@ export function rednoteVerdict(html: string): LoginVerdict {
   return loggedIn[1] === "true" ? "yes" : "no";
 }
 
-export async function checkRednoteLogin(fetchImpl: typeof fetch = fetch,
-                                        timeoutMs = PROBE_TIMEOUT_MS): Promise<LoginVerdict> {
-  try {
-    const r = await fetchImpl("https://www.xiaohongshu.com/explore",
-                              { credentials: "include",
-                                signal: AbortSignal.timeout(timeoutMs) });
-    if (!r.ok) return "unknown";
-    return rednoteVerdict(await r.text());
-  } catch {
-    return "unknown";
-  }
+// Two surfaces hold xiaohongshu's session truth and they do not always
+// agree: the 去登录 link and the publish flow live on creator.xiaohongshu.com
+// (MultiPost's flow too), while the loggedIn flag lives on www. A login on
+// either side counts; only both sides saying no reads as logged out, and a
+// surface that cannot answer (a bounce to passport.* the manifest cannot
+// follow, a network failure) stays silent instead of voting.
+export async function checkXiaohongshuLogin(fetchImpl: typeof fetch = fetch,
+                                            timeoutMs = PROBE_TIMEOUT_MS): Promise<LoginVerdict> {
+  const probe = async (url: string, kind: "explore" | "portal"): Promise<LoginVerdict | null> => {
+    try {
+      const r = await fetchImpl(url, { credentials: "include", redirect: "follow",
+                                       signal: AbortSignal.timeout(timeoutMs) });
+      if (kind === "explore") {
+        if (!r.ok) return null;
+        return rednoteVerdict(await r.text());
+      }
+      return portalVerdict(r.url, r.ok);
+    } catch {
+      return null;
+    }
+  };
+  const [explore, creator] = await Promise.all([
+    probe("https://www.xiaohongshu.com/explore", "explore"),
+    probe("https://creator.xiaohongshu.com/", "portal"),
+  ]);
+  if (explore === "yes" || creator === "yes") return "yes";
+  if (explore === "no" && creator === "no") return "no";
+  return "unknown";
 }

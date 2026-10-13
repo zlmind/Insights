@@ -1,5 +1,5 @@
 import { checkWeixinVerdict } from "../lib/login";
-import { checkDouyinLogin, checkPortalLogin, checkRednoteLogin,
+import { checkDouyinLogin, checkPortalLogin, checkXiaohongshuLogin,
          checkZhihuLogin, LoginVerdict } from "../lib/platform-login";
 import { configured, loadSettings, ProtocolClient } from "../lib/protocol";
 import { backoffSeconds, cachedCheckLogins, LoginCache, LoginVerdicts,
@@ -15,7 +15,7 @@ const PLATFORM_CHECKS: Record<string, () => Promise<LoginVerdict>> = {
   wechat: () => checkWeixinVerdict(),
   zhihu: () => checkZhihuLogin(),
   toutiao: () => checkPortalLogin("https://mp.toutiao.com/"),
-  xiaohongshu: () => checkRednoteLogin(),
+  xiaohongshu: () => checkXiaohongshuLogin(),
   douyin: () => checkDouyinLogin(),
 };
 
