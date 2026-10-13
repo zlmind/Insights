@@ -10210,6 +10210,12 @@ def agent_job_json(job_id: int):
     return jsonify(job)
 
 
+@app.route('/agent/login-states.json')
+def agent_login_states_json():
+    """The compose strip's data: one merged per-platform login view."""
+    return jsonify(agent_hub.login_states_view())
+
+
 @app.route("/agent-jobs/pair-code", methods=["POST"])
 def agent_pair_code():
     """Mint a pairing code for the queue page's「配对浏览器扩展」button.

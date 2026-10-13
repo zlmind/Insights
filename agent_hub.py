@@ -108,6 +108,43 @@ def platform_login_states() -> dict:
     return merged
 
 
+# The strip's "go log in" targets: fixed server-side, one per platform, so
+# the view never depends on an executor to tell users where to log in.
+LOGIN_STATE_URLS = {
+    "wechat": "https://mp.weixin.qq.com/",
+    "zhihu": "https://www.zhihu.com/signin",
+    "toutiao": "https://mp.toutiao.com/",
+    "xiaohongshu": "https://creator.xiaohongshu.com/",
+    "douyin": "https://creator.douyin.com/",
+}
+
+
+def login_states_view() -> dict:
+    """The strip's payload: per-platform ok/logged_out/unknown/offline.
+
+    Offline is a global state — no live heartbeat means nobody knows
+    anything, so every platform flips at once (spec §3.2). With a live
+    heartbeat, only probed reports decide ok/logged_out; everything else
+    stays unknown.
+    """
+    online = agent_online()
+    states = platform_login_states()
+    platforms = {}
+    for pid, url in LOGIN_STATE_URLS.items():
+        entry = states.get(pid)
+        if not online:
+            state, at = "offline", None
+        elif entry is None or not entry["probed"]:
+            state, at = "unknown", None
+        else:
+            state = "ok" if entry["logged_in"] else "logged_out"
+            at = int(entry["age"])
+        platforms[pid] = {"state": state, "at": at, "login_url": url}
+    snap = heartbeat_snapshot()
+    return {"checked_at": int(snap["age"]) if online and snap else None,
+            "platforms": platforms}
+
+
 # ── Pairing: the extension bootstraps its bearer token with a short code ────
 # In-memory, like the heartbeat: one pending code at a time, one process.
 # The code is what lets a fresh extension obtain AGENT_TOKEN without anyone

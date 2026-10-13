@@ -72,6 +72,8 @@ AGENT_GATES = [
      "the compose push route queues through the hub and the new platforms render"),
     ("check_agent_ui.py", "AGENT_UI_OK",
      "the push button renders with its disabled reasons and results show per platform"),
+    ("check_login_states.py", "LOGIN_STATES_OK",
+     "the login-states view merges probed beats unprobed and flips all-offline past the window"),
     ("check_extension_tests.py", "EXTENSION_TESTS_OK",
      "the publisher extension's vitest suite passes and esbuild emits dist/"),
     ("check_extension_protocol.py", "EXTENSION_PROTOCOL_OK",
