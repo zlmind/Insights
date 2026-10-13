@@ -52,10 +52,12 @@ export function uploadSummary(_total: number,
   return { ok: failed === 0, failed };
 }
 
-// A 1x1 gray PNG: the draft API wants some cover; content quality is owned
-// by the author's images, not this fallback.
+// A 300x300 gray PNG: the draft API wants some cover, and mp's filetransfer
+// answers questionably-sized uploads with the generic err_msg "default" —
+// a 1x1 placeholder did exactly that. Content quality is owned by the
+// author's images, not this fallback.
 const PLACEHOLDER_COVER =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==";
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAAAAABcFtGpAAABpElEQVR42u3QQREAAAwCIPsnNYYV9t5BBFLOokCWLFmyZMlSIEuWLFmyZCmQJUuWLFmyFMiSJUuWLFkKZMmSJUuWLAWyZMmSJUuWAlmyZMmSJUuBLFmyZMmSpUCWLFmyZMlSIEuWLFmyZCmQJUuWLFmyFMiSJUuWLFkKZMmSJUuWLAWyZMmSJUuWAlmyZMmSJUuBLFmyZMmSpUCWLFmyZMlSIEuWLFmyZCmQJUuWLFmyFMiSJUuWLFkKZMmSJUuWLAWyZMmSJUuWAlmyZMmSJUuBLFmyZMmSpUCWLFmyZMlSIEuWLFmyZCmQJUuWLFmyFMiSJUuWLFkKZMmSJUuWLAWyZMmSJUuWAlmyZMmSJUuBLFmyZMmSpUCWLFmyZMlSIEuWLFmyZCmQJUuWLFmyFMiSJUuWLFkKZMmSJUuWLAWyZMmSJUuWAlmyZMmSJUuBLFmyZMmSpUCWLFmyZMlSIEuWLFk/DVDZrSNRkhC2AAAAAElFTkSuQmCC";
 
 const ADAPTER_TIMEOUT_MS = 240000;
 
@@ -272,9 +274,12 @@ export async function publishWeixinArticle(payload: {
     const response = await fetch(url.toString(), { method: "POST", body: formData });
     const result = await response.json();
     if (result.base_resp.err_msg !== "ok") {
-      // Surface mp's own words: the caller's generic string hides whether
-      // this was a bad ticket, a freq cap or a permission change.
-      uploadRejection = `mp 回复 ${result.base_resp.err_msg || JSON.stringify(result.base_resp)}`;
+      // Surface everything mp sent back, plus who we claimed to be: the
+      // caller's generic string hides whether this was a bad ticket, a freq
+      // cap, an undersized image or a permission change.
+      uploadRejection = `mp 回复 ${JSON.stringify(result.base_resp)}`
+        + `（HTTP ${response.status}，ticket ${auth.ticket.length} 位以 ${auth.ticket.slice(0, 6)} 开头`
+        + `，user=${auth.userName || "空"}，来源=${file.url.startsWith("data:") ? "占位图" : "正文图"}）`;
       console.warn("[insights] weixin upload rejected:", result.base_resp, result);
       return null;
     }
