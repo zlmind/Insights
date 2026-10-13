@@ -117,16 +117,38 @@ def main():
           "a matching job behind 120 other-lane jobs is still claimed")
 
     # An extension-shaped heartbeat (tools keyed by the extension's name)
-    # feeds the same login-state view; a tools-less heartbeat is tolerated.
+    # feeds the same login-state view. A platform entry without `probed`
+    # reads as probed: the field post-dates the python agent's heartbeat,
+    # and that agent's auth report is a real probe.
     client.post("/agent/heartbeat", headers=AUTH, json={
         "agent": "insights-ext", "tools": {"extension": {
             "available": True, "version": "0.1.0",
             "platforms": [{"id": "wechat", "logged_in": True}]}}})
-    check(agent_hub.platform_login_states().get("wechat") is True,
-          "the extension's heartbeat feeds platform login states")
+    state = agent_hub.platform_login_states().get("wechat") or {}
+    check(state.get("logged_in") is True and state.get("probed") is True,
+          "a platform entry without probed still reads as a real probe")
+    # A tools-less heartbeat is not a wipe: the extension's still-fresh
+    # report keeps counting until its own window runs out.
     client.post("/agent/heartbeat", headers=AUTH, json={"agent": "x"})
+    wechat = agent_hub.platform_login_states().get("wechat") or {}
+    check(wechat.get("logged_in") is True,
+          "a tools-less heartbeat leaves a fresh tool report standing")
+    agent_hub._TOOL_BEATS["extension"]["t"] = time.time() - 120
     check(agent_hub.platform_login_states() == {},
-          "a heartbeat without tools yields empty login states, not a crash")
+          "a tool whose beat passed the window drops out of the view")
+
+    # A probed report beats an unprobed one even when it is older.
+    client.post("/agent/heartbeat", headers=AUTH, json={
+        "agent": "insights-ext", "tools": {"extension": {
+            "available": True,
+            "platforms": [{"id": "zhihu", "logged_in": False, "probed": True}]}}})
+    client.post("/agent/heartbeat", headers=AUTH, json={
+        "agent": "layne-win", "tools": {"wechatsync": {
+            "available": True,
+            "platforms": [{"id": "zhihu", "logged_in": True, "probed": False}]}}})
+    zhihu = agent_hub.platform_login_states().get("zhihu") or {}
+    check(zhihu.get("logged_in") is False and zhihu.get("probed") is True,
+          "a probed report wins over a fresher unprobed one")
 
     # --- heartbeat: snapshot and staleness ---
     r = client.post("/agent/heartbeat", headers=AUTH, json={

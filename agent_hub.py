@@ -17,6 +17,11 @@ import time
 import database
 
 _LAST_HEARTBEAT: dict = {"t": None, "payload": None}
+# One entry per tool that ever beat: its own last-beat time and the platforms
+# it reported then. Executors beat on their own clocks, and a beat replaces
+# only its own tool's entry — so the extension's and the agent's reports
+# coexist inside the window instead of overwriting each other.
+_TOOL_BEATS: dict = {}
 
 HEARTBEAT_WINDOW_SECONDS = 60
 
@@ -46,8 +51,13 @@ def check_agent_auth() -> bool:
 
 
 def record_heartbeat(payload: dict) -> None:
-    _LAST_HEARTBEAT["t"] = time.time()
+    beat_time = time.time()
+    _LAST_HEARTBEAT["t"] = beat_time
     _LAST_HEARTBEAT["payload"] = payload or {}
+    tools = (payload or {}).get("tools") or {}
+    for name, tool in tools.items():
+        _TOOL_BEATS[name] = {"t": beat_time,
+                             "platforms": (tool or {}).get("platforms") or []}
 
 
 def heartbeat_snapshot():
@@ -65,15 +75,37 @@ def agent_online(window: float = HEARTBEAT_WINDOW_SECONDS) -> bool:
 
 
 def platform_login_states() -> dict:
-    """``{platform_id: logged_in}`` from the heartbeat, {} when offline."""
-    snap = heartbeat_snapshot() or {}
-    tools = snap.get("tools") or {}
-    states = {}
-    for tool in tools.values():
-        for entry in (tool or {}).get("platforms") or []:
-            if isinstance(entry, dict) and entry.get("id"):
-                states[entry["id"]] = bool(entry.get("logged_in"))
-    return states
+    """``{platform: {"logged_in": bool, "probed": bool, "age": float}}``.
+
+    Merged across every tool that beat inside the window — the extension and
+    the agent report on their own clocks, so the view outlives any single
+    beat. Probed reports beat unprobed ones even when they are older ("we
+    really checked" outranks "someone guessed", spec §3.1); within one class
+    the fresher beat wins. An entry without ``probed`` reads as probed: the
+    field post-dates the python agent's heartbeat, whose auth report is a
+    real probe.
+    """
+    now = time.time()
+    merged: dict = {}
+    for name, beat in list(_TOOL_BEATS.items()):
+        age = now - beat["t"]
+        if age > HEARTBEAT_WINDOW_SECONDS:
+            # An expired tool's guesses stop counting; drop the entry so a
+            # long-lived process cannot accumulate dead tools forever.
+            del _TOOL_BEATS[name]
+            continue
+        for entry in beat["platforms"] or []:
+            if not (isinstance(entry, dict) and entry.get("id")):
+                continue
+            probed = bool(entry.get("probed", True))
+            candidate = {"logged_in": bool(entry.get("logged_in")),
+                         "probed": probed, "age": age}
+            current = merged.get(entry["id"])
+            if (current is None
+                    or (probed and not current["probed"])
+                    or (probed == current["probed"] and age < current["age"])):
+                merged[entry["id"]] = candidate
+    return merged
 
 
 # ── Pairing: the extension bootstraps its bearer token with a short code ────
