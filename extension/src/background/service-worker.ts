@@ -54,6 +54,19 @@ const PUBLISH_PAGES: Record<string, { url: string; keepTab: boolean }> = {
                  keepTab: true },
 };
 
+// The bundled cover, as a data URL. The SW reads its own resource freely;
+// handing the content script a data URL sidesteps page-CORS entirely — a
+// direct chrome-extension:// fetch from the tab is what "Failed to fetch"
+// was (job 18/19/20).
+async function coverDataUrl(): Promise<string> {
+  const blob = await (await fetch(chrome.runtime.getURL("assets/default-cover.png"))).blob();
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.readAsDataURL(blob);
+  });
+}
+
 async function publishViaBridge(target: string,
                                 item: { target: string; content: string },
                                 title: string): Promise<PlatformResult> {
@@ -66,7 +79,7 @@ async function publishViaBridge(target: string,
   await rememberTab(tab.id!);
   const message = { type: "publish", payload: {
       target, title, content: item.content,
-      imageUrl: chrome.runtime.getURL("assets/default-cover.png"),
+      imageUrl: await coverDataUrl(),
     } };
   try {
     await waitTabComplete(tab.id!);
