@@ -76,14 +76,25 @@ export function classifyWeixinError(
 }
 
 export function readAccount(pageHtml: string): { nickname: string; ticket: string; userName: string } {
+  // MultiPost's parser (upstream 9e91388): scope the fields to the actual
+  // window.wx.commonData object. The mp home page embeds other scripts whose
+  // `ticket : "..."` lines are NOT the filetransfer ticket — whole-page
+  // matching grabs one of those and mp rejects every upload with ret 200039.
+  const dataMatch = pageHtml.match(/window\.wx\.commonData\s*=\s*\{([\s\S]*?)\};/);
+  if (dataMatch) {
+    const scope = dataMatch[1];
+    const nickname = decodeURIComponent(
+      scope.match(/nick_name\s*:\s*["']([^"']+)["']/)?.[1] || "");
+    const ticket = scope.match(/ticket\s*:\s*["']([^"']+)["']/)?.[1] || "";
+    const userName = scope.match(/user_name\s*:\s*["']([^"']+)["']/)?.[1] || "";
+    return { nickname, ticket, userName };
+  }
+  // Fallback mirrors MultiPost's: quote the fields exactly, comma-terminated.
   const nickname = decodeURIComponent(
     pageHtml.match(/nick_name\s*:\s*["']([^"']+)["']/)?.[1]
     || pageHtml.match(/&nick_name\s*=\s*([^&"' ]+)/)?.[1] || "");
-  // `[^"']+`, not `\w+`: mp tickets are long tokens that can carry `=` and
-  // other non-word characters — a \w match truncates them and the upload is
-  // rejected server-side with the generic err_msg "default".
-  const ticket = pageHtml.match(/ticket\s*:\s*["']([^"']+)["']/)?.[1] || "";
-  const userName = pageHtml.match(/user_name\s*:\s*["']([^"']+)["']/)?.[1] || "";
+  const ticket = pageHtml.match(/ticket\s*:\s*"(\w+)",/)?.[1] || "";
+  const userName = pageHtml.match(/user_name\s*:\s*"(\w+)",/)?.[1] || "";
   return { nickname, ticket, userName };
 }
 

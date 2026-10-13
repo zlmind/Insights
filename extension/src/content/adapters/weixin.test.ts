@@ -20,6 +20,20 @@ describe("readAccount", () => {
     expect(readAccount("<html>logged out</html>")).toEqual({
       nickname: "", ticket: "", userName: "" });
   });
+  it("reads credentials from window.wx.commonData, not the first ticket in the page", () => {
+    // The mp home page embeds other scripts whose `ticket : "..."` lines are
+    // NOT the filetransfer ticket (MultiPost scopes the parse to commonData
+    // for exactly this reason — upstream commit 9e91388).
+    const page = `<script>var cfg = { ticket: "decoy0123", user_name: "gh_decoy" };</script>
+      <script>window.wx.commonData = { t: "1888899577",
+        ticket: "ba44ba11real22ticket33value44", user_name: "gh_f955ef5e9782",
+        nick_name: "%E5%A4%A7%E5%AE%B6%E5%A5%BD" };</script>`;
+    expect(readAccount(page)).toEqual({
+      nickname: "大家好",
+      ticket: "ba44ba11real22ticket33value44",
+      userName: "gh_f955ef5e9782",
+    });
+  });
 });
 
 describe("classifyWeixinError", () => {
