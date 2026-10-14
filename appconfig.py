@@ -29,7 +29,6 @@ SETTING_GROUPS: List[tuple] = [
     ("domestic", "国内渠道（文章推送）"),
     ("media", "Image hosting & stock photos"),
     ("search", "Web search"),
-    ("jira", "JIRA"),
     ("access", "Access"),
 ]
 
@@ -75,28 +74,6 @@ SETTINGS: Dict[str, dict] = {
     },
     "OLLAMA_TEXT_MODEL": {
         "group": "ai", "label": "Ollama text model", "default": "llama3.2",
-    },
-    # ── Platform apps ──
-    "LINKEDIN_CLIENT_ID": {"group": "platforms", "label": "LinkedIn client ID"},
-    "LINKEDIN_CLIENT_SECRET": {
-        "group": "platforms", "label": "LinkedIn client secret", "secret": True,
-    },
-    "THREADS_APP_ID": {"group": "platforms", "label": "Threads app ID"},
-    "THREADS_APP_SECRET": {
-        "group": "platforms", "label": "Threads app secret", "secret": True,
-    },
-    "FACEBOOK_APP_ID": {"group": "platforms", "label": "Facebook app ID"},
-    "FACEBOOK_APP_SECRET": {
-        "group": "platforms", "label": "Facebook app secret", "secret": True,
-    },
-    "TWITTER_CLIENT_ID": {"group": "platforms", "label": "X / Twitter client ID"},
-    "TWITTER_CLIENT_SECRET": {
-        "group": "platforms", "label": "X / Twitter client secret", "secret": True,
-    },
-    "INSTAGRAM_APP_ID": {"group": "platforms", "label": "Instagram app ID"},
-    "INSTAGRAM_APP_SECRET": {
-        "group": "platforms", "label": "Instagram app secret", "secret": True,
-        "help": "Use the Instagram product's own ID/secret, not the Meta app's.",
     },
     # ── 国内渠道（文章推送）──
     "AGENT_TOKEN": {
@@ -146,11 +123,6 @@ SETTINGS: Dict[str, dict] = {
     "BRAVE_SEARCH_API_KEY": {
         "group": "search", "label": "Brave Search API key", "secret": True,
     },
-    # ── JIRA ──
-    "JIRA_BASE_URL": {"group": "jira", "label": "JIRA base URL"},
-    "JIRA_EMAIL": {"group": "jira", "label": "JIRA email"},
-    "JIRA_API_TOKEN": {"group": "jira", "label": "JIRA API token", "secret": True},
-    "JIRA_PROJECT_KEY": {"group": "jira", "label": "JIRA project key"},
     # ── Access ──
     "ALLOW_SIGNUP": {
         "group": "access", "label": "Allow signup",

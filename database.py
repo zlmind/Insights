@@ -14,7 +14,6 @@ from datetime import datetime, timedelta
 
 DB_PATH = "insights.db"
 
-
 def init_db(db_path: str = DB_PATH) -> None:
     """Create tables if the database file is empty."""
     with sqlite3.connect(db_path) as conn:
@@ -61,19 +60,6 @@ def init_db(db_path: str = DB_PATH) -> None:
             )
             """
         )
-        # Created JIRA tickets are tracked in a separate table
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS jira_tickets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                episode_id INTEGER,
-                action_item TEXT,
-                ticket_key TEXT,
-                ticket_url TEXT,
-                FOREIGN KEY(episode_id) REFERENCES episodes(id)
-            )
-            """
-        )
         # Generated articles are stored here
         conn.execute(
             """
@@ -108,92 +94,7 @@ def init_db(db_path: str = DB_PATH) -> None:
         social_columns = [row[1] for row in cur.fetchall()]
         if "image_url" not in social_columns:
             conn.execute("ALTER TABLE social_posts ADD COLUMN image_url TEXT")
-        # LinkedIn OAuth tokens storage
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS linkedin_tokens (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                access_token TEXT,
-                refresh_token TEXT,
-                expires_at TEXT,
-                member_id TEXT,
-                user_urn TEXT,
-                display_name TEXT,
-                email TEXT,
-                created_at TEXT,
-                updated_at TEXT
-            )
-            """
-        )
-        # Threads OAuth tokens storage
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS threads_tokens (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                access_token TEXT,
-                expires_at TEXT,
-                user_id TEXT,
-                username TEXT,
-                display_name TEXT,
-                profile_picture_url TEXT,
-                created_at TEXT,
-                updated_at TEXT
-            )
-            """
-        )
-        # Facebook OAuth tokens storage (Pages + Groups)
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS facebook_tokens (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                access_token TEXT,
-                expires_at TEXT,
-                user_id TEXT,
-                user_name TEXT,
-                page_id TEXT,
-                page_name TEXT,
-                page_access_token TEXT,
-                group_ids TEXT,
-                created_at TEXT,
-                updated_at TEXT
-            )
-            """
-        )
-        # X/Twitter OAuth tokens storage
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS twitter_tokens (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                access_token TEXT,
-                refresh_token TEXT,
-                expires_at TEXT,
-                user_id TEXT,
-                username TEXT,
-                display_name TEXT,
-                created_at TEXT,
-                updated_at TEXT
-            )
-            """
-        )
-        # Instagram OAuth tokens storage (Instagram Login flavor)
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS instagram_tokens (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                access_token TEXT,
-                expires_at TEXT,
-                user_id TEXT,
-                ig_user_id TEXT,
-                username TEXT,
-                display_name TEXT,
-                profile_picture_url TEXT,
-                account_type TEXT,
-                created_at TEXT,
-                updated_at TEXT
-            )
-            """
-        )
-        # Scheduled posts queue for LinkedIn and other platforms
+        # Scheduled posts queue (posting slots; server-side publishing retired)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS scheduled_posts (
@@ -289,33 +190,23 @@ def init_db(db_path: str = DB_PATH) -> None:
             conn.execute("ALTER TABLE standalone_posts ADD COLUMN image_url TEXT")
         if "repost" not in standalone_columns:
             conn.execute("ALTER TABLE standalone_posts ADD COLUMN repost INTEGER DEFAULT 0")
-        # Instagram media format: NULL/'feed' (single image) | 'carousel' | 'reel' | 'story'.
-        # media_items is a JSON list of {"url": ..., "kind": "image"|"video"} for the
-        # non-feed formats; feed keeps using the single image_url column.
+        # Retired Instagram-only columns are still migrated in so a pre-existing
+        # database keeps its rows readable; the domestic compose flow only writes
+        # image_url / video_url on a post.
         if "ig_post_type" not in standalone_columns:
             conn.execute("ALTER TABLE standalone_posts ADD COLUMN ig_post_type TEXT")
         if "media_items" not in standalone_columns:
             conn.execute("ALTER TABLE standalone_posts ADD COLUMN media_items TEXT")
-        # ig_user_tags is a JSON list of {"username", "x", "y"} people-tags used
-        # when publishing Instagram feed photos (the API supports tags there only).
         if "ig_user_tags" not in standalone_columns:
             conn.execute("ALTER TABLE standalone_posts ADD COLUMN ig_user_tags TEXT")
-        # video_url is the post's one video, for every platform (Instagram sends
-        # it as a Reel). It is card-wide like image_url: the rows of a card share it.
+        # video_url is the post's one video, card-wide like image_url: the rows of
+        # a card share it.
         if "video_url" not in standalone_columns:
             conn.execute("ALTER TABLE standalone_posts ADD COLUMN video_url TEXT")
-        # ig_reel_options is a JSON object for an Instagram Reel's cover frame:
-        # {"thumb_offset_ms": int}. The cover frame cannot be changed once a Reel is
-        # published, so it is stored on the post and sent with it, whenever the queue
-        # publishes it. (It used to hold the Reel's collaborators too; see below.)
         if "ig_reel_options" not in standalone_columns:
             conn.execute("ALTER TABLE standalone_posts ADD COLUMN ig_reel_options TEXT")
-        # Instagram people on a post, both JSON lists of lowercase usernames.
-        # ig_collaborators are invited as collaborators (feed image, carousel and
-        # Reel; each must accept before they show on the post). ig_reel_tags are
-        # the accounts tagged when the post goes out as a Reel, where a tag is a
-        # username only. Kept apart from ig_user_tags, whose entries carry x/y
-        # positions on a photo and mean nothing on a video.
+        # ig_collaborators / ig_reel_tags: retired Instagram people fields, kept
+        # for legacy rows only.
         if "ig_collaborators" not in standalone_columns:
             conn.execute("ALTER TABLE standalone_posts ADD COLUMN ig_collaborators TEXT")
         if "ig_reel_tags" not in standalone_columns:
@@ -749,7 +640,8 @@ def init_db(db_path: str = DB_PATH) -> None:
         #
         # Every platform used to hold exactly one login: each *_tokens table was
         # read with "LIMIT 1" and written with an upsert, so connecting a second
-        # LinkedIn overwrote the first. social_accounts is the identity those
+        # login of the same platform overwrote the first. social_accounts is the
+        # identity those
         # token rows now hang off, one row per (platform, external_id), which is
         # what lets a platform carry several logins at once.
         #
@@ -812,35 +704,6 @@ def init_db(db_path: str = DB_PATH) -> None:
             "ON agent_jobs(status, run_after, id)"
         )
 
-        # Link every token table to the account it authenticates, and give the
-        # post/queue tables the target account they publish as.
-        for table, column in (
-            ("linkedin_tokens", "account_id"),
-            ("threads_tokens", "account_id"),
-            ("facebook_tokens", "account_id"),
-            ("twitter_tokens", "account_id"),
-            ("instagram_tokens", "account_id"),
-            ("standalone_posts", "account_id"),
-            ("social_posts", "account_id"),
-            ("scheduled_posts", "account_id"),
-        ):
-            cur = conn.execute(f"PRAGMA table_info({table})")
-            cols = [row[1] for row in cur.fetchall()]
-            if cols and column not in cols:
-                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} INTEGER")
-
-        # A token table may only ever hold one row per account, or "which token
-        # is this account's" stops having an answer. The partial index leaves
-        # not-yet-migrated NULL rows alone.
-        for table in ("linkedin_tokens", "threads_tokens", "facebook_tokens",
-                      "twitter_tokens", "instagram_tokens"):
-            conn.execute(
-                f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{table}_account "
-                f"ON {table}(account_id) WHERE account_id IS NOT NULL"
-            )
-
-        _migrate_tokens_to_accounts(conn)
-
         # An instance upgraded from before admins existed has no admin yet;
         # the oldest account is the one that set the instance up.
         if user_columns:
@@ -868,9 +731,7 @@ def init_db(db_path: str = DB_PATH) -> None:
         )
         conn.commit()
 
-
 # ── Instance settings (admin-editable replacements for .env entries) ──────
-
 
 def get_setting(key: str, default: Optional[str] = None,
                 db_path: str = DB_PATH) -> Optional[str]:
@@ -880,7 +741,6 @@ def get_setting(key: str, default: Optional[str] = None,
             "SELECT value FROM app_settings WHERE key = ?", (key,)
         ).fetchone()
     return row[0] if row else default
-
 
 def set_setting(key: str, value: str, updated_by: Optional[int] = None,
                 db_path: str = DB_PATH) -> None:
@@ -899,132 +759,17 @@ def set_setting(key: str, value: str, updated_by: Optional[int] = None,
         )
         conn.commit()
 
-
 def delete_setting(key: str, db_path: str = DB_PATH) -> None:
     """Forget a saved setting, falling the key back to its environment value."""
     with sqlite3.connect(db_path) as conn:
         conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
         conn.commit()
 
-
 def list_settings(db_path: str = DB_PATH) -> Dict[str, str]:
     """Every saved setting as a plain {key: value} mapping."""
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute("SELECT key, value FROM app_settings").fetchall()
     return dict(rows)
-
-
-# Identity of a connected login, per platform: which token column holds the
-# platform's own id for the account, and which ones describe it to a human.
-# _TOKEN_IDENTITY drives both the one-time migration below and the account
-# record written on every OAuth callback, so a migrated account and a freshly
-# connected one are indistinguishable.
-_TOKEN_IDENTITY = {
-    "linkedin": {
-        "table": "linkedin_tokens",
-        "external_id": "member_id",
-        "handle": "email",
-        "display_name": "display_name",
-        "avatar_url": None,
-    },
-    "threads": {
-        "table": "threads_tokens",
-        "external_id": "user_id",
-        "handle": "username",
-        "display_name": "display_name",
-        "avatar_url": "profile_picture_url",
-    },
-    "twitter": {
-        "table": "twitter_tokens",
-        "external_id": "user_id",
-        "handle": "username",
-        "display_name": "display_name",
-        "avatar_url": None,
-    },
-    "facebook": {
-        # A Facebook login publishes as a Page, so the Page is the account.
-        "table": "facebook_tokens",
-        "external_id": "page_id",
-        "handle": "page_name",
-        "display_name": "page_name",
-        "avatar_url": None,
-    },
-    "instagram": {
-        "table": "instagram_tokens",
-        "external_id": "ig_user_id",
-        "handle": "username",
-        "display_name": "display_name",
-        "avatar_url": "profile_picture_url",
-    },
-}
-
-SOCIAL_PLATFORMS = ("linkedin", "threads", "twitter", "facebook", "instagram")
-
-
-def _migrate_tokens_to_accounts(conn: sqlite3.Connection) -> int:
-    """Promote pre-multi-account token rows into social_accounts rows.
-
-    Runs inside init_db on every start and is a no-op once every token row
-    carries an account_id. An existing install therefore keeps publishing to
-    exactly the login it was already connected to: that login simply becomes
-    the platform's default account, which is what a NULL account_id on an old
-    post or queue row resolves to.
-    """
-    now = datetime.utcnow().isoformat(timespec="seconds")
-    migrated = 0
-    for platform, ident in _TOKEN_IDENTITY.items():
-        table = ident["table"]
-        cur = conn.execute(f"PRAGMA table_info({table})")
-        cols = [row[1] for row in cur.fetchall()]
-        if not cols or "account_id" not in cols:
-            continue
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            f"SELECT * FROM {table} WHERE account_id IS NULL ORDER BY id"
-        ).fetchall()
-        for row in rows:
-            keys = row.keys()
-
-            def field(name):
-                return (row[name] if name and name in keys else None) or None
-
-            external_id = field(ident["external_id"])
-            if not external_id:
-                # A half-finished connection (LinkedIn hands back no member id
-                # until it is configured by hand). Key it on the token row so it
-                # still becomes a real account, and the configure screen fills
-                # the identity in later.
-                external_id = f"pending:{table}:{row['id']}"
-            account_id = _upsert_account_row(
-                conn,
-                platform=platform,
-                external_id=str(external_id),
-                display_name=field(ident["display_name"]),
-                handle=field(ident["handle"]),
-                avatar_url=field(ident["avatar_url"]),
-                now=now,
-            )
-            conn.execute(
-                f"UPDATE {table} SET account_id = ? WHERE id = ?",
-                (account_id, row["id"]),
-            )
-            migrated += 1
-
-        # Old posts and queue entries name only a platform. Point them at that
-        # platform's default account so the row keeps publishing where it did.
-        default_id = _default_account_id(conn, platform)
-        if default_id:
-            for tbl in ("standalone_posts", "social_posts", "scheduled_posts"):
-                cur = conn.execute(f"PRAGMA table_info({tbl})")
-                if "account_id" not in [c[1] for c in cur.fetchall()]:
-                    continue
-                conn.execute(
-                    f"UPDATE {tbl} SET account_id = ? "
-                    f"WHERE account_id IS NULL AND platform = ?",
-                    (default_id, platform),
-                )
-    return migrated
-
 
 def _default_account_id(conn: sqlite3.Connection, platform: str):
     """The account new work for ``platform`` goes to, or None if none exist."""
@@ -1035,7 +780,6 @@ def _default_account_id(conn: sqlite3.Connection, platform: str):
     )
     row = cur.fetchone()
     return row[0] if row else None
-
 
 def _upsert_account_row(
     conn: sqlite3.Connection,
@@ -1111,14 +855,12 @@ def _upsert_account_row(
     )
     return cur.lastrowid
 
-
 def get_feed(url: str, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Retrieve a feed record by its RSS URL."""
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute("SELECT * FROM feeds WHERE url = ?", (url,))
         return cur.fetchone()
-
 
 def get_feed_by_id(feed_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Return a feed row given its integer ``id``."""
@@ -1127,7 +869,6 @@ def get_feed_by_id(feed_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row
         cur = conn.execute("SELECT * FROM feeds WHERE id = ?", (feed_id,))
         return cur.fetchone()
 
-
 def list_feeds(db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """Return all stored feeds ordered by title."""
     with sqlite3.connect(db_path) as conn:
@@ -1135,19 +876,9 @@ def list_feeds(db_path: str = DB_PATH) -> List[sqlite3.Row]:
         cur = conn.execute("SELECT * FROM feeds ORDER BY title")
         return cur.fetchall()
 
-
 def delete_feed(feed_id: int, db_path: str = DB_PATH) -> None:
-    """Delete a feed and all associated episodes, articles, and tickets."""
+    """Delete a feed and all associated episodes and articles."""
     with sqlite3.connect(db_path) as conn:
-        # Delete tickets for episodes in this feed
-        conn.execute(
-            """
-            DELETE FROM jira_tickets WHERE episode_id IN (
-                SELECT id FROM episodes WHERE feed_id = ?
-            )
-            """,
-            (feed_id,),
-        )
         # Delete articles for episodes in this feed
         conn.execute(
             """
@@ -1163,22 +894,12 @@ def delete_feed(feed_id: int, db_path: str = DB_PATH) -> None:
         conn.execute("DELETE FROM feeds WHERE id = ?", (feed_id,))
         conn.commit()
 
-
 def delete_feeds_bulk(feed_ids: List[int], db_path: str = DB_PATH) -> int:
     """Delete multiple feeds and all their associated data. Returns count deleted."""
     if not feed_ids:
         return 0
     placeholders = ",".join("?" * len(feed_ids))
     with sqlite3.connect(db_path) as conn:
-        # Delete tickets for episodes in these feeds
-        conn.execute(
-            f"""
-            DELETE FROM jira_tickets WHERE episode_id IN (
-                SELECT id FROM episodes WHERE feed_id IN ({placeholders})
-            )
-            """,
-            feed_ids,
-        )
         # Delete articles for episodes in these feeds
         conn.execute(
             f"""
@@ -1201,7 +922,6 @@ def delete_feeds_bulk(feed_ids: List[int], db_path: str = DB_PATH) -> int:
         conn.commit()
         return cur.rowcount
 
-
 def add_feed(url: str, title: str, db_path: str = DB_PATH) -> int:
     """Insert a new feed if needed and return its ``id``."""
     with sqlite3.connect(db_path) as conn:
@@ -1218,7 +938,6 @@ def add_feed(url: str, title: str, db_path: str = DB_PATH) -> int:
             feed_id = cur.fetchone()[0]
         conn.commit()
         return feed_id
-
 
 def update_feed_metadata(
     feed_id: int,
@@ -1241,14 +960,12 @@ def update_feed_metadata(
         )
         conn.commit()
 
-
 def get_episode(url: str, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Retrieve a processed episode by its audio URL."""
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute("SELECT * FROM episodes WHERE url = ?", (url,))
         return cur.fetchone()
-
 
 def save_episode(
     url: str,
@@ -1275,7 +992,6 @@ def save_episode(
         )
         conn.commit()
 
-
 def queue_episode(
     url: str,
     title: str,
@@ -1295,7 +1011,6 @@ def queue_episode(
         )
         conn.commit()
 
-
 def update_episode_status(url: str, status: str, db_path: str = DB_PATH) -> None:
     """Update the processing status for an episode."""
     with sqlite3.connect(db_path) as conn:
@@ -1305,7 +1020,6 @@ def update_episode_status(url: str, status: str, db_path: str = DB_PATH) -> None
         )  # simple status update used by the worker thread
         conn.commit()
 
-
 def get_episode_by_id(episode_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Retrieve an episode by its database ID."""
     with sqlite3.connect(db_path) as conn:
@@ -1313,18 +1027,14 @@ def get_episode_by_id(episode_id: int, db_path: str = DB_PATH) -> Optional[sqlit
         cur = conn.execute("SELECT * FROM episodes WHERE id = ?", (episode_id,))
         return cur.fetchone()
 
-
 def delete_episode_by_id(episode_id: int, db_path: str = DB_PATH) -> None:
-    """Delete an episode and all its associated articles and tickets."""
+    """Delete an episode and all its associated articles."""
     with sqlite3.connect(db_path) as conn:
-        # Delete associated tickets
-        conn.execute("DELETE FROM jira_tickets WHERE episode_id = ?", (episode_id,))
         # Delete associated articles
         conn.execute("DELETE FROM articles WHERE episode_id = ?", (episode_id,))
         # Delete the episode
         conn.execute("DELETE FROM episodes WHERE id = ?", (episode_id,))
         conn.commit()
-
 
 def delete_episodes_bulk(episode_ids: List[int], db_path: str = DB_PATH) -> int:
     """Delete multiple episodes and all their associated data. Returns count deleted."""
@@ -1332,11 +1042,6 @@ def delete_episodes_bulk(episode_ids: List[int], db_path: str = DB_PATH) -> int:
         return 0
     placeholders = ",".join("?" * len(episode_ids))
     with sqlite3.connect(db_path) as conn:
-        # Delete associated tickets
-        conn.execute(
-            f"DELETE FROM jira_tickets WHERE episode_id IN ({placeholders})",
-            episode_ids,
-        )
         # Delete associated articles
         conn.execute(
             f"DELETE FROM articles WHERE episode_id IN ({placeholders})",
@@ -1349,7 +1054,6 @@ def delete_episodes_bulk(episode_ids: List[int], db_path: str = DB_PATH) -> int:
         )
         conn.commit()
         return cur.rowcount
-
 
 def reset_episode_for_reprocess(episode_id: int, db_path: str = DB_PATH) -> None:
     """Clear episode data to prepare for reprocessing."""
@@ -1365,7 +1069,6 @@ def reset_episode_for_reprocess(episode_id: int, db_path: str = DB_PATH) -> None
         )
         conn.commit()
 
-
 def list_episodes(feed_id: int, db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """Return all episodes belonging to a particular feed."""
     with sqlite3.connect(db_path) as conn:
@@ -1376,7 +1079,6 @@ def list_episodes(feed_id: int, db_path: str = DB_PATH) -> List[sqlite3.Row]:
         )
         return cur.fetchall()
 
-
 def list_all_episodes(order_by: str = "id", db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """List episodes from all feeds ordered by the provided column."""
     valid = {"id", "published", "processed_at"}
@@ -1386,7 +1088,6 @@ def list_all_episodes(order_by: str = "id", db_path: str = DB_PATH) -> List[sqli
         conn.row_factory = sqlite3.Row
         cur = conn.execute(f"SELECT * FROM episodes ORDER BY {column} {direction}")
         return cur.fetchall()
-
 
 def get_youtube_episodes_missing_channel(db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """Return YouTube episodes that have no channel value yet."""
@@ -1401,7 +1102,6 @@ def get_youtube_episodes_missing_channel(db_path: str = DB_PATH) -> List[sqlite3
         )
         return cur.fetchall()
 
-
 def set_episode_channel(episode_id: int, channel: str, db_path: str = DB_PATH) -> None:
     """Set the channel name on an existing episode."""
     with sqlite3.connect(db_path) as conn:
@@ -1410,84 +1110,6 @@ def set_episode_channel(episode_id: int, channel: str, db_path: str = DB_PATH) -
             (channel, episode_id),
         )
         conn.commit()
-
-
-def add_ticket(
-    episode_id: int,
-    action_item: str,
-    ticket_key: str,
-    ticket_url: str,
-    db_path: str = DB_PATH,
-) -> None:
-    """Save a JIRA ticket associated with an episode."""
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(
-            """
-            INSERT INTO jira_tickets (episode_id, action_item, ticket_key, ticket_url)
-            VALUES (?, ?, ?, ?)
-            """,
-            (episode_id, action_item, ticket_key, ticket_url),
-        )
-        conn.commit()
-
-
-def list_tickets(
-    episode_id: Optional[int] | None = None, db_path: str = DB_PATH
-) -> List[sqlite3.Row]:
-    """List all JIRA tickets or those for a specific episode."""
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        # Build a query that joins ticket info with episode context
-        columns = (
-            "jt.*, e.title AS episode_title, e.summary AS episode_summary,"
-            " e.url AS episode_url, e.feed_id AS feed_id, e.published AS published"
-        )
-        if episode_id is None:
-            # All tickets across every episode
-            cur = conn.execute(
-                f"""
-                SELECT {columns}
-                FROM jira_tickets jt
-                JOIN episodes e ON jt.episode_id = e.id
-                ORDER BY jt.id
-                """
-            )
-        else:
-            # Only tickets for a specific episode
-            cur = conn.execute(
-                f"""
-                SELECT {columns}
-                FROM jira_tickets jt
-                JOIN episodes e ON jt.episode_id = e.id
-                WHERE jt.episode_id = ?
-                ORDER BY jt.id
-                """,
-                (episode_id,),
-            )
-        return cur.fetchall()
-
-
-def delete_ticket(ticket_id: int, db_path: str = DB_PATH) -> bool:
-    """Delete a JIRA ticket by its ID. Returns True if deleted."""
-    with sqlite3.connect(db_path) as conn:
-        cur = conn.execute("DELETE FROM jira_tickets WHERE id = ?", (ticket_id,))
-        conn.commit()
-        return cur.rowcount > 0
-
-
-def delete_tickets_bulk(ticket_ids: List[int], db_path: str = DB_PATH) -> int:
-    """Delete multiple JIRA tickets by their IDs. Returns count deleted."""
-    if not ticket_ids:
-        return 0
-    with sqlite3.connect(db_path) as conn:
-        placeholders = ",".join("?" for _ in ticket_ids)
-        cur = conn.execute(
-            f"DELETE FROM jira_tickets WHERE id IN ({placeholders})",
-            ticket_ids,
-        )
-        conn.commit()
-        return cur.rowcount
-
 
 def add_article(
     episode_id: Optional[int],
@@ -1517,7 +1139,6 @@ def add_article(
         conn.commit()
         return cur.lastrowid
 
-
 def get_article(article_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Retrieve a single article by its id."""
     with sqlite3.connect(db_path) as conn:
@@ -1534,7 +1155,6 @@ def get_article(article_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row
             (article_id,),
         )
         return cur.fetchone()
-
 
 def update_article(
     article_id: int,
@@ -1566,7 +1186,6 @@ def update_article(
             )
             conn.commit()
 
-
 def delete_article(article_id: int, db_path: str = DB_PATH) -> None:
     """Delete an article and its social posts by its id."""
     with sqlite3.connect(db_path) as conn:
@@ -1574,7 +1193,6 @@ def delete_article(article_id: int, db_path: str = DB_PATH) -> None:
         conn.execute("DELETE FROM social_posts WHERE article_id = ?", (article_id,))
         conn.execute("DELETE FROM articles WHERE id = ?", (article_id,))
         conn.commit()
-
 
 def list_articles(
     episode_id: Optional[int] = None, db_path: str = DB_PATH
@@ -1608,9 +1226,7 @@ def list_articles(
             )
         return cur.fetchall()
 
-
 # --- Social Posts Functions ---
-
 
 def add_social_post(
     article_id: int,
@@ -1631,7 +1247,6 @@ def add_social_post(
         )
         conn.commit()
         return cur.lastrowid
-
 
 def list_social_posts(
     article_id: Optional[int] = None, db_path: str = DB_PATH
@@ -1661,7 +1276,6 @@ def list_social_posts(
             )
         return cur.fetchall()
 
-
 def get_social_post(post_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Retrieve a single social post by its id, including the article topic."""
     with sqlite3.connect(db_path) as conn:
@@ -1677,13 +1291,11 @@ def get_social_post(post_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Ro
         )
         return cur.fetchone()
 
-
 def delete_social_post(post_id: int, db_path: str = DB_PATH) -> None:
     """Delete a social post by its id."""
     with sqlite3.connect(db_path) as conn:
         conn.execute("DELETE FROM social_posts WHERE id = ?", (post_id,))
         conn.commit()
-
 
 def delete_social_posts_bulk(post_ids: List[int], db_path: str = DB_PATH) -> int:
     """Delete multiple social posts. Returns count deleted."""
@@ -1698,7 +1310,6 @@ def delete_social_posts_bulk(post_ids: List[int], db_path: str = DB_PATH) -> int
         conn.commit()
         return cur.rowcount
 
-
 def delete_social_posts_for_article(article_id: int, db_path: str = DB_PATH) -> int:
     """Delete all social posts for an article. Returns count deleted."""
     with sqlite3.connect(db_path) as conn:
@@ -1709,7 +1320,6 @@ def delete_social_posts_for_article(article_id: int, db_path: str = DB_PATH) -> 
         conn.commit()
         return cur.rowcount
 
-
 def mark_social_post_used(post_id: int, used: bool = True, db_path: str = DB_PATH) -> None:
     """Mark a social post as used or unused."""
     with sqlite3.connect(db_path) as conn:
@@ -1719,7 +1329,6 @@ def mark_social_post_used(post_id: int, used: bool = True, db_path: str = DB_PAT
         )
         conn.commit()
 
-
 def update_social_post(post_id: int, content: str, db_path: str = DB_PATH) -> None:
     """Update the content of a social post."""
     with sqlite3.connect(db_path) as conn:
@@ -1728,7 +1337,6 @@ def update_social_post(post_id: int, content: str, db_path: str = DB_PATH) -> No
             (content, post_id),
         )
         conn.commit()
-
 
 def bulk_replace_post_content(
     find_text: str,
@@ -1831,876 +1439,7 @@ def bulk_replace_post_content(
     
     return affected_count
 
-
-# ---------------------------------------------------------------------------
-# Platform tokens
-#
-# A token row belongs to a social_accounts row, so a platform can hold as many
-# logins as the user connects. Every accessor takes an optional ``account_id``
-# and, when it is left out, falls back to that platform's default account,
-# which is what keeps the call sites written before multi-account existed
-# behaving exactly as they did.
-#
-# The five platforms differ only in which columns they store, so the shape of
-# save/get/update/delete lives here once and each platform's public function is
-# a thin wrapper naming its own fields.
-# ---------------------------------------------------------------------------
-
-
-def _token_table(platform: str) -> str:
-    return _TOKEN_IDENTITY[platform]["table"]
-
-
-def _resolve_token_account(conn: sqlite3.Connection, platform: str, account_id=None):
-    """The account id a token operation should act on, or None."""
-    if account_id:
-        row = conn.execute(
-            "SELECT id FROM social_accounts WHERE id = ? AND platform = ?",
-            (int(account_id), platform),
-        ).fetchone()
-        return row[0] if row else None
-    return _default_account_id(conn, platform)
-
-
-def _get_token(platform: str, account_id=None, db_path: str = DB_PATH):
-    """One account's token row, or None.
-
-    Without an ``account_id`` this is the platform's default account. A token
-    row written before accounts existed and not yet migrated still answers, so
-    a half-upgraded database keeps posting.
-    """
-    table = _token_table(platform)
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        resolved = _resolve_token_account(conn, platform, account_id)
-        if account_id:
-            # A named account answers only with its own credentials. An id that
-            # is unknown, was disconnected, or belongs to another platform is
-            # not connected, and handing back the default account's token
-            # instead would publish to the wrong place.
-            if not resolved:
-                return None
-            return conn.execute(
-                f"SELECT * FROM {table} WHERE account_id = ?", (resolved,)
-            ).fetchone()
-        if resolved:
-            row = conn.execute(
-                f"SELECT * FROM {table} WHERE account_id = ?", (resolved,)
-            ).fetchone()
-            if row:
-                return row
-        return conn.execute(f"SELECT * FROM {table} LIMIT 1").fetchone()
-
-
-def _save_token(
-    platform: str,
-    fields: dict,
-    identity: dict,
-    account_id=None,
-    new_login: bool = False,
-    db_path: str = DB_PATH,
-) -> int:
-    """Store a token against the account it belongs to; returns the token row id.
-
-    ``identity`` carries the platform's own id for the login plus its display
-    fields. A login already connected is refreshed in place; a login that is new
-    to this platform gets its own account, which is how a second LinkedIn stops
-    overwriting the first.
-
-    ``new_login`` says the caller knows this is a login being added rather than
-    one being refreshed. It only matters when the platform returned no identity:
-    there is then nothing to tell two logins apart by, so without it they share
-    one placeholder, and with it each gets a placeholder of its own.
-    """
-    now = datetime.utcnow().isoformat(timespec="seconds")
-    table = _token_table(platform)
-    external_id = str(identity.get("external_id") or "").strip()
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        if not external_id:
-            # The platform did not hand back an id (LinkedIn without the profile
-            # scope, a Facebook login with no Page yet). There is nothing to
-            # match this login against, so it must not be matched against a
-            # real account: the previous fallback here was the platform's
-            # default account, which meant a second login with no identity
-            # overwrote the first account's token and blanked its member URN.
-            #
-            # It lands on a named account if the caller named one. Failing that,
-            # a login the caller knows is being added (``new_login``) gets a
-            # placeholder of its own, so two of them cannot overwrite each other.
-            # Only when the caller cannot say does it fall back to the platform's
-            # shared placeholder, reused rather than minted afresh on every
-            # retry. That fallback can cost one unconfigured login another; it
-            # can never touch a real account.
-            named = None
-            if account_id:
-                named = conn.execute(
-                    "SELECT id FROM social_accounts WHERE id = ? AND platform = ?",
-                    (int(account_id), platform),
-                ).fetchone()
-            if named:
-                target = named["id"]
-            elif new_login:
-                target = _upsert_account_row(
-                    conn, platform=platform,
-                    external_id=f"pending:{platform}:{secrets.token_hex(4)}",
-                    display_name=identity.get("display_name"),
-                    handle=identity.get("handle"),
-                    avatar_url=identity.get("avatar_url"),
-                    now=now,
-                )
-            else:
-                placeholder = conn.execute(
-                    "SELECT external_id FROM social_accounts "
-                    "WHERE platform = ? AND external_id LIKE 'pending:%' "
-                    "AND status != 'removed' ORDER BY id LIMIT 1",
-                    (platform,),
-                ).fetchone()
-                target = _upsert_account_row(
-                    conn, platform=platform,
-                    external_id=(placeholder["external_id"] if placeholder
-                                 else f"pending:{platform}"),
-                    display_name=identity.get("display_name"),
-                    handle=identity.get("handle"),
-                    avatar_url=identity.get("avatar_url"),
-                    now=now,
-                )
-        else:
-            existing = conn.execute(
-                "SELECT id FROM social_accounts WHERE platform = ? AND external_id = ?",
-                (platform, external_id),
-            ).fetchone()
-            if not existing and account_id:
-                # Re-authorising a named account whose id we only learn now
-                # (a placeholder growing up into a real login).
-                named = conn.execute(
-                    "SELECT id FROM social_accounts WHERE id = ? AND platform = ?",
-                    (int(account_id), platform),
-                ).fetchone()
-                if named:
-                    conn.execute(
-                        "UPDATE social_accounts SET external_id = ?, updated_at = ? "
-                        "WHERE id = ?",
-                        (external_id, now, named["id"]),
-                    )
-            target = _upsert_account_row(
-                conn, platform=platform, external_id=external_id,
-                display_name=identity.get("display_name"),
-                handle=identity.get("handle"),
-                avatar_url=identity.get("avatar_url"),
-                now=now,
-            )
-
-        columns = list(fields.keys())
-        row = conn.execute(
-            f"SELECT id FROM {table} WHERE account_id = ?", (target,)
-        ).fetchone()
-        if row:
-            assignments = ", ".join(f"{c} = ?" for c in columns)
-            conn.execute(
-                f"UPDATE {table} SET {assignments}, updated_at = ? WHERE id = ?",
-                [fields[c] for c in columns] + [now, row["id"]],
-            )
-            conn.commit()
-            return row["id"]
-
-        placeholders = ", ".join("?" for _ in columns)
-        cur = conn.execute(
-            f"INSERT INTO {table} ({', '.join(columns)}, account_id, "
-            f"created_at, updated_at) VALUES ({placeholders}, ?, ?, ?)",
-            [fields[c] for c in columns] + [target, now, now],
-        )
-        conn.commit()
-        return cur.lastrowid
-
-
-def _update_token(
-    platform: str, fields: dict, account_id=None, db_path: str = DB_PATH
-) -> bool:
-    """Write columns on one account's token row. False if it has none.
-
-    Scoped to a single row on purpose: the pre-multi-account version of this
-    updated every row in the table, which would now rewrite one account's
-    credentials with another's after a refresh.
-    """
-    if not fields:
-        return False
-    now = datetime.utcnow().isoformat(timespec="seconds")
-    table = _token_table(platform)
-    columns = list(fields.keys())
-    assignments = ", ".join(f"{c} = ?" for c in columns)
-    params = [fields[c] for c in columns] + [now]
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        resolved = _resolve_token_account(conn, platform, account_id)
-        if account_id and not resolved:
-            return False
-        if resolved:
-            cur = conn.execute(
-                f"UPDATE {table} SET {assignments}, updated_at = ? WHERE account_id = ?",
-                params + [resolved],
-            )
-            if cur.rowcount:
-                conn.commit()
-                return True
-            if account_id:
-                return False
-        # Not migrated yet: there is only one row and it is the only candidate.
-        cur = conn.execute(
-            f"UPDATE {table} SET {assignments}, updated_at = ? "
-            f"WHERE id = (SELECT id FROM {table} LIMIT 1)",
-            params,
-        )
-        conn.commit()
-        return cur.rowcount > 0
-
-
-def _delete_token(platform: str, account_id=None, db_path: str = DB_PATH) -> None:
-    """Disconnect one account, or the platform's default when none is named.
-
-    Only the named account goes. The platform's other logins keep their tokens,
-    which is the difference between disconnecting an account and disconnecting
-    a platform.
-    """
-    table = _token_table(platform)
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        resolved = _resolve_token_account(conn, platform, account_id)
-    if resolved:
-        delete_social_account(resolved, db_path=db_path)
-        return
-    if account_id:
-        # Naming an account that is already gone disconnects nothing. Falling
-        # through here would wipe the platform's other logins as well.
-        return
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(f"DELETE FROM {table}")
-        conn.commit()
-
-
-def _is_placeholder(conn: sqlite3.Connection, account_id: int) -> bool:
-    """True for an account that has a login but no identity yet."""
-    row = conn.execute(
-        "SELECT external_id FROM social_accounts WHERE id = ?", (account_id,)
-    ).fetchone()
-    return bool(row) and str(row[0] or "").startswith("pending:")
-
-
-def _identity_conflict(platform: str, account_id: int, external_id,
-                       db_path: str = DB_PATH) -> bool:
-    """True when giving this account that identity would collide with another.
-
-    A placeholder never conflicts: its identity is unknown, so learning it is
-    either a new account or a re-authorisation of one that already exists, and
-    ``_sync_account_identity`` merges the second case. A real account is
-    different. Moving it onto an identity another account already holds would
-    leave two accounts publishing as one login, so the configure screens refuse
-    that up front instead of half-applying it.
-    """
-    if not external_id:
-        return False
-    with sqlite3.connect(db_path) as conn:
-        if _is_placeholder(conn, account_id):
-            return False
-        other = conn.execute(
-            "SELECT id FROM social_accounts "
-            "WHERE platform = ? AND external_id = ? AND id != ?",
-            (platform, str(external_id), account_id),
-        ).fetchone()
-        return other is not None
-
-
-def account_id_for_token(platform: str, token_id: int,
-                         db_path: str = DB_PATH) -> Optional[int]:
-    """The account a saved token row belongs to.
-
-    The save functions return the token row id, but a redirect to a configure
-    screen has to name the account, and the two are not the same number. Without
-    this the screen falls back to the platform's default account, which is
-    exactly the wrong one when the login that just connected is a second.
-    """
-    table = _token_table(platform)
-    with sqlite3.connect(db_path) as conn:
-        row = conn.execute(
-            f"SELECT account_id FROM {table} WHERE id = ?", (token_id,)
-        ).fetchone()
-    return row[0] if row else None
-
-
-def identity_in_use(platform: str, external_id, account_id: int | None = None,
-                    db_path: str = DB_PATH) -> bool:
-    """True when saving this identity onto the account would collide.
-
-    The check the configure screens run before saving, so they can say why
-    instead of reporting a generic failure. ``account_id`` left out means the
-    platform's default account, like every other accessor here.
-    """
-    target = _token_account_id(platform, account_id, db_path=db_path)
-    return bool(target) and _identity_conflict(
-        platform, target, external_id, db_path=db_path)
-
-
-def _merge_placeholder(conn: sqlite3.Connection, platform: str,
-                       source_id: int, survivor_id: int, now: str) -> None:
-    """Fold a placeholder into the account it turned out to be.
-
-    This is the re-authorisation case. A login that returns no profile gets a
-    fresh placeholder every time it is re-authorised, and configuring it with
-    the member id the user already had lands on an account that exists. The
-    placeholder holds the newest credentials, so they replace the survivor's,
-    and everything that pointed at the placeholder is repointed rather than
-    orphaned.
-    """
-    table = _token_table(platform)
-    conn.execute(f"DELETE FROM {table} WHERE account_id = ?", (survivor_id,))
-    conn.execute(
-        f"UPDATE {table} SET account_id = ?, updated_at = ? WHERE account_id = ?",
-        (survivor_id, now, source_id),
-    )
-    for tbl in ("standalone_posts", "social_posts", "scheduled_posts"):
-        conn.execute(
-            f"UPDATE {tbl} SET account_id = ? WHERE account_id = ?",
-            (survivor_id, source_id),
-        )
-    conn.execute("DELETE FROM social_accounts WHERE id = ?", (source_id,))
-    has_default = conn.execute(
-        "SELECT 1 FROM social_accounts "
-        "WHERE platform = ? AND is_default = 1 AND status != 'removed'",
-        (platform,),
-    ).fetchone()
-    if not has_default:
-        conn.execute(
-            "UPDATE social_accounts SET is_default = 1 WHERE id = ?", (survivor_id,)
-        )
-
-
-def _sync_account_identity(
-    platform: str,
-    account_id: int,
-    external_id: str | None = None,
-    display_name: str | None = None,
-    handle: str | None = None,
-    db_path: str = DB_PATH,
-) -> int:
-    """Push a hand-entered identity back onto the account record.
-
-    The configure screens exist because some platforms will not hand back an id
-    over OAuth. What the user types there has to reach the account row too, or
-    the accounts list keeps showing "needs configuration" for a login that works.
-
-    Returns the id of the account the identity ended up on. That is
-    ``account_id`` unless it was a placeholder whose identity already belongs to
-    another account, in which case the placeholder is merged into that one.
-    """
-    now = datetime.utcnow().isoformat(timespec="seconds")
-    with sqlite3.connect(db_path) as conn:
-        target = account_id
-        if external_id:
-            other = conn.execute(
-                "SELECT id FROM social_accounts "
-                "WHERE platform = ? AND external_id = ? AND id != ?",
-                (platform, str(external_id), account_id),
-            ).fetchone()
-            if other and _is_placeholder(conn, account_id):
-                _merge_placeholder(conn, platform, account_id, other[0], now)
-                target = other[0]
-                external_id = None  # the survivor already holds it
-            elif other:
-                # A real account is never merged away. Callers are expected to
-                # have refused via _identity_conflict first, so reaching here
-                # means leaving the record exactly as it is.
-                external_id = None
-
-        sets, params = ["updated_at = ?"], [now]
-        if external_id:
-            sets.insert(0, "external_id = ?")
-            params.insert(0, str(external_id))
-        for column, value in (("display_name", display_name), ("handle", handle)):
-            if value:
-                sets.insert(0, f"{column} = ?")
-                params.insert(0, value)
-        params.append(target)
-        conn.execute(
-            f"UPDATE social_accounts SET {', '.join(sets)} WHERE id = ?", params
-        )
-        conn.commit()
-        return target
-
-
-def _token_account_id(platform: str, account_id=None, db_path: str = DB_PATH):
-    """The account id a token write landed on, for identity sync."""
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        return _resolve_token_account(conn, platform, account_id)
-
-
-# --- LinkedIn Token Functions ---
-
-
-def save_linkedin_token(
-    access_token: str,
-    expires_at: str,
-    member_id: str,
-    user_urn: str,
-    display_name: str | None = None,
-    email: str | None = None,
-    refresh_token: str | None = None,
-    account_id: int | None = None,
-    new_login: bool = False,
-    db_path: str = DB_PATH,
-) -> int:
-    """Save or update LinkedIn OAuth tokens. Returns the token record id."""
-    return _save_token(
-        "linkedin",
-        {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "expires_at": expires_at,
-            "member_id": member_id,
-            "user_urn": user_urn,
-            "display_name": display_name,
-            "email": email,
-        },
-        identity={
-            "external_id": member_id,
-            "display_name": display_name,
-            "handle": email,
-        },
-        account_id=account_id,
-        new_login=new_login,
-        db_path=db_path,
-    )
-
-
-def get_linkedin_token(
-    account_id: int | None = None, db_path: str = DB_PATH
-) -> Optional[sqlite3.Row]:
-    """The LinkedIn token for one account (default account when unnamed)."""
-    return _get_token("linkedin", account_id=account_id, db_path=db_path)
-
-
-def delete_linkedin_token(account_id: int | None = None, db_path: str = DB_PATH) -> None:
-    """Disconnect one LinkedIn account (the default when unnamed)."""
-    _delete_token("linkedin", account_id=account_id, db_path=db_path)
-
-
-def update_linkedin_token(
-    access_token: str,
-    expires_at: str,
-    refresh_token: str | None = None,
-    account_id: int | None = None,
-    db_path: str = DB_PATH,
-) -> None:
-    """Update the access token after a refresh."""
-    fields = {"access_token": access_token, "expires_at": expires_at}
-    if refresh_token:
-        fields["refresh_token"] = refresh_token
-    _update_token("linkedin", fields, account_id=account_id, db_path=db_path)
-
-
-def update_linkedin_member_urn(
-    member_id: str,
-    user_urn: str | None = None,
-    display_name: str | None = None,
-    account_id: int | None = None,
-    db_path: str = DB_PATH,
-) -> bool:
-    """Manually update the member ID and URN for LinkedIn posting.
-
-    This is useful when the user only has w_member_social scope
-    and profile endpoints don't work.
-
-    Returns True if updated successfully.
-    """
-    if user_urn is None:
-        user_urn = f"urn:li:person:{member_id}"
-    fields = {"member_id": member_id, "user_urn": user_urn}
-    if display_name:
-        fields["display_name"] = display_name
-    target = _token_account_id("linkedin", account_id, db_path=db_path)
-    if target and _identity_conflict("linkedin", target, member_id, db_path=db_path):
-        return False
-    updated = _update_token("linkedin", fields, account_id=account_id, db_path=db_path)
-    if updated and target:
-        _sync_account_identity(
-            "linkedin", target, external_id=member_id,
-            display_name=display_name, db_path=db_path,
-        )
-    return updated
-
-
-# --- Threads Token Functions ---
-
-
-def save_threads_token(
-    access_token: str,
-    expires_at: str,
-    user_id: str,
-    username: str,
-    display_name: str | None = None,
-    profile_picture_url: str | None = None,
-    account_id: int | None = None,
-    new_login: bool = False,
-    db_path: str = DB_PATH,
-) -> int:
-    """Save or update Threads OAuth tokens. Returns the token record id."""
-    return _save_token(
-        "threads",
-        {
-            "access_token": access_token,
-            "expires_at": expires_at,
-            "user_id": user_id,
-            "username": username,
-            "display_name": display_name,
-            "profile_picture_url": profile_picture_url,
-        },
-        identity={
-            "external_id": user_id,
-            "display_name": display_name or username,
-            "handle": username,
-            "avatar_url": profile_picture_url,
-        },
-        account_id=account_id,
-        new_login=new_login,
-        db_path=db_path,
-    )
-
-
-def get_threads_token(
-    account_id: int | None = None, db_path: str = DB_PATH
-) -> Optional[sqlite3.Row]:
-    """The Threads token for one account (default account when unnamed)."""
-    return _get_token("threads", account_id=account_id, db_path=db_path)
-
-
-def delete_threads_token(account_id: int | None = None, db_path: str = DB_PATH) -> None:
-    """Disconnect one Threads account (the default when unnamed)."""
-    _delete_token("threads", account_id=account_id, db_path=db_path)
-
-
-def update_threads_token(
-    access_token: str,
-    expires_at: str,
-    account_id: int | None = None,
-    db_path: str = DB_PATH,
-) -> None:
-    """Update the access token after a refresh."""
-    _update_token(
-        "threads",
-        {"access_token": access_token, "expires_at": expires_at},
-        account_id=account_id,
-        db_path=db_path,
-    )
-
-
-def update_threads_user_info(
-    user_id: str,
-    username: str | None = None,
-    display_name: str | None = None,
-    account_id: int | None = None,
-    db_path: str = DB_PATH,
-) -> bool:
-    """Update Threads user info fields manually (user_id, username, display_name).
-
-    Returns True if a record was updated, False if no token exists.
-    """
-    fields = {"user_id": user_id}
-    if username:
-        fields["username"] = username
-    if display_name:
-        fields["display_name"] = display_name
-    target = _token_account_id("threads", account_id, db_path=db_path)
-    if target and _identity_conflict("threads", target, user_id, db_path=db_path):
-        return False
-    updated = _update_token("threads", fields, account_id=account_id, db_path=db_path)
-    if updated and target:
-        _sync_account_identity(
-            "threads", target, external_id=user_id,
-            display_name=display_name, handle=username, db_path=db_path,
-        )
-    return updated
-
-
-# --- Instagram Token Functions ---
-
-
-def save_instagram_token(
-    access_token: str,
-    expires_at: str,
-    user_id: str,
-    username: str,
-    ig_user_id: str | None = None,
-    display_name: str | None = None,
-    profile_picture_url: str | None = None,
-    account_type: str | None = None,
-    account_id: int | None = None,
-    new_login: bool = False,
-    db_path: str = DB_PATH,
-) -> int:
-    """Save or update Instagram OAuth tokens. Returns the token record id."""
-    return _save_token(
-        "instagram",
-        {
-            "access_token": access_token,
-            "expires_at": expires_at,
-            "user_id": user_id,
-            "ig_user_id": ig_user_id,
-            "username": username,
-            "display_name": display_name,
-            "profile_picture_url": profile_picture_url,
-            "account_type": account_type,
-        },
-        identity={
-            # Publishing goes through the IG user id, so that is the account.
-            "external_id": ig_user_id or user_id,
-            "display_name": display_name or username,
-            "handle": username,
-            "avatar_url": profile_picture_url,
-        },
-        account_id=account_id,
-        new_login=new_login,
-        db_path=db_path,
-    )
-
-
-def get_instagram_token(
-    account_id: int | None = None, db_path: str = DB_PATH
-) -> Optional[sqlite3.Row]:
-    """The Instagram token for one account (default account when unnamed)."""
-    return _get_token("instagram", account_id=account_id, db_path=db_path)
-
-
-def delete_instagram_token(
-    account_id: int | None = None, db_path: str = DB_PATH
-) -> None:
-    """Disconnect one Instagram account (the default when unnamed)."""
-    _delete_token("instagram", account_id=account_id, db_path=db_path)
-
-
-def update_instagram_token(
-    access_token: str,
-    expires_at: str,
-    account_id: int | None = None,
-    db_path: str = DB_PATH,
-) -> None:
-    """Update the access token after a refresh."""
-    _update_token(
-        "instagram",
-        {"access_token": access_token, "expires_at": expires_at},
-        account_id=account_id,
-        db_path=db_path,
-    )
-
-
-def update_instagram_user_info(
-    user_id: str,
-    username: str | None = None,
-    display_name: str | None = None,
-    ig_user_id: str | None = None,
-    account_id: int | None = None,
-    db_path: str = DB_PATH,
-) -> bool:
-    """Update Instagram user info fields manually.
-
-    Returns True if a record was updated, False if no token exists.
-    """
-    fields = {"user_id": user_id}
-    for column, value in (("username", username), ("display_name", display_name),
-                          ("ig_user_id", ig_user_id)):
-        if value:
-            fields[column] = value
-    target = _token_account_id("instagram", account_id, db_path=db_path)
-    if target and _identity_conflict(
-            "instagram", target, ig_user_id or user_id, db_path=db_path):
-        return False
-    updated = _update_token("instagram", fields, account_id=account_id, db_path=db_path)
-    if updated and target:
-        _sync_account_identity(
-            "instagram", target, external_id=ig_user_id or user_id,
-            display_name=display_name, handle=username, db_path=db_path,
-        )
-    return updated
-
-
-# --- Facebook Token Functions ---
-
-
-def save_facebook_token(
-    access_token: str,
-    expires_at: str,
-    user_id: str,
-    user_name: str | None = None,
-    page_id: str | None = None,
-    page_name: str | None = None,
-    page_access_token: str | None = None,
-    group_ids: str | None = None,
-    account_id: int | None = None,
-    new_login: bool = False,
-    db_path: str = DB_PATH,
-) -> int:
-    """Save or update Facebook OAuth tokens. Returns the token record id."""
-    return _save_token(
-        "facebook",
-        {
-            "access_token": access_token,
-            "expires_at": expires_at,
-            "user_id": user_id,
-            "user_name": user_name,
-            "page_id": page_id,
-            "page_name": page_name,
-            "page_access_token": page_access_token,
-            "group_ids": group_ids,
-        },
-        identity={
-            # A Facebook post is published by a Page, so the Page identifies the
-            # account; before one is picked the login is a placeholder.
-            "external_id": page_id,
-            "display_name": page_name or user_name,
-            "handle": page_name,
-        },
-        account_id=account_id,
-        new_login=new_login,
-        db_path=db_path,
-    )
-
-
-def get_facebook_token(
-    account_id: int | None = None, db_path: str = DB_PATH
-) -> Optional[sqlite3.Row]:
-    """The Facebook token for one account (default account when unnamed)."""
-    return _get_token("facebook", account_id=account_id, db_path=db_path)
-
-
-def delete_facebook_token(
-    account_id: int | None = None, db_path: str = DB_PATH
-) -> None:
-    """Disconnect one Facebook account (the default when unnamed)."""
-    _delete_token("facebook", account_id=account_id, db_path=db_path)
-
-
-def update_facebook_token(
-    access_token: str,
-    expires_at: str,
-    account_id: int | None = None,
-    db_path: str = DB_PATH,
-) -> None:
-    """Update the access token after a refresh."""
-    _update_token(
-        "facebook",
-        {"access_token": access_token, "expires_at": expires_at},
-        account_id=account_id,
-        db_path=db_path,
-    )
-
-
-def update_facebook_page_selection(
-    page_id: str,
-    page_name: str,
-    page_access_token: str,
-    account_id: int | None = None,
-    db_path: str = DB_PATH,
-) -> bool:
-    """Update the selected Facebook Page for posting.
-
-    Returns True if a record was updated, False if no token exists.
-    """
-    target = _token_account_id("facebook", account_id, db_path=db_path)
-    if target and _identity_conflict("facebook", target, page_id, db_path=db_path):
-        return False
-    updated = _update_token(
-        "facebook",
-        {"page_id": page_id, "page_name": page_name,
-         "page_access_token": page_access_token},
-        account_id=account_id,
-        db_path=db_path,
-    )
-    if updated and target:
-        _sync_account_identity(
-            "facebook", target, external_id=page_id,
-            display_name=page_name, handle=page_name, db_path=db_path,
-        )
-    return updated
-
-
-def update_facebook_group_ids(
-    group_ids: str,
-    account_id: int | None = None,
-    db_path: str = DB_PATH,
-) -> bool:
-    """Update the selected Facebook Group IDs (comma-separated).
-
-    Returns True if a record was updated, False if no token exists.
-    """
-    return _update_token(
-        "facebook", {"group_ids": group_ids}, account_id=account_id, db_path=db_path
-    )
-
-
-# --- Twitter Token Functions ---
-
-
-def save_twitter_token(
-    access_token: str,
-    refresh_token: str,
-    expires_at: str,
-    user_id: str,
-    username: str,
-    display_name: str | None = None,
-    account_id: int | None = None,
-    new_login: bool = False,
-    db_path: str = DB_PATH,
-) -> int:
-    """Save or update Twitter OAuth tokens. Returns the token record id."""
-    return _save_token(
-        "twitter",
-        {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "expires_at": expires_at,
-            "user_id": user_id,
-            "username": username,
-            "display_name": display_name,
-        },
-        identity={
-            "external_id": user_id,
-            "display_name": display_name or username,
-            "handle": username,
-        },
-        account_id=account_id,
-        new_login=new_login,
-        db_path=db_path,
-    )
-
-
-def get_twitter_token(
-    account_id: int | None = None, db_path: str = DB_PATH
-) -> Optional[sqlite3.Row]:
-    """The X/Twitter token for one account (default account when unnamed)."""
-    return _get_token("twitter", account_id=account_id, db_path=db_path)
-
-
-def delete_twitter_token(account_id: int | None = None, db_path: str = DB_PATH) -> None:
-    """Disconnect one X/Twitter account (the default when unnamed)."""
-    _delete_token("twitter", account_id=account_id, db_path=db_path)
-
-
-def update_twitter_token(
-    access_token: str,
-    expires_at: str,
-    refresh_token: str | None = None,
-    account_id: int | None = None,
-    db_path: str = DB_PATH,
-) -> None:
-    """Update the access token (and optionally refresh token) after a refresh."""
-    fields = {"access_token": access_token, "expires_at": expires_at}
-    if refresh_token:
-        fields["refresh_token"] = refresh_token
-    _update_token("twitter", fields, account_id=account_id, db_path=db_path)
-
-
-
 # --- Scheduled Posts Functions ---
-
 
 def add_scheduled_post(
     scheduled_for: str,
@@ -2740,7 +1479,6 @@ def add_scheduled_post(
         conn.commit()
         return cur.lastrowid
 
-
 def get_scheduled_post(scheduled_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Get a single scheduled post by id with joined content data."""
     with sqlite3.connect(db_path) as conn:
@@ -2767,7 +1505,6 @@ def get_scheduled_post(scheduled_id: int, db_path: str = DB_PATH) -> Optional[sq
             (scheduled_id,),
         )
         return cur.fetchone()
-
 
 def get_pending_schedules_for_social_posts(social_post_ids: List[int], db_path: str = DB_PATH) -> dict:
     """Get pending scheduled posts for a list of social post IDs.
@@ -2802,7 +1539,6 @@ def get_pending_schedules_for_social_posts(social_post_ids: List[int], db_path: 
             })
         return result
 
-
 def get_pending_schedules_for_standalone_posts(standalone_post_ids: List[int], db_path: str = DB_PATH) -> dict:
     """Get pending scheduled posts for a list of standalone post IDs.
     
@@ -2834,7 +1570,6 @@ def get_pending_schedules_for_standalone_posts(standalone_post_ids: List[int], d
             result[post_id][row['platform']] = row['scheduled_for']
         return result
 
-
 def get_pending_schedule_ids_for_standalone_posts(standalone_post_ids: List[int], db_path: str = DB_PATH) -> dict:
     """Map standalone_post_id -> [ids of its pending scheduled_posts entries].
 
@@ -2860,7 +1595,6 @@ def get_pending_schedule_ids_for_standalone_posts(standalone_post_ids: List[int]
         for post_id, scheduled_id in cur.fetchall():
             result.setdefault(post_id, []).append(scheduled_id)
         return result
-
 
 def get_posted_info_for_standalone_posts(standalone_post_ids: List[int], db_path: str = DB_PATH) -> dict:
     """Get posted info for a list of standalone post IDs.
@@ -2902,7 +1636,6 @@ def get_posted_info_for_standalone_posts(standalone_post_ids: List[int], db_path
                 }
         return result
 
-
 def list_scheduled_posts(
     status: str | None = None,
     platform: str | None = None,
@@ -2915,7 +1648,7 @@ def list_scheduled_posts(
     
     Args:
         status: Filter by post status (pending, posted, failed, cancelled)
-        platform: Filter by platform (linkedin, threads)
+        platform: Filter by platform (e.g. 'xiaohongshu', 'douyin')
         date_from: Filter posts scheduled on or after this date (YYYY-MM-DD)
         date_to: Filter posts scheduled on or before this date (YYYY-MM-DD)
         sort_order: Sort order for scheduled_for column ('asc' or 'desc')
@@ -2964,11 +1697,9 @@ def list_scheduled_posts(
         cur = conn.execute(query, params)
         return cur.fetchall()
 
-
 def _scheduled_field(row, name):
     """A column of a queue row, or None when the row does not carry it."""
     return row[name] if name in row.keys() else None
-
 
 def scheduled_group_key(row):
     """What makes two queue entries one post going to more than one place.
@@ -2994,7 +1725,6 @@ def scheduled_group_key(row):
         what = ('copy', content, image, _scheduled_field(row, 'standalone_video_url') or '')
     return (post_type, what, row['status'], row['scheduled_for'])
 
-
 def group_scheduled_rows(rows):
     """``rows`` (from list_scheduled_posts) as lists of entries that are one post.
 
@@ -3018,7 +1748,6 @@ def group_scheduled_rows(rows):
             groups.append(group)
     return [group['rows'] for group in groups]
 
-
 def get_scheduled_group_ids(scheduled_id: int, db_path: str = DB_PATH) -> List[int]:
     """The ids of every queue entry shown in one row with ``scheduled_id``.
 
@@ -3035,7 +1764,6 @@ def get_scheduled_group_ids(scheduled_id: int, db_path: str = DB_PATH) -> List[i
         if scheduled_id in ids:
             return ids
     return [scheduled_id]
-
 
 def get_pending_scheduled_posts(db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """Get all pending scheduled posts that are due (scheduled_for <= now).
@@ -3069,7 +1797,6 @@ def get_pending_scheduled_posts(db_path: str = DB_PATH) -> List[sqlite3.Row]:
         )
         return cur.fetchall()
 
-
 def update_scheduled_post_time(
     scheduled_id: int,
     scheduled_for: str,
@@ -3091,7 +1818,6 @@ def update_scheduled_post_time(
         conn.commit()
         return cur.rowcount > 0
 
-
 def redistribute_scheduled_posts(platform: str, db_path: str = DB_PATH) -> int:
     """Redistribute all pending posts for a platform to use the earliest available slots.
     
@@ -3103,7 +1829,7 @@ def redistribute_scheduled_posts(platform: str, db_path: str = DB_PATH) -> int:
     then reassigns them in order using get_next_available_slot().
     
     Args:
-        platform: The platform to redistribute ('linkedin' or 'threads')
+        platform: The platform to redistribute
         db_path: Database path
         
     Returns:
@@ -3153,7 +1879,6 @@ def redistribute_scheduled_posts(platform: str, db_path: str = DB_PATH) -> int:
     
     return redistributed
 
-
 def _assign_group_times(conn, groups, times):
     """Give ``groups[i]`` the moment ``times[i]``, every entry of it at once."""
     for group, when in zip(groups, times):
@@ -3163,7 +1888,6 @@ def _assign_group_times(conn, groups, times):
             f"WHERE status = 'pending' AND id IN ({','.join('?' for _ in ids)})",
             [when, *ids],
         )
-
 
 def reorder_scheduled_posts(post_ids: List[int], db_path: str = DB_PATH) -> bool:
     """Reorder pending scheduled posts by swapping their scheduled times.
@@ -3209,7 +1933,6 @@ def reorder_scheduled_posts(post_ids: List[int], db_path: str = DB_PATH) -> bool
 
     return True
 
-
 def move_posts_to_position(
     post_ids: List[int],
     position: str,
@@ -3251,7 +1974,6 @@ def move_posts_to_position(
 
     return True
 
-
 def update_scheduled_post_status(
     scheduled_id: int,
     status: str,
@@ -3278,7 +2000,6 @@ def update_scheduled_post_status(
         )
         conn.commit()
 
-
 def increment_retry_count(scheduled_id: int, db_path: str = DB_PATH) -> int:
     """Increment the retry count for a scheduled post and return the new value."""
     with sqlite3.connect(db_path) as conn:
@@ -3294,7 +2015,6 @@ def increment_retry_count(scheduled_id: int, db_path: str = DB_PATH) -> int:
         row = cur.fetchone()
         return row[0] if row else 0
 
-
 def cancel_scheduled_post(scheduled_id: int, db_path: str = DB_PATH) -> bool:
     """Cancel a pending scheduled post. Returns True if cancelled."""
     with sqlite3.connect(db_path) as conn:
@@ -3308,7 +2028,6 @@ def cancel_scheduled_post(scheduled_id: int, db_path: str = DB_PATH) -> bool:
         conn.commit()
         return cur.rowcount > 0
 
-
 def cancel_scheduled_post_by_source(
     post_type: str,
     post_id: int,
@@ -3320,7 +2039,7 @@ def cancel_scheduled_post_by_source(
     Args:
         post_type: 'social' or 'standalone'
         post_id: The social_post_id or standalone_post_id
-        platform: 'linkedin' or 'threads'
+        platform: The platform of the queued entry
         
     Returns True if a post was cancelled.
     """
@@ -3346,13 +2065,11 @@ def cancel_scheduled_post_by_source(
         conn.commit()
         return cur.rowcount > 0
 
-
 def delete_scheduled_post(scheduled_id: int, db_path: str = DB_PATH) -> None:
     """Delete a scheduled post."""
     with sqlite3.connect(db_path) as conn:
         conn.execute("DELETE FROM scheduled_posts WHERE id = ?", (scheduled_id,))
         conn.commit()
-
 
 def clear_pending_scheduled_posts(db_path: str = DB_PATH) -> int:
     """Clear all pending scheduled posts. Returns the count of deleted posts."""
@@ -3362,7 +2079,6 @@ def clear_pending_scheduled_posts(db_path: str = DB_PATH) -> int:
         )
         conn.commit()
         return cur.rowcount
-
 
 def delete_scheduled_posts_bulk(post_ids: List[int], db_path: str = DB_PATH) -> int:
     """Delete multiple scheduled posts by their IDs. Returns count deleted."""
@@ -3376,7 +2092,6 @@ def delete_scheduled_posts_bulk(post_ids: List[int], db_path: str = DB_PATH) -> 
         )
         conn.commit()
         return cur.rowcount
-
 
 def get_scheduled_posts_for_article(
     article_id: int,
@@ -3397,9 +2112,7 @@ def get_scheduled_posts_for_article(
         )
         return cur.fetchall()
 
-
 # --- Schedule Time Slots Functions ---
-
 
 def get_slot_platforms(slot_id: int, db_path: str = DB_PATH) -> List[str]:
     """Get the list of platforms assigned to a time slot.
@@ -3414,7 +2127,6 @@ def get_slot_platforms(slot_id: int, db_path: str = DB_PATH) -> List[str]:
         )
         return [row[0] for row in cur.fetchall()]
 
-
 def set_slot_platforms(slot_id: int, platforms: List[str], db_path: str = DB_PATH) -> None:
     """Set the platforms for a time slot (replaces any existing assignments).
     
@@ -3428,7 +2140,6 @@ def set_slot_platforms(slot_id: int, platforms: List[str], db_path: str = DB_PAT
                 (slot_id, platform),
             )
         conn.commit()
-
 
 def add_time_slot(
     day_of_week: int,
@@ -3469,7 +2180,6 @@ def add_time_slot(
         conn.commit()
         return slot_id
 
-
 def list_time_slots(db_path: str = DB_PATH) -> List[dict]:
     """Get all configured time slots ordered by day and time.
     
@@ -3490,7 +2200,6 @@ def list_time_slots(db_path: str = DB_PATH) -> List[dict]:
             slot['platforms'] = get_slot_platforms(slot['id'], db_path)
             slots.append(slot)
         return slots
-
 
 def get_enabled_time_slots(platform: str | None = None, db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """Get only enabled time slots, optionally filtered by platform.
@@ -3532,7 +2241,6 @@ def get_enabled_time_slots(platform: str | None = None, db_path: str = DB_PATH) 
                 """
             )
         return cur.fetchall()
-
 
 def update_time_slot(
     slot_id: int,
@@ -3579,7 +2287,6 @@ def update_time_slot(
                 )
         conn.commit()
 
-
 def delete_time_slot(slot_id: int, db_path: str = DB_PATH) -> None:
     """Delete a time slot and its platform assignments."""
     with sqlite3.connect(db_path) as conn:
@@ -3587,18 +2294,17 @@ def delete_time_slot(slot_id: int, db_path: str = DB_PATH) -> None:
         conn.execute("DELETE FROM schedule_time_slots WHERE id = ?", (slot_id,))
         conn.commit()
 
-
 def get_next_available_slot(platform: str = "linkedin", db_path: str = DB_PATH) -> str | None:
     """Find the next available time slot for scheduling on a specific platform.
     
-    Each platform has its own queue, so a LinkedIn post and a Threads post
-    can be scheduled for the same time slot without conflict.
+    Each platform has its own queue, so two posts for different platforms can
+    share the same wall-clock slot without conflicting.
     
     Also respects daily posting limits - if a platform has a max posts per day
     limit set, days that have reached that limit will be skipped.
     
     Args:
-        platform: The platform to check slots for (e.g., 'linkedin', 'threads')
+        platform: The platform to check slots for
         db_path: Database path
     
     Returns the next datetime (ISO format) based on configured time slots
@@ -3688,7 +2394,6 @@ def get_next_available_slot(platform: str = "linkedin", db_path: str = DB_PATH) 
     
     return None
 
-
 def initialize_default_time_slots(db_path: str = DB_PATH) -> None:
     """Create default time slots if none exist.
     
@@ -3707,11 +2412,9 @@ def initialize_default_time_slots(db_path: str = DB_PATH) -> None:
             db_path=db_path,
         )
 
-
 # =============================================================================
 # Platform Daily Limits Functions
 # =============================================================================
-
 
 def get_daily_limit(platform: str, db_path: str = DB_PATH) -> int:
     """Get the max posts per day limit for a platform.
@@ -3725,7 +2428,6 @@ def get_daily_limit(platform: str, db_path: str = DB_PATH) -> int:
         )
         row = cur.fetchone()
         return row[0] if row else 0
-
 
 def set_daily_limit(platform: str, max_posts_per_day: int, db_path: str = DB_PATH) -> None:
     """Set the max posts per day limit for a platform.
@@ -3743,23 +2445,21 @@ def set_daily_limit(platform: str, max_posts_per_day: int, db_path: str = DB_PAT
         )
         conn.commit()
 
-
 def get_all_daily_limits(db_path: str = DB_PATH) -> dict:
     """Get all platform daily limits as a dictionary.
     
-    Returns: {'linkedin': 3, 'threads': 10, ...}
+    Returns: {platform: max_posts_per_day, ...}
     """
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute("SELECT platform, max_posts_per_day FROM platform_daily_limits")
         return {row['platform']: row['max_posts_per_day'] for row in cur.fetchall()}
 
-
 def count_scheduled_posts_for_day(platform: str, date_str: str, db_path: str = DB_PATH) -> int:
     """Count pending scheduled posts for a platform on a specific date.
     
     Args:
-        platform: The platform (e.g., 'linkedin', 'threads')
+        platform: The platform (e.g. 'xiaohongshu', 'douyin')
         date_str: Date in YYYY-MM-DD format
         
     Returns:
@@ -3777,11 +2477,9 @@ def count_scheduled_posts_for_day(platform: str, date_str: str, db_path: str = D
         )
         return cur.fetchone()[0]
 
-
 # =============================================================================
 # Standalone Posts Functions (Command Center)
 # =============================================================================
-
 
 def add_standalone_post(
     source_type: str,
@@ -3803,21 +2501,18 @@ def add_standalone_post(
     Args:
         source_type: 'freeform', 'url', or 'text'
         source_content: The original prompt, URL, or text used to generate
-        platform: Target platform (e.g., 'linkedin', 'threads', 'twitter')
+        platform: Target platform (e.g. 'xiaohongshu', 'douyin')
         content: The generated post content
         image_url: Optional URL of an image to attach to the post
         video_url: Optional URL of a video to attach. A post with a video
             publishes the video and ignores the image.
-        ig_collaborators / ig_reel_tags: usernames already cleaned by the caller
-            (see instagram_client.normalize_handles); stored as JSON, and only
-            meaningful on an Instagram row.
         repost: If True, marks this as an intentional duplicate that bypassed
             the import-time duplicate check so the same content can be posted
             again.
         account_id: Which of the platform's connected accounts this row posts
             as. Left out, it resolves to that platform's default account, so a
-            card ticked for "LinkedIn" still lands somewhere concrete while a
-            card ticked for a named second LinkedIn keeps its own row.
+            card ticked for "小红书" still lands somewhere concrete while a card
+            ticked for a named second account keeps its own row.
         
     Returns:
         The ID of the newly created post
@@ -3838,7 +2533,6 @@ def add_standalone_post(
         conn.commit()
         return cur.lastrowid
 
-
 def get_existing_standalone_content(db_path: str = DB_PATH) -> dict:
     """Return a dict mapping (platform, content) -> post id for all standalone posts.
 
@@ -3852,7 +2546,6 @@ def get_existing_standalone_content(db_path: str = DB_PATH) -> dict:
             if key not in result:
                 result[key] = row[0]
         return result
-
 
 def list_standalone_posts(
     source_type: Optional[str] = None,
@@ -3906,7 +2599,6 @@ def list_standalone_posts(
         )
         return cur.fetchall()
 
-
 def get_standalone_post(post_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Retrieve a single standalone post by its id.
     
@@ -3923,7 +2615,6 @@ def get_standalone_post(post_id: int, db_path: str = DB_PATH) -> Optional[sqlite
             (post_id,),
         )
         return cur.fetchone()
-
 
 def list_standalone_posts_by_source_url(
     url: str,
@@ -3957,7 +2648,6 @@ def list_standalone_posts_by_source_url(
             (url[:1000],),
         )
         return cur.fetchall()
-
 
 def count_standalone_posts_by_source_urls(
     urls: List[str],
@@ -4003,7 +2693,6 @@ def count_standalone_posts_by_source_urls(
                 counts[original] = row[1]
     return counts
 
-
 def update_standalone_post(
     post_id: int,
     content: str,
@@ -4037,7 +2726,6 @@ def update_standalone_post(
             )
         conn.commit()
 
-
 def update_standalone_post_image(
     post_id: int,
     image_url: Optional[str],
@@ -4056,7 +2744,6 @@ def update_standalone_post_image(
         )
         conn.commit()
 
-
 def update_standalone_post_video(
     post_id: int,
     video_url: Optional[str],
@@ -4072,118 +2759,6 @@ def update_standalone_post_video(
         conn.execute(
             "UPDATE standalone_posts SET video_url = ? WHERE id = ?",
             (video_url, post_id),
-        )
-        conn.commit()
-
-
-IG_POST_TYPES = ("feed", "carousel", "reel", "story")
-
-
-def set_standalone_post_media(
-    post_id: int,
-    ig_post_type: str,
-    media_items: Optional[list] = None,
-    db_path: str = DB_PATH,
-) -> None:
-    """Set the Instagram media format and media list for a standalone post.
-
-    Args:
-        post_id: The post ID
-        ig_post_type: one of 'feed' | 'carousel' | 'reel' | 'story'
-        media_items: list of {"url": str, "kind": "image"|"video"} (ignored for feed)
-
-    For 'feed', media_items is cleared and image_url is synced to the first item's
-    url when provided (feed stays single-source-of-truth on image_url).
-    """
-    if ig_post_type not in IG_POST_TYPES:
-        raise ValueError(f"Invalid ig_post_type: {ig_post_type!r}")
-    items = media_items or []
-
-    with sqlite3.connect(db_path) as conn:
-        if ig_post_type == "feed":
-            first_url = items[0].get("url") if items else None
-            if first_url:
-                conn.execute(
-                    "UPDATE standalone_posts SET ig_post_type = ?, media_items = NULL, "
-                    "image_url = ? WHERE id = ?",
-                    ("feed", first_url, post_id),
-                )
-            else:
-                conn.execute(
-                    "UPDATE standalone_posts SET ig_post_type = ?, media_items = NULL "
-                    "WHERE id = ?",
-                    ("feed", post_id),
-                )
-        else:
-            conn.execute(
-                "UPDATE standalone_posts SET ig_post_type = ?, media_items = ? WHERE id = ?",
-                (ig_post_type, json.dumps(items), post_id),
-            )
-        conn.commit()
-
-
-def set_standalone_post_reel_options(
-    post_id: int,
-    options: Optional[dict],
-    db_path: str = DB_PATH,
-) -> None:
-    """Set the Instagram Reel cover frame and collaborators for a standalone post.
-
-    Args:
-        post_id: The post ID
-        options: {"thumb_offset_ms": int, "collaborators": [username, ...]};
-            None or an empty dict clears them. Only Instagram Reels read it.
-    """
-    payload = json.dumps(options) if options else None
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(
-            "UPDATE standalone_posts SET ig_reel_options = ? WHERE id = ?",
-            (payload, post_id),
-        )
-        conn.commit()
-
-
-def set_standalone_post_user_tags(
-    post_id: int,
-    user_tags: Optional[list],
-    db_path: str = DB_PATH,
-) -> None:
-    """Set the Instagram people-tags for a standalone post.
-
-    Args:
-        post_id: The post ID
-        user_tags: list of {"username": str, "x": float, "y": float} with x/y
-            in 0..1 image coordinates, or None/[] to clear. Only used when
-            publishing feed photos (the Instagram API supports tags there only).
-    """
-    payload = json.dumps(user_tags) if user_tags else None
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(
-            "UPDATE standalone_posts SET ig_user_tags = ? WHERE id = ?",
-            (payload, post_id),
-        )
-        conn.commit()
-
-
-def set_standalone_post_ig_people(
-    post_id: int,
-    collaborators: Optional[list] = None,
-    reel_tags: Optional[list] = None,
-    db_path: str = DB_PATH,
-) -> None:
-    """Set the Instagram collaborators and Reel tags of a standalone post.
-
-    Both are lists of usernames already cleaned by the caller; an empty list or
-    None clears that field. They are written together because the compose card
-    edits them as one pair, and a field left out would otherwise be ambiguous
-    between "unchanged" and "cleared".
-    """
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(
-            "UPDATE standalone_posts SET ig_collaborators = ?, ig_reel_tags = ? WHERE id = ?",
-            (json.dumps(collaborators) if collaborators else None,
-             json.dumps(reel_tags) if reel_tags else None,
-             post_id),
         )
         conn.commit()
 
@@ -4206,7 +2781,6 @@ def update_social_post_image(
         )
         conn.commit()
 
-
 def delete_standalone_post(post_id: int, db_path: str = DB_PATH) -> None:
     """Delete a standalone post by its id.
     
@@ -4216,7 +2790,6 @@ def delete_standalone_post(post_id: int, db_path: str = DB_PATH) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.execute("DELETE FROM standalone_posts WHERE id = ?", (post_id,))
         conn.commit()
-
 
 def delete_standalone_posts_bulk(post_ids: List[int], db_path: str = DB_PATH) -> int:
     """Delete multiple standalone posts. Returns count deleted.
@@ -4238,7 +2811,6 @@ def delete_standalone_posts_bulk(post_ids: List[int], db_path: str = DB_PATH) ->
         conn.commit()
         return cur.rowcount
 
-
 def mark_standalone_post_used(post_id: int, used: bool = True, db_path: str = DB_PATH) -> None:
     """Mark a standalone post as used or unused.
     
@@ -4252,7 +2824,6 @@ def mark_standalone_post_used(post_id: int, used: bool = True, db_path: str = DB
             (1 if used else 0, post_id),
         )
         conn.commit()
-
 
 # =============================================================================
 # URL Sources CRUD Functions
@@ -4310,7 +2881,6 @@ def add_url_source(
             conn.commit()
             return cur.lastrowid
 
-
 def list_url_sources(db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """List all saved URL sources, ordered by last used date.
     
@@ -4326,7 +2896,6 @@ def list_url_sources(db_path: str = DB_PATH) -> List[sqlite3.Row]:
             """
         )
         return cur.fetchall()
-
 
 def get_url_source(source_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Get a single URL source by ID.
@@ -4345,7 +2914,6 @@ def get_url_source(source_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.R
         )
         return cur.fetchone()
 
-
 def get_url_source_by_url(url: str, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Get a URL source by its URL.
     
@@ -4362,7 +2930,6 @@ def get_url_source_by_url(url: str, db_path: str = DB_PATH) -> Optional[sqlite3.
             (url,),
         )
         return cur.fetchone()
-
 
 def delete_url_source(source_id: int, db_path: str = DB_PATH) -> bool:
     """Delete a URL source by ID.
@@ -4381,7 +2948,6 @@ def delete_url_source(source_id: int, db_path: str = DB_PATH) -> bool:
         conn.commit()
         return cur.rowcount > 0
 
-
 def update_url_source_last_used(source_id: int, db_path: str = DB_PATH) -> None:
     """Update the last_used_at timestamp for a URL source.
     
@@ -4395,7 +2961,6 @@ def update_url_source_last_used(source_id: int, db_path: str = DB_PATH) -> None:
             (now, source_id),
         )
         conn.commit()
-
 
 def update_url_source_content(
     source_id: int,
@@ -4429,11 +2994,9 @@ def update_url_source_content(
         conn.commit()
         return cur.rowcount > 0
 
-
 # =============================================================================
 # Uploaded Images Library Functions
 # =============================================================================
-
 
 def add_uploaded_image(
     filename: str,
@@ -4473,7 +3036,6 @@ def add_uploaded_image(
         conn.commit()
         return cur.lastrowid
 
-
 def list_uploaded_images(db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """List all uploaded images, ordered by most recent first.
     
@@ -4489,7 +3051,6 @@ def list_uploaded_images(db_path: str = DB_PATH) -> List[sqlite3.Row]:
             """
         )
         return cur.fetchall()
-
 
 def delete_uploaded_image(image_id: int, db_path: str = DB_PATH) -> bool:
     """Delete an uploaded image record by ID.
@@ -4508,7 +3069,6 @@ def delete_uploaded_image(image_id: int, db_path: str = DB_PATH) -> bool:
         conn.commit()
         return cur.rowcount > 0
 
-
 def get_uploaded_image(image_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Get an uploaded image by ID.
     
@@ -4526,11 +3086,9 @@ def get_uploaded_image(image_id: int, db_path: str = DB_PATH) -> Optional[sqlite
         )
         return cur.fetchone()
 
-
 # =============================================================================
 # Recent Prompts Functions
 # =============================================================================
-
 
 def list_recent_prompts(limit: int = 20, db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """Get unique recent freeform prompts from standalone_posts.
@@ -4561,7 +3119,6 @@ def list_recent_prompts(limit: int = 20, db_path: str = DB_PATH) -> List[sqlite3
         )
         return cur.fetchall()
 
-
 def list_recent_image_prompts(limit: int = 10, db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """Get recent image generation sessions (prompt + image URL).
 
@@ -4585,7 +3142,6 @@ def list_recent_image_prompts(limit: int = 10, db_path: str = DB_PATH) -> List[s
         )
         return cur.fetchall()
 
-
 def clear_recent_prompts(db_path: str = DB_PATH) -> int:
     """Clear the prompt history by setting source_content to empty for freeform posts.
     
@@ -4606,7 +3162,6 @@ def clear_recent_prompts(db_path: str = DB_PATH) -> int:
         )
         conn.commit()
         return cur.rowcount
-
 
 def delete_prompt_by_content(prompt_content: str, db_path: str = DB_PATH) -> int:
     """Delete a specific prompt from history by clearing its source_content.
@@ -4631,7 +3186,6 @@ def delete_prompt_by_content(prompt_content: str, db_path: str = DB_PATH) -> int
         )
         conn.commit()
         return cur.rowcount
-
 
 def delete_prompts_bulk(prompt_contents: List[str], db_path: str = DB_PATH) -> int:
     """Delete multiple prompts from history by clearing their source_content.
@@ -4659,11 +3213,9 @@ def delete_prompts_bulk(prompt_contents: List[str], db_path: str = DB_PATH) -> i
         conn.commit()
         return cur.rowcount
 
-
 # =============================================================================
 # Prompt Library Functions
 # =============================================================================
-
 
 def add_library_prompt(title: str, content: str, db_path: str = DB_PATH) -> int:
     """Save a named, reusable prompt to the library and return its id."""
@@ -4679,7 +3231,6 @@ def add_library_prompt(title: str, content: str, db_path: str = DB_PATH) -> int:
         conn.commit()
         return cur.lastrowid
 
-
 def list_library_prompts(db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """Return all saved library prompts, most recently updated first."""
     with sqlite3.connect(db_path) as conn:
@@ -4689,7 +3240,6 @@ def list_library_prompts(db_path: str = DB_PATH) -> List[sqlite3.Row]:
         )
         return cur.fetchall()
 
-
 def get_library_prompt(prompt_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Return a single library prompt by id, or ``None`` if it does not exist."""
     with sqlite3.connect(db_path) as conn:
@@ -4698,7 +3248,6 @@ def get_library_prompt(prompt_id: int, db_path: str = DB_PATH) -> Optional[sqlit
             "SELECT * FROM prompt_library WHERE id = ?", (prompt_id,)
         )
         return cur.fetchone()
-
 
 def update_library_prompt(
     prompt_id: int,
@@ -4720,7 +3269,6 @@ def update_library_prompt(
         conn.commit()
         return cur.rowcount
 
-
 def delete_library_prompt(prompt_id: int, db_path: str = DB_PATH) -> int:
     """Delete a library prompt by id. Returns rows affected."""
     with sqlite3.connect(db_path) as conn:
@@ -4730,11 +3278,9 @@ def delete_library_prompt(prompt_id: int, db_path: str = DB_PATH) -> int:
         conn.commit()
         return cur.rowcount
 
-
 # =============================================================================
 # Generated Thumbnails Functions
 # =============================================================================
-
 
 def add_generated_thumbnail(
     youtube_url: str,
@@ -4761,7 +3307,6 @@ def add_generated_thumbnail(
         conn.commit()
         return cur.lastrowid
 
-
 def list_generated_thumbnails(
     limit: int = 50,
     offset: int = 0,
@@ -4776,7 +3321,6 @@ def list_generated_thumbnails(
         )
         return cur.fetchall()
 
-
 def get_generated_thumbnail(
     thumbnail_id: int,
     db_path: str = DB_PATH,
@@ -4789,7 +3333,6 @@ def get_generated_thumbnail(
             (thumbnail_id,),
         )
         return cur.fetchone()
-
 
 def delete_generated_thumbnail(
     thumbnail_id: int,
@@ -4804,11 +3347,9 @@ def delete_generated_thumbnail(
         conn.commit()
         return cur.rowcount > 0
 
-
 # ---------------------------------------------------------------------------
 # Users (authentication)
 # ---------------------------------------------------------------------------
-
 
 def create_user(
     username: str,
@@ -4830,7 +3371,6 @@ def create_user(
         conn.commit()
         return int(cur.lastrowid)
 
-
 def get_user_by_username(
     username: str,
     db_path: str = DB_PATH,
@@ -4844,7 +3384,6 @@ def get_user_by_username(
         )
         return cur.fetchone()
 
-
 def get_user_by_id(
     user_id: int,
     db_path: str = DB_PATH,
@@ -4855,13 +3394,11 @@ def get_user_by_id(
         cur = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))
         return cur.fetchone()
 
-
 def count_users(db_path: str = DB_PATH) -> int:
     """Return the total number of registered users."""
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute("SELECT COUNT(*) FROM users")
         return int(cur.fetchone()[0])
-
 
 def list_users(db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """Return all users ordered by username."""
@@ -4872,7 +3409,6 @@ def list_users(db_path: str = DB_PATH) -> List[sqlite3.Row]:
         )
         return cur.fetchall()
 
-
 def update_last_login(user_id: int, db_path: str = DB_PATH) -> None:
     """Stamp ``last_login_at`` on the given user."""
     with sqlite3.connect(db_path) as conn:
@@ -4882,11 +3418,9 @@ def update_last_login(user_id: int, db_path: str = DB_PATH) -> None:
         )
         conn.commit()
 
-
 # ---------------------------------------------------------------------------
 # Activity log
 # ---------------------------------------------------------------------------
-
 
 def log_activity(
     action: str,
@@ -4931,7 +3465,6 @@ def log_activity(
         conn.commit()
         return int(cur.lastrowid)
 
-
 def _activity_filter_clause(
     user_id: Optional[int],
     action: Optional[str],
@@ -4955,7 +3488,6 @@ def _activity_filter_clause(
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
     return where, params
 
-
 def list_activity(
     user_id: Optional[int] = None,
     action: Optional[str] = None,
@@ -4975,7 +3507,6 @@ def list_activity(
         )
         return cur.fetchall()
 
-
 def count_activity(
     user_id: Optional[int] = None,
     action: Optional[str] = None,
@@ -4988,7 +3519,6 @@ def count_activity(
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(f"SELECT COUNT(*) FROM activity_log{where}", params)
         return int(cur.fetchone()[0])
-
 
 def iter_activity_for_export(
     user_id: Optional[int] = None,
@@ -5011,7 +3541,6 @@ def iter_activity_for_export(
     finally:
         conn.close()
 
-
 def distinct_activity_actions(db_path: str = DB_PATH) -> List[str]:
     """Return distinct action names in the activity log, alphabetical."""
     with sqlite3.connect(db_path) as conn:
@@ -5020,11 +3549,9 @@ def distinct_activity_actions(db_path: str = DB_PATH) -> List[str]:
         )
         return [row[0] for row in cur.fetchall() if row[0]]
 
-
 # ---------------------------------------------------------------------------
 # AI usage metering
 # ---------------------------------------------------------------------------
-
 
 def log_usage(
     *,
@@ -5073,7 +3600,6 @@ def log_usage(
         conn.commit()
         return int(cur.lastrowid)
 
-
 def _usage_filter_clause(
     mode: Optional[str],
     category: Optional[str],
@@ -5096,7 +3622,6 @@ def _usage_filter_clause(
         params.append(end_ts)
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
     return where, params
-
 
 def usage_totals(
     mode: Optional[str] = None,
@@ -5133,7 +3658,6 @@ def usage_totals(
             "images": int(row[6]),
         }
 
-
 def usage_by_mode(
     start_ts: Optional[str] = None,
     end_ts: Optional[str] = None,
@@ -5153,7 +3677,6 @@ def usage_by_mode(
             r[0]: {"events": int(r[1]), "cost_usd": float(r[2]), "total_tokens": int(r[3])}
             for r in cur.fetchall()
         }
-
 
 def usage_by_category(
     start_ts: Optional[str] = None,
@@ -5189,7 +3712,6 @@ def usage_by_category(
             for r in cur.fetchall()
         ]
 
-
 def usage_by_model(
     start_ts: Optional[str] = None,
     end_ts: Optional[str] = None,
@@ -5218,7 +3740,6 @@ def usage_by_model(
             }
             for r in cur.fetchall()
         ]
-
 
 def usage_daily(
     start_ts: Optional[str] = None,
@@ -5254,7 +3775,6 @@ def usage_daily(
             for r in cur.fetchall()
         ]
 
-
 def list_usage(
     mode: Optional[str] = None,
     category: Optional[str] = None,
@@ -5274,7 +3794,6 @@ def list_usage(
         )
         return cur.fetchall()
 
-
 def count_usage(
     mode: Optional[str] = None,
     category: Optional[str] = None,
@@ -5287,7 +3806,6 @@ def count_usage(
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(f"SELECT COUNT(*) FROM usage_events{where}", params)
         return int(cur.fetchone()[0])
-
 
 def iter_usage_for_export(
     mode: Optional[str] = None,
@@ -5310,7 +3828,6 @@ def iter_usage_for_export(
     finally:
         conn.close()
 
-
 def distinct_usage_categories(db_path: str = DB_PATH) -> List[str]:
     """Return distinct content categories present in the usage log, alphabetical."""
     with sqlite3.connect(db_path) as conn:
@@ -5318,7 +3835,6 @@ def distinct_usage_categories(db_path: str = DB_PATH) -> List[str]:
             "SELECT DISTINCT category FROM usage_events ORDER BY category ASC"
         )
         return [row[0] for row in cur.fetchall() if row[0]]
-
 
 # --- Content Brief Functions (agentic content preparation) ---
 
@@ -5336,7 +3852,6 @@ _BRIEF_UPDATABLE = {
     "user_id",
 }
 
-
 def _encode_brief_value(key: str, value):
     """Serialize a brief field for storage: JSON for list fields, 0/1 for bools."""
     if key in _BRIEF_LIST_FIELDS and isinstance(value, (list, tuple)):
@@ -5344,7 +3859,6 @@ def _encode_brief_value(key: str, value):
     if isinstance(value, bool):
         return 1 if value else 0
     return value
-
 
 def create_content_brief(
     name: str,
@@ -5409,7 +3923,6 @@ def create_content_brief(
         conn.commit()
         return cur.lastrowid
 
-
 def update_content_brief(brief_id: int, db_path: str = DB_PATH, **fields) -> None:
     """Update the given columns of a brief. Unknown keys are ignored.
 
@@ -5431,14 +3944,12 @@ def update_content_brief(brief_id: int, db_path: str = DB_PATH, **fields) -> Non
         )
         conn.commit()
 
-
 def get_content_brief(brief_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Return a single content brief row by id."""
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute("SELECT * FROM content_briefs WHERE id = ?", (brief_id,))
         return cur.fetchone()
-
 
 def list_content_briefs(db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """Return all content briefs, most recently created first."""
@@ -5447,14 +3958,12 @@ def list_content_briefs(db_path: str = DB_PATH) -> List[sqlite3.Row]:
         cur = conn.execute("SELECT * FROM content_briefs ORDER BY created_at DESC")
         return cur.fetchall()
 
-
 def delete_content_brief(brief_id: int, db_path: str = DB_PATH) -> None:
     """Delete a brief and all of its run history."""
     with sqlite3.connect(db_path) as conn:
         conn.execute("DELETE FROM content_brief_runs WHERE brief_id = ?", (brief_id,))
         conn.execute("DELETE FROM content_briefs WHERE id = ?", (brief_id,))
         conn.commit()
-
 
 def set_content_brief_enabled(brief_id: int, enabled: bool, db_path: str = DB_PATH) -> None:
     """Enable or disable a brief's recurring schedule."""
@@ -5464,7 +3973,6 @@ def set_content_brief_enabled(brief_id: int, enabled: bool, db_path: str = DB_PA
             (1 if enabled else 0, datetime.utcnow().isoformat(timespec="seconds"), brief_id),
         )
         conn.commit()
-
 
 def set_content_brief_schedule(
     brief_id: int,
@@ -5493,7 +4001,6 @@ def set_content_brief_schedule(
         )
         conn.commit()
 
-
 def get_due_content_briefs(now_iso: str, db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """Return enabled, recurring briefs whose ``next_run_at`` is due (<= now)."""
     with sqlite3.connect(db_path) as conn:
@@ -5509,7 +4016,6 @@ def get_due_content_briefs(now_iso: str, db_path: str = DB_PATH) -> List[sqlite3
         )
         return cur.fetchall()
 
-
 def create_brief_run(brief_id: int, trigger: str = "manual", db_path: str = DB_PATH) -> int:
     """Insert a 'running' run row for a brief and return its id."""
     now = datetime.utcnow().isoformat(timespec="seconds")
@@ -5523,7 +4029,6 @@ def create_brief_run(brief_id: int, trigger: str = "manual", db_path: str = DB_P
         )
         conn.commit()
         return cur.lastrowid
-
 
 def finalize_brief_run(
     run_id: int,
@@ -5556,14 +4061,12 @@ def finalize_brief_run(
         )
         conn.commit()
 
-
 def get_brief_run(run_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Return a single run row by id."""
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute("SELECT * FROM content_brief_runs WHERE id = ?", (run_id,))
         return cur.fetchone()
-
 
 def list_brief_runs(brief_id: int, limit: int = 20, db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """Return recent runs for a brief, newest first."""
@@ -5574,7 +4077,6 @@ def list_brief_runs(brief_id: int, limit: int = 20, db_path: str = DB_PATH) -> L
             (brief_id, limit),
         )
         return cur.fetchall()
-
 
 def get_active_brief_run(brief_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Return the brief's currently-running run, if any (concurrency guard)."""
@@ -5589,7 +4091,6 @@ def get_active_brief_run(brief_id: int, db_path: str = DB_PATH) -> Optional[sqli
             (brief_id,),
         )
         return cur.fetchone()
-
 
 # ── Content Library ─────────────────────────────────────────────────────────
 
@@ -5606,7 +4107,6 @@ def add_library_root(path: str, label: str = "", role: str = "source",
         row = cur.fetchone()
         return int(row[0]) if row else 0
 
-
 def list_library_roots(role: Optional[str] = None, db_path: str = DB_PATH) -> List[sqlite3.Row]:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
@@ -5616,19 +4116,16 @@ def list_library_roots(role: Optional[str] = None, db_path: str = DB_PATH) -> Li
             cur = conn.execute("SELECT * FROM library_roots ORDER BY id")
         return cur.fetchall()
 
-
 def get_library_root(root_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute("SELECT * FROM library_roots WHERE id = ?", (root_id,))
         return cur.fetchone()
 
-
 def delete_library_root(root_id: int, db_path: str = DB_PATH) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("DELETE FROM library_roots WHERE id = ?", (root_id,))
-
 
 def create_library_scan(root_id: int, db_path: str = DB_PATH) -> int:
     with sqlite3.connect(db_path) as conn:
@@ -5637,7 +4134,6 @@ def create_library_scan(root_id: int, db_path: str = DB_PATH) -> int:
             (root_id, "scanning", "walking", datetime.now().isoformat(timespec="seconds")),
         )
         return int(cur.lastrowid)
-
 
 def update_library_scan(scan_id: int, db_path: str = DB_PATH, **fields) -> None:
     """Patch a scan row.
@@ -5682,7 +4178,6 @@ def update_library_scan(scan_id: int, db_path: str = DB_PATH, **fields) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.execute(f"UPDATE library_scans SET {', '.join(sets)} WHERE id = ?", params)
 
-
 def get_library_scan(scan_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
@@ -5695,7 +4190,6 @@ def get_library_scan(scan_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.R
             (scan_id,),
         )
         return cur.fetchone()
-
 
 def latest_library_scan(root_id: Optional[int] = None, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     with sqlite3.connect(db_path) as conn:
@@ -5712,7 +4206,6 @@ def latest_library_scan(root_id: Optional[int] = None, db_path: str = DB_PATH) -
         cur = conn.execute(sql, params)
         return cur.fetchone()
 
-
 def list_library_scans(limit: int = 20, db_path: str = DB_PATH) -> List[sqlite3.Row]:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
@@ -5725,7 +4218,6 @@ def list_library_scans(limit: int = 20, db_path: str = DB_PATH) -> List[sqlite3.
             (limit,),
         )
         return cur.fetchall()
-
 
 def bulk_insert_library_files(scan_id: int, rows: Iterable[dict], db_path: str = DB_PATH) -> int:
     """Insert catalogued files in one transaction.
@@ -5757,7 +4249,6 @@ def bulk_insert_library_files(scan_id: int, rows: Iterable[dict], db_path: str =
         )
         return len(payload)
 
-
 def upsert_library_event(scan_id: int, event: dict, db_path: str = DB_PATH) -> None:
     """Record or update one classified event."""
     with sqlite3.connect(db_path) as conn:
@@ -5783,7 +4274,6 @@ def upsert_library_event(scan_id: int, event: dict, db_path: str = DB_PATH) -> N
              json.dumps(event.get("captions") or []), event.get("transcript")),
         )
 
-
 def apply_event_labels(scan_id: int, event_key: str, category: str,
                        confidence: float = 0, classified_by: str = "",
                        notes: str = "", db_path: str = DB_PATH) -> int:
@@ -5806,14 +4296,12 @@ def apply_event_labels(scan_id: int, event_key: str, category: str,
         )
         return cur.rowcount
 
-
 def set_file_caption(file_path: str, scan_id: int, caption: str, db_path: str = DB_PATH) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             "UPDATE library_files SET caption = ? WHERE scan_id = ? AND path = ?",
             (caption, scan_id, file_path),
         )
-
 
 def library_summary(scan_id: int, db_path: str = DB_PATH) -> dict:
     """Aggregate counts for the dashboard: totals, by-year, by-category."""
@@ -5870,7 +4358,6 @@ def library_summary(scan_id: int, db_path: str = DB_PATH) -> dict:
             "duplicates": dict(dupes) if dupes else {},
         }
 
-
 def query_library_files(
     scan_id: int,
     year: Optional[object] = None,
@@ -5923,7 +4410,6 @@ def query_library_files(
         ).fetchall()
         return rows, int(total)
 
-
 def list_library_events(scan_id: int, category: Optional[str] = None,
                         limit: int = 200, offset: int = 0,
                         db_path: str = DB_PATH) -> List[sqlite3.Row]:
@@ -5941,7 +4427,6 @@ def list_library_events(scan_id: int, category: Optional[str] = None,
             params + [int(limit), int(offset)],
         )
         return cur.fetchall()
-
 
 def save_library_categories(categories: Iterable[dict], source: str = "learned",
                             db_path: str = DB_PATH) -> int:
@@ -5967,7 +4452,6 @@ def save_library_categories(categories: Iterable[dict], source: str = "learned",
             count += 1
     return count
 
-
 def list_library_categories(active_only: bool = True, db_path: str = DB_PATH) -> List[sqlite3.Row]:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
@@ -5977,12 +4461,10 @@ def list_library_categories(active_only: bool = True, db_path: str = DB_PATH) ->
         sql += " ORDER BY example_count DESC, name"
         return conn.execute(sql).fetchall()
 
-
 def set_library_category_active(name: str, active: bool, db_path: str = DB_PATH) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.execute("UPDATE library_categories SET active = ? WHERE name = ?",
                      (1 if active else 0, name))
-
 
 def replace_library_plan(scan_id: int, items: Iterable[dict], db_path: str = DB_PATH) -> int:
     """Discard any existing plan for a scan and store a freshly built one."""
@@ -6004,7 +4486,6 @@ def replace_library_plan(scan_id: int, items: Iterable[dict], db_path: str = DB_
                 payload,
             )
     return len(payload)
-
 
 def library_plan_summary(scan_id: int, db_path: str = DB_PATH) -> dict:
     with sqlite3.connect(db_path) as conn:
@@ -6031,7 +4512,6 @@ def library_plan_summary(scan_id: int, db_path: str = DB_PATH) -> dict:
             "by_category": [dict(r) for r in by_cat],
         }
 
-
 def set_plan_state(scan_id: int, state: str, categories: Optional[List[str]] = None,
                    item_ids: Optional[List[int]] = None, db_path: str = DB_PATH) -> int:
     """Approve or reject plan items, by category or by explicit id list."""
@@ -6049,7 +4529,6 @@ def set_plan_state(scan_id: int, state: str, categories: Optional[List[str]] = N
             params,
         )
         return cur.rowcount
-
 
 def list_plan_items(scan_id: int, state: Optional[str] = None, limit: int = 500,
                     offset: int = 0, db_path: str = DB_PATH) -> List[sqlite3.Row]:
@@ -6072,7 +4551,6 @@ def list_plan_items(scan_id: int, state: Optional[str] = None, limit: int = 500,
         )
         return cur.fetchall()
 
-
 def mark_plan_item_applied(item_id: int, error: str = "", db_path: str = DB_PATH) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.execute(
@@ -6082,14 +4560,12 @@ def mark_plan_item_applied(item_id: int, error: str = "", db_path: str = DB_PATH
              datetime.now().isoformat(timespec="seconds"), error or None, item_id),
         )
 
-
 def get_library_file(file_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Fetch one catalogued file by id."""
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute("SELECT * FROM library_files WHERE id = ?", (file_id,))
         return cur.fetchone()
-
 
 def event_captions(scan_id: int, event_keys: Iterable[str],
                    db_path: str = DB_PATH) -> Dict[str, str]:
@@ -6122,7 +4598,6 @@ def event_captions(scan_id: int, event_keys: Iterable[str],
                     text = ""
                 out[r["event_key"]] = text or (r["reason"] or "")
     return out
-
 
 def merge_library_categories(scan_id: int, target: str, sources: Iterable[str],
                              db_path: str = DB_PATH) -> Dict[str, int]:
@@ -6161,7 +4636,6 @@ def merge_library_categories(scan_id: int, target: str, sources: Iterable[str],
         )
     return {"files": files, "events": events}
 
-
 def recount_library_categories(scan_id: int, db_path: str = DB_PATH) -> int:
     """Refresh each category's example count from the catalogue itself."""
     with sqlite3.connect(db_path) as conn:
@@ -6175,7 +4649,6 @@ def recount_library_categories(scan_id: int, db_path: str = DB_PATH) -> int:
             conn.execute("UPDATE library_categories SET example_count = ? WHERE name = ?",
                          (n, name))
         return len(rows)
-
 
 def move_files_to_event(scan_id: int, file_ids: Iterable[int], event_key: str,
                         db_path: str = DB_PATH) -> int:
@@ -6200,7 +4673,6 @@ def move_files_to_event(scan_id: int, file_ids: Iterable[int], event_key: str,
             [event_key, scan_id] + ids,
         )
         return cur.rowcount
-
 
 def undo_library_merge(scan_id: int, targets: Optional[List[str]] = None,
                        db_path: str = DB_PATH) -> Dict[str, int]:
@@ -6233,7 +4705,6 @@ def undo_library_merge(scan_id: int, targets: Optional[List[str]] = None,
     return {"files": files, "categories_restored": len(restored_names),
             "names": sorted(restored_names)}
 
-
 def merge_undo_available(scan_id: int, db_path: str = DB_PATH) -> Dict[str, int]:
     """How much of the last merge could still be undone."""
     with sqlite3.connect(db_path) as conn:
@@ -6244,7 +4715,6 @@ def merge_undo_available(scan_id: int, db_path: str = DB_PATH) -> Dict[str, int]
             (scan_id,),
         ).fetchone()
     return {"files": row[0], "categories": row[1]}
-
 
 def pin_category(scan_id: int, category: str, event_key: str = "",
                  file_ids: Optional[List[int]] = None,
@@ -6279,7 +4749,6 @@ def pin_category(scan_id: int, category: str, event_key: str = "",
         )
         return cur.rowcount
 
-
 def unpin_files(scan_id: int, event_key: str = "", db_path: str = DB_PATH) -> int:
     """Release a pin so classification may revise the label again."""
     with sqlite3.connect(db_path) as conn:
@@ -6292,13 +4761,11 @@ def unpin_files(scan_id: int, event_key: str = "", db_path: str = DB_PATH) -> in
                 "UPDATE library_files SET pinned = 0 WHERE scan_id = ?", (scan_id,))
         return cur.rowcount
 
-
 def pinned_count(scan_id: int, db_path: str = DB_PATH) -> int:
     with sqlite3.connect(db_path) as conn:
         return conn.execute(
             "SELECT COUNT(*) FROM library_files WHERE scan_id = ? AND COALESCE(pinned,0) = 1",
             (scan_id,)).fetchone()[0]
-
 
 def review_candidates(scan_id: int, limit: int = 200,
                       db_path: str = DB_PATH) -> List[sqlite3.Row]:
@@ -6327,7 +4794,6 @@ def review_candidates(scan_id: int, limit: int = 200,
             """,
             (scan_id, int(limit)),
         ).fetchall()
-
 
 def insert_new_library_files(scan_id: int, rows: Iterable[dict], db_path: str = DB_PATH) -> List[int]:
     """Insert only files not already catalogued for this scan; return new ids.
@@ -6361,19 +4827,16 @@ def insert_new_library_files(scan_id: int, rows: Iterable[dict], db_path: str = 
                 new_ids.append(int(cur.lastrowid))
     return new_ids
 
-
 def known_library_paths(scan_id: int, db_path: str = DB_PATH) -> set:
     """Every path already in the catalogue for a scan, for cheap membership tests."""
     with sqlite3.connect(db_path) as conn:
         return {r[0] for r in conn.execute(
             "SELECT path FROM library_files WHERE scan_id = ?", (scan_id,))}
 
-
 def event_keys_in_use(scan_id: int, db_path: str = DB_PATH) -> set:
     with sqlite3.connect(db_path) as conn:
         return {r[0] for r in conn.execute(
             "SELECT DISTINCT event_key FROM library_files WHERE scan_id = ?", (scan_id,))}
-
 
 # ---------------------------------------------------------------------------
 # Connected accounts
@@ -6382,7 +4845,6 @@ def event_keys_in_use(scan_id: int, db_path: str = DB_PATH) -> set:
 # can hold several logins and a single piece of copy can be aimed at any mix of
 # them across any mix of platforms.
 # ---------------------------------------------------------------------------
-
 
 def list_social_accounts(
     platform: str | None = None,
@@ -6404,7 +4866,6 @@ def list_social_accounts(
         conn.row_factory = sqlite3.Row
         return conn.execute(sql, params).fetchall()
 
-
 def get_social_account(account_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """One account by id, or None."""
     if not account_id:
@@ -6414,7 +4875,6 @@ def get_social_account(account_id: int, db_path: str = DB_PATH) -> Optional[sqli
         return conn.execute(
             "SELECT * FROM social_accounts WHERE id = ?", (account_id,)
         ).fetchone()
-
 
 def find_social_account(
     platform: str, external_id: str, db_path: str = DB_PATH
@@ -6427,7 +4887,6 @@ def find_social_account(
             (platform, str(external_id)),
         ).fetchone()
 
-
 def get_default_social_account(
     platform: str, db_path: str = DB_PATH
 ) -> Optional[sqlite3.Row]:
@@ -6439,7 +4898,6 @@ def get_default_social_account(
             "ORDER BY is_default DESC, id LIMIT 1",
             (platform,),
         ).fetchone()
-
 
 def upsert_social_account(
     platform: str,
@@ -6469,7 +4927,6 @@ def upsert_social_account(
         conn.commit()
         return account_id
 
-
 def set_default_social_account(account_id: int, db_path: str = DB_PATH) -> bool:
     """Make one account the platform default. False if the id is unknown."""
     with sqlite3.connect(db_path) as conn:
@@ -6488,7 +4945,6 @@ def set_default_social_account(account_id: int, db_path: str = DB_PATH) -> bool:
         conn.commit()
         return True
 
-
 def set_social_account_label(
     account_id: int, label: str | None, db_path: str = DB_PATH
 ) -> bool:
@@ -6502,7 +4958,6 @@ def set_social_account_label(
         conn.commit()
         return cur.rowcount > 0
 
-
 def set_social_account_status(
     account_id: int, status: str, db_path: str = DB_PATH
 ) -> bool:
@@ -6514,7 +4969,6 @@ def set_social_account_status(
         )
         conn.commit()
         return cur.rowcount > 0
-
 
 def delete_social_account(account_id: int, db_path: str = DB_PATH) -> bool:
     """Disconnect one account: drop its token and hand the default on.
@@ -6531,11 +4985,6 @@ def delete_social_account(account_id: int, db_path: str = DB_PATH) -> bool:
         if not row:
             return False
         platform, was_default = row[0], row[1]
-        ident = _TOKEN_IDENTITY.get(platform)
-        if ident:
-            conn.execute(
-                f"DELETE FROM {ident['table']} WHERE account_id = ?", (account_id,)
-            )
         for table in ("standalone_posts", "social_posts", "scheduled_posts"):
             conn.execute(
                 f"UPDATE {table} SET account_id = NULL WHERE account_id = ?",
@@ -6550,7 +4999,6 @@ def delete_social_account(account_id: int, db_path: str = DB_PATH) -> bool:
                 )
         conn.commit()
         return True
-
 
 def resolve_account_id(
     platform: str, account_id: int | None = None, db_path: str = DB_PATH
@@ -6569,7 +5017,6 @@ def resolve_account_id(
     default = get_default_social_account(platform, db_path=db_path)
     return default["id"] if default else None
 
-
 def count_social_accounts(platform: str | None = None, db_path: str = DB_PATH) -> int:
     """How many accounts are connected, for a platform or in total."""
     with sqlite3.connect(db_path) as conn:
@@ -6585,13 +5032,11 @@ def count_social_accounts(platform: str | None = None, db_path: str = DB_PATH) -
             )
         return cur.fetchone()[0]
 
-
 # ---------------------------------------------------------------------------
 # Agent jobs: the queue the local publishing agent drains over HTTPS.
 # ---------------------------------------------------------------------------
 
 _BACKOFF_SECONDS = (60, 300, 900, 3600)
-
 
 def enqueue_agent_job(kind, payload, *, run_after=None, max_attempts=5,
                       article_id=None, created_by=None, db_path=DB_PATH):
@@ -6609,7 +5054,6 @@ def enqueue_agent_job(kind, payload, *, run_after=None, max_attempts=5,
              now, now),
         )
     return cur.lastrowid
-
 
 def _job_matches_executor(payload_text, executor, platforms):
     """Whether one queued job may go to this claimant.
@@ -6632,7 +5076,6 @@ def _job_matches_executor(payload_text, executor, platforms):
     targets = [i.get("target") for i in payload.get("items") or []
                if isinstance(i, dict)]
     return bool(targets) and all(t in platforms for t in targets)
-
 
 def claim_agent_job(*, kinds=("article_sync",), agent="", stale_minutes=15,
                     executor=None, platforms=None, db_path=DB_PATH):
@@ -6700,7 +5143,6 @@ def claim_agent_job(*, kinds=("article_sync",), agent="", stale_minutes=15,
             conn.rollback()
             raise
     return get_agent_job(chosen, db_path=db_path)
-
 
 def record_agent_job_event(job_id, event, *, db_path=DB_PATH):
     """Apply one agent event (started/done/failed) to a job; returns the row.
@@ -6770,7 +5212,6 @@ def record_agent_job_event(job_id, event, *, db_path=DB_PATH):
         )
     return get_agent_job(job_id, db_path=db_path)
 
-
 def get_agent_job(job_id, *, db_path=DB_PATH):
     """One agent job row as a dict, or None."""
     with sqlite3.connect(db_path) as conn:
@@ -6779,7 +5220,6 @@ def get_agent_job(job_id, *, db_path=DB_PATH):
             "SELECT * FROM agent_jobs WHERE id = ?", (job_id,)
         ).fetchone()
     return dict(row) if row else None
-
 
 def list_agent_jobs(*, limit=100, db_path=DB_PATH):
     """Agent jobs, newest first."""

@@ -311,11 +311,6 @@ def _web_hits_to_items(hits, brief, stats, warnings) -> List[SourceItem]:
         logger.warning("SSRF-safe fetch helpers unavailable; skipping web extraction")
         return []
 
-    try:
-        from github_client import is_github_repo_url, parse_github_repo_url, fetch_github_repo
-    except Exception:
-        is_github_repo_url = None
-
     items: List[SourceItem] = []
     seen = set()
     fetches = 0
@@ -337,24 +332,14 @@ def _web_hits_to_items(hits, brief, stats, warnings) -> List[SourceItem]:
                 text = cd["content"]
             image = cd.get("og_image")
 
-        # 2) GitHub short-circuit.
-        if not text and is_github_repo_url and is_github_repo_url(canon):
-            try:
-                owner, repo = parse_github_repo_url(canon)
-                repo_data = fetch_github_repo(owner, repo)
-                text = (repo_data.get("content") or "").strip()
-                image = image or repo_data.get("og_image")
-            except Exception:
-                logger.debug("GitHub fetch failed for %s", canon, exc_info=True)
-
-        # 3) SSRF-safe HTML fetch + extract.
+        # 2) SSRF-safe HTML fetch + extract.
         if not text and fetches < max_fetches:
             extracted, _final = fetch_article_content_safe(canon)
             fetches += 1
             if extracted:
                 text = extracted
 
-        # 4) Fall back to the search snippet if it's substantial.
+        # 3) Fall back to the search snippet if it's substantial.
         if not text:
             if len((h.snippet or "")) < 160:
                 continue

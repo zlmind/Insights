@@ -35,16 +35,6 @@ TONE_GUIDES = {
 }
 
 PLATFORM_GUIDELINES = {
-    "twitter": "最多 280 个字符，简短有力、吸引人，3-5 个相关话题标签",
-    "linkedin": "专业语气，1-3 段，有思想领导力视角，3-5 个专业话题标签",
-    "facebook": "对话式，可以更长，用互动问题或钩子开头，2-3 个话题标签",
-    "threads": "随性真实，类似 Twitter 但可以稍长，3-5 个话题标签",
-    "instagram": (
-        "说明文字最多 2200 字符。第一行是钩子，必须少于 125 个字符"
-        "（Instagram 会截断预览）。用空行分隔短段落，可以多用 emoji。"
-        "结尾另起几行放 8-15 个相关话题标签。说明文字里的链接不可点击，"
-        "最多保留一个短链接，先讲内容再说链接"
-    ),
     "xiaohongshu": (
         "小红书笔记：第一行是标题，不超过 20 个字，可带 1-2 个 emoji；"
         "随后空一行接正文，正文 600-1000 字，口语化、像真实用户在分享心得，"
@@ -72,11 +62,9 @@ DEFAULT_PLATFORM_GUIDELINE = "标准社交媒体帖子，带话题标签"
 _JSON_SINGLE = "\n每个键对应一条帖子字符串。\n"
 _JSON_ARRAY = "\n每个键对应一个包含 {n} 条帖子的数组。\n"
 
-
 def tone_instruction(tone: str) -> str:
     """Chinese counterpart of the ``TONE_GUIDES`` lookup."""
     return TONE_GUIDES.get(tone, TONE_GUIDES["professional"])
-
 
 def platform_list(platforms) -> str:
     """Chinese counterpart of the ``- PLATFORM: guideline`` block."""
@@ -84,7 +72,6 @@ def platform_list(platforms) -> str:
         f"- {p.upper()}: {PLATFORM_GUIDELINES.get(p, DEFAULT_PLATFORM_GUIDELINE)}"
         for p in platforms
     )
-
 
 def build_format_instruction(platforms, posts_per_platform: int) -> str:
     """Chinese counterpart of ``insights._build_format_instruction``.
@@ -109,7 +96,6 @@ def build_format_instruction(platforms, posts_per_platform: int) -> str:
         lines += _JSON_SINGLE
     lines += f"示例：\n{json_example}"
     return lines
-
 
 # ── Social posts ──────────────────────────────────────────────────────────
 
@@ -138,7 +124,6 @@ def posts_from_prompt_messages(*, prompt, tone, extra_context, platform_list,
             + build_format_instruction(platforms, n)
         )},
     ]
-
 
 def posts_from_url_messages(*, url, extracted_content, tone, extra_context,
                             platform_list, platforms, n):
@@ -169,7 +154,6 @@ def posts_from_url_messages(*, url, extracted_content, tone, extra_context,
             + build_format_instruction(platforms, n)
         )},
     ]
-
 
 def posts_from_text_messages(*, text, topic, source_url, tone, extra_context,
                              platform_list, platforms, n):
@@ -220,7 +204,6 @@ def posts_from_text_messages(*, text, topic, source_url, tone, extra_context,
         )},
     ]
 
-
 def posts_from_images_messages(*, focus, context, tone, platform_list,
                                platforms, n):
     """``generate_posts_from_images`` messages, Chinese (images appended by caller)."""
@@ -242,61 +225,11 @@ def posts_from_images_messages(*, focus, context, tone, platform_list,
         {"role": "user", "content": [{"type": "text", "text": text}]},
     ]
 
-
-# ── Article promo copy ────────────────────────────────────────────────────
-
-def social_copy_messages(*, topic, excerpt, extra_context, platform_list,
-                         posts_per_platform):
-    """``generate_social_copy`` messages, Chinese."""
-    if posts_per_platform > 1:
-        multi = (
-            f"\n重要：为每个平台生成 {posts_per_platform} 条互不相同的帖子。"
-            "每条帖子都要有不同的角度、钩子或切入方式，适合在不同的日子发布。"
-            "帖子之间在语气、重点和行动号召上要有变化。"
-            f"每个平台返回一个包含 {posts_per_platform} 条帖子的数组。\n\n"
-            "以 JSON 格式回复：键为平台名，值为帖子数组。示例：\n"
-            '{"twitter": ["第一条推文 #话题标签", "第二条推文 #科技"], '
-            '"linkedin": ["第一条领英帖子…", "第二条领英帖子…"]}'
-        )
-    else:
-        multi = (
-            "\n\n以 JSON 格式回复：键为平台名。示例：\n"
-            '{"twitter": "这里写推文 #话题标签", "linkedin": "这里写领英帖子"}'
-        )
-    return [
-        {"role": "system", "content": (
-            "你是一位专注科技与网络安全内容的社交媒体营销专家。"
-            "你创作能带来互动和点击的、针对平台优化的推广文案。"
-            "你了解每个平台独特的文化和最佳实践。"
-            "当被要求创作多条帖子时，你确保每条都有真正不同的角度、钩子、"
-            "提问或视角，而不只是换个说法重复同一内容。"
-            " " + OUTPUT_LANGUAGE_RULE + " "
-            + NO_EM_DASH_RULE
-        )},
-        {"role": "user", "content": (
-            "为下面的文章创作推广社交媒体文案：\n\n"
-            f"主题：{topic}\n\n"
-            f"文章节选：\n{excerpt[:3000]}\n\n"
-            + (f"补充背景/要求：\n{extra_context}\n\n" if extra_context else "")
-            + f"为以下每个平台创作针对性的推广帖：\n{platform_list}\n\n"
-            "每条帖子：\n"
-            "1. 文案要贴合该平台的受众和格式\n"
-            "2. 带相关话题标签（科技、网络安全、隐私方向）\n"
-            "3. 有行动号召或钩子\n"
-            "4. 易于分享、有吸引力\n"
-            + multi
-        )},
-    ]
-
-
-# ── Summary / actions / articles ──────────────────────────────────────────
-
 def summarize_messages(text: str) -> list:
     """``summarize_text`` messages, Chinese."""
     return [{"role": "user", "content": (
         "总结下面的文字。" + NO_EM_DASH_RULE + "\n\n" + text
     )}]
-
 
 def action_items_messages(text: str) -> list:
     """``extract_action_items`` messages, Chinese."""
@@ -304,7 +237,6 @@ def action_items_messages(text: str) -> list:
         "从下面的文字中提炼一份简明的行动项列表。每行一条，"
         "不要附加任何说明。用简体中文。" + NO_EM_DASH_RULE + "\n" + text
     )}]
-
 
 # Article source labels mirror the English pair (podcast vs text article).
 
@@ -375,7 +307,6 @@ def article_messages(*, transcript, summary, topic, podcast_title,
         )},
     ]
 
-
 def refine_messages(*, current_content, user_feedback, article_topic) -> list:
     """``refine_article`` messages, Chinese."""
     return [
@@ -397,7 +328,6 @@ def refine_messages(*, current_content, user_feedback, article_topic) -> list:
         )},
     ]
 
-
 def condense_chunk_messages(chunk: str) -> list:
     """``insights._summarize_chunk`` messages, Chinese."""
     return [
@@ -409,7 +339,6 @@ def condense_chunk_messages(chunk: str) -> list:
         )},
         {"role": "user", "content": f"提取这个节选的要点：\n\n{chunk}"},
     ]
-
 
 # ── Research pipeline (content agent) ─────────────────────────────────────
 
@@ -430,7 +359,6 @@ def query_plan_messages(*, topic, audience, keywords, max_queries) -> list:
         )},
     ]
 
-
 def synthesize_messages(*, topic, audience, sources_joined) -> list:
     """``research_engine._synthesize_brief`` messages, Chinese."""
     aud = f" 目标受众是{audience}。" if audience else ""
@@ -445,11 +373,9 @@ def synthesize_messages(*, topic, audience, sources_joined) -> list:
         )},
     ]
 
-
 def insights_no_em_dash() -> str:
     """Re-exported so research_engine can reuse the same rule text."""
     return NO_EM_DASH_RULE
-
 
 # ── Content agent context labels ──────────────────────────────────────────
 # The agent injects brief metadata into ``extra_context``; when the brief runs
@@ -470,10 +396,8 @@ def creative_context(audience_persona, keywords) -> str:
         )
     return "\n".join(parts)
 
-
 def editorial_angle(instructions: str) -> str:
     return f"编辑视角：{instructions}"
-
 
 def why_relevant(reason: str) -> str:
     return f"该来源的相关性：{reason}"

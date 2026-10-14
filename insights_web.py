@@ -1,10 +1,10 @@
-"""Flask web interface for the Insights tool."""
+﻿"""Flask web interface for the Insights tool."""
 
 from __future__ import annotations
 import os
-
+# below (e.g. FLASK_SECRET_KEY, OPENAI_API_KEY). override=False so a
 # Load variables from .env into os.environ before any os.environ.get(...) calls
-# below (e.g. FLASK_SECRET_KEY, OPENAI_API_KEY, JIRA_*). override=False so a
+# below (e.g. FLASK_SECRET_KEY, OPENAI_API_KEY). override=False so a
 # value already exported in the shell still wins.
 try:
     from dotenv import load_dotenv
@@ -54,6 +54,7 @@ from flasgger import Swagger
 import usage_meter
 import agent_hub
 import domestic_publisher
+import video_media
 import database
 import content_library
 import media_probe
@@ -72,10 +73,6 @@ from database import (
     get_feed_by_id,
     delete_feed,
     delete_feeds_bulk,
-    add_ticket,
-    list_tickets,
-    delete_ticket,
-    delete_tickets_bulk,
     list_all_episodes,
     get_youtube_episodes_missing_channel,
     set_episode_channel,
@@ -85,88 +82,12 @@ from database import (
     update_article,
     delete_article,
     update_feed_metadata,
-    add_social_post,
-    get_social_post,
-    list_social_posts,
-    delete_social_post,
-    delete_social_posts_bulk,
-    delete_social_posts_for_article,
-    mark_social_post_used,
-    update_social_post,
-    # LinkedIn token functions
-    save_linkedin_token,
-    get_linkedin_token,
-    delete_linkedin_token,
-    update_linkedin_token,
-    # Threads token functions
-    save_threads_token,
-    get_threads_token,
-    delete_threads_token,
-    update_threads_token,
-    update_threads_user_info,
-    # Facebook token functions
-    save_facebook_token,
-    get_facebook_token,
-    delete_facebook_token,
-    update_facebook_token,
-    update_facebook_page_selection,
-    update_facebook_group_ids,
-    # Twitter token functions
-    save_twitter_token,
-    get_twitter_token,
-    delete_twitter_token,
-    update_twitter_token,
-    # Instagram token functions
-    save_instagram_token,
-    get_instagram_token,
-    find_social_account,
-    get_default_social_account,
-    delete_instagram_token,
-    update_instagram_token,
-    update_instagram_user_info,
-    # Connected accounts: one platform can hold several logins, and everything
-    # that publishes names the account it publishes as.
-    list_social_accounts,
-    get_social_account,
-    set_default_social_account,
-    set_social_account_label,
-    identity_in_use,
-    account_id_for_token,
-    delete_social_account,
-    resolve_account_id,
-    count_social_accounts,
-    # Scheduled posts functions
-    add_scheduled_post,
-    get_scheduled_post,
-    get_pending_schedules_for_social_posts,
-    list_scheduled_posts,
-    group_scheduled_rows,
-    get_scheduled_group_ids,
-    get_pending_scheduled_posts,
-    update_scheduled_post_status,
-    update_scheduled_post_time,
-    cancel_scheduled_post,
-    delete_scheduled_post,
-    delete_scheduled_posts_bulk,
-    clear_pending_scheduled_posts,
-    get_scheduled_posts_for_article,
-    # Time slot functions for queue-based scheduling
-    add_time_slot,
-    list_time_slots,
-    get_enabled_time_slots,
-    update_time_slot,
-    delete_time_slot,
-    get_next_available_slot,
-    initialize_default_time_slots,
-    # Daily posting limits
-    get_daily_limit,
-    set_daily_limit,
-    get_all_daily_limits,
-    # Queue redistribution
-    redistribute_scheduled_posts,
-    increment_retry_count,
     # Standalone posts functions (Command Center)
     add_standalone_post,
+    # Connected accounts the composer can aim a card at
+    list_social_accounts,
+    get_social_account,
+    resolve_account_id,
     get_existing_standalone_content,
     list_standalone_posts,
     list_standalone_posts_by_source_url,
@@ -175,11 +96,6 @@ from database import (
     update_standalone_post,
     update_standalone_post_image,
     update_standalone_post_video,
-    update_social_post_image,
-    set_standalone_post_media,
-    set_standalone_post_user_tags,
-    set_standalone_post_reel_options,
-    set_standalone_post_ig_people,
     delete_standalone_post,
     delete_standalone_posts_bulk,
     mark_standalone_post_used,
@@ -254,13 +170,6 @@ from database import (
     list_brief_runs,
     get_active_brief_run,
 )
-import social_publisher
-import video_media
-from social_publisher import (
-    account_label,
-    account_summary,
-    platform_name,
-)
 from insights import (
     transcribe_audio,
     summarize_text,
@@ -268,7 +177,6 @@ from insights import (
     write_results_json,
     configure_logging,
     generate_article,
-    generate_social_copy,
     refine_article,
     # Command Center functions
     generate_posts_from_prompt,
@@ -297,40 +205,6 @@ import appconfig
 import content_agent
 import document_extractor
 from starter_prompts import grouped_starter_prompts
-from linkedin_client import (
-    LinkedInClient,
-    get_linkedin_client,
-    calculate_token_expiry,
-    is_token_expired,
-)
-from threads_client import (
-    ThreadsClient,
-    get_threads_client,
-    calculate_token_expiry as threads_calculate_token_expiry,
-    is_token_expired as threads_is_token_expired,
-)
-from facebook_client import (
-    FacebookClient,
-    get_facebook_client,
-    calculate_token_expiry as facebook_calculate_token_expiry,
-    is_token_expired as facebook_is_token_expired,
-)
-from twitter_client import (
-    TwitterClient,
-    get_twitter_client,
-    calculate_token_expiry as twitter_calculate_token_expiry,
-    is_token_expired as twitter_is_token_expired,
-)
-from instagram_client import (
-    InstagramClient,
-    InstagramInputError,
-    MAX_COLLABORATORS,
-    MAX_REEL_TAGS,
-    normalize_handles,
-    get_instagram_client,
-    calculate_token_expiry as instagram_calculate_token_expiry,
-    is_token_expired as instagram_is_token_expired,
-)
 from stock_images import (
     search_stock_images,
     get_image_for_post,
@@ -339,12 +213,6 @@ from stock_images import (
     is_configured as stock_images_configured,
     get_configured_services as get_stock_image_services,
 )
-from github_client import (
-    is_github_repo_url,
-    parse_github_repo_url,
-    fetch_github_repo,
-)
-
 app = Flask(__name__)
 
 # Session secret key. A stable value is required so login sessions survive
@@ -402,8 +270,7 @@ swagger = Swagger(app, config=swagger_config, template=swagger_template)
 # Configure image uploads
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-# Video uploads: a post's video on any platform, and Instagram Reels / video Stories
-# / video carousel items.
+# Video uploads: a post's video on any platform.
 ALLOWED_VIDEO_EXTENSIONS = {'mp4', 'mov'}
 MAX_IMAGE_BYTES = 16 * 1024 * 1024   # 16MB — enforced manually on the image path
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -414,17 +281,7 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB (Cloudinary free-t
 # Ensure upload directory exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Instagram target canvases (width, height) for the media "fit" endpoint.
-# Story/Reel are full-screen 9:16; feed images must sit between 4:5 and 1.91:1.
-IG_FIT_TARGETS = {
-    'story':          (1080, 1920),
-    'reel':           (1080, 1920),
-    'feed_square':    (1080, 1080),
-    'feed_portrait':  (1080, 1350),
-    'feed_landscape': (1080, 566),
-}
-
-# Cloudinary (optional - for public image URLs that work with Threads). Used
+# Cloudinary (optional - for public image URLs). Used
 # to be configured once at import from the environment; now the first upload
 # applies whatever /settings has, so an admin can add credentials without a
 # restart.
@@ -444,10 +301,8 @@ def cloudinary_ready() -> bool:
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-
 def allowed_video_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_VIDEO_EXTENSIONS
-
 
 # ── Authentication & activity tracking ────────────────────────────────────
 #
@@ -466,12 +321,10 @@ PUBLIC_ENDPOINTS = {"login", "signup", "logout", "health",
 SKIP_TRACK_ENDPOINTS = {"login", "logout", "signup", "health",
                         "agent_heartbeat", "agent_claim", "agent_job_events"}
 
-
 def _is_static_endpoint(endpoint: str | None) -> bool:
     if not endpoint:
         return False
     return endpoint == "static" or endpoint.endswith(".static")
-
 
 def _client_ip() -> str | None:
     fwd = request.headers.get("X-Forwarded-For")
@@ -479,10 +332,8 @@ def _client_ip() -> str | None:
         return fwd.split(",")[0].strip()
     return request.remote_addr
 
-
 def _short_ua() -> str:
     return (request.headers.get("User-Agent") or "")[:500]
-
 
 def _signups_allowed() -> bool:
     """First user is always allowed (bootstrap). After that, gated by setting."""
@@ -492,7 +343,6 @@ def _signups_allowed() -> bool:
     except sqlite3.OperationalError:
         return True
     return (appconfig.get("ALLOW_SIGNUP") or "").lower() == "true"
-
 
 def current_user():
     """Return the logged-in user row for this request, cached on flask.g."""
@@ -509,11 +359,9 @@ def current_user():
     g._current_user = user
     return user
 
-
 @app.context_processor
 def _inject_current_user():
     return {"current_user": current_user()}
-
 
 # ── Interface language (English / 简体中文) ────────────────────────────────
 #
@@ -526,21 +374,17 @@ def _inject_current_user():
 
 SUPPORTED_LANGS = ("zh",)
 
-
 def _worker_lang() -> str:
     """Language for generation outside a request (queue workers, agent runs)."""
     return (os.getenv("CONTENT_LANG") or "zh").strip().lower()
-
 
 @app.before_request
 def _pick_request_lang():
     g.lang = "zh"
 
-
 @app.context_processor
 def _inject_lang():
     return {"lang": "zh"}
-
 
 @app.template_filter("md_preview")
 def _md_preview(text, length=200):
@@ -564,7 +408,6 @@ def _md_preview(text, length=200):
         return t
     return t[:length].rsplit(" ", 1)[0].rstrip(",.;:-") + "…"
 
-
 def _target_from_view_args(view_args: dict | None) -> str | None:
     """Best-effort: turn {'episode_id': 42} into 'episode:42' for the log."""
     if not view_args:
@@ -580,7 +423,6 @@ def _target_from_view_args(view_args: dict | None) -> str | None:
         if isinstance(value, (int, str)):
             return f"{key}:{value}"
     return None
-
 
 def log_event(
     action: str,
@@ -606,7 +448,6 @@ def log_event(
         )
     except Exception:
         app.logger.exception("activity log_event failed for action=%s", action)
-
 
 @app.before_request
 def _auth_and_timer():
@@ -641,7 +482,6 @@ def _auth_and_timer():
         return jsonify({"error": "authentication required"}), 401
 
     return None
-
 
 @app.after_request
 def _track_request(response):
@@ -679,7 +519,6 @@ def _track_request(response):
         app.logger.exception("activity after_request log failed")
     return response
 
-
 def _safe_next_url(next_value: str | None) -> str | None:
     """Only accept relative paths for the post-login redirect (no open redirects)."""
     if not next_value:
@@ -690,7 +529,6 @@ def _safe_next_url(next_value: str | None) -> str | None:
     if not next_value.startswith("/"):
         return None
     return next_value
-
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -728,7 +566,6 @@ def login():
         next_url=next_url or "",
         signups_allowed=_signups_allowed(),
     )
-
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -768,7 +605,6 @@ def signup():
 
     return render_template("signup.html", error=error, username=username)
 
-
 @app.route("/logout", methods=["POST"])
 def logout():
     if "user_id" in session:
@@ -776,14 +612,12 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
-
 # ── Instance settings (admin) ─────────────────────────────────────────────
 # The .env file used to be the only place configuration lived, which works
 # for one person and not for a team: nobody pastes an API key into a server
 # file for each colleague. The admin manages the keys on /settings instead;
 # appconfig resolves each one from the saved value first, then the
 # environment, so a .env keeps working until the same key is saved here.
-
 
 def require_admin(view):
     """Limit a view to signed-in admins; everyone else gets a 403."""
@@ -794,7 +628,6 @@ def require_admin(view):
             abort(403)
         return view(*args, **kwargs)
     return wrapped
-
 
 @app.route("/settings", methods=["GET", "POST"])
 @require_admin
@@ -861,9 +694,7 @@ def instance_settings():
                            cleared=request.args.get("cleared", type=int),
                            rejected=request.args.get("rejected", type=int))
 
-
 # ── Activity log viewer ───────────────────────────────────────────────────
-
 
 def _parse_activity_filters():
     """Pull and normalize filter params from the querystring."""
@@ -889,7 +720,6 @@ def _parse_activity_filters():
         "start_ts": start,
         "end_ts": end,
     }
-
 
 @app.route("/activity")
 def activity_page():
@@ -920,7 +750,6 @@ def activity_page():
         filter_start=request.args.get("start", ""),
         filter_end=request.args.get("end", ""),
     )
-
 
 @app.route("/activity.csv")
 def activity_csv():
@@ -980,9 +809,7 @@ def activity_csv():
     }
     return Response(generate(), mimetype="text/csv", headers=headers)
 
-
 # ── AI usage / cost meters ─────────────────────────────────────────────────
-
 
 def _parse_usage_filters():
     """Pull and normalize usage-page filter params from the querystring."""
@@ -1001,7 +828,6 @@ def _parse_usage_filters():
         end = f"{end} 23:59:59"
 
     return {"mode": mode, "category": category, "start_ts": start, "end_ts": end}
-
 
 @app.route("/usage")
 def usage_page():
@@ -1051,7 +877,6 @@ def usage_page():
         filter_end=request.args.get("end", ""),
     )
 
-
 @app.route("/usage.csv")
 def usage_csv():
     filters = _parse_usage_filters()
@@ -1091,11 +916,9 @@ def usage_csv():
     }
     return Response(generate(), mimetype="text/csv", headers=headers)
 
-
 @app.route("/health")
 def health():
     return jsonify({"status": "ok"})
-
 
 # ── SSRF-hardened outbound fetch utilities ─────────────────────────────────
 #
@@ -1119,10 +942,8 @@ _TRAILING_PUNCT = '.,;:!?>'
 # Background pool for non-blocking og:image fetches triggered from save paths
 _link_image_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="link-image")
 
-
 class UnsafeURLError(ValueError):
     """Raised when a URL fails SSRF validation."""
-
 
 def _ip_is_public(ip_obj) -> bool:
     """Return True only for globally routable, non-private IP addresses."""
@@ -1141,7 +962,6 @@ def _ip_is_public(ip_obj) -> bool:
         if mapped is not None and not _ip_is_public(mapped):
             return False
     return True
-
 
 def _assert_safe_url(url: str):
     """Validate scheme, port, and resolved IPs for a URL. Returns the parsed URL."""
@@ -1190,11 +1010,9 @@ def _assert_safe_url(url: str):
             )
     return parsed
 
-
-# LinkedIn and X make this server download a video before uploading it, so the
+# Some platforms make this server download a video before uploading it, so the
 # video downloader gets the same guard as every other user-influenced fetch.
 video_media.set_url_guard(_assert_safe_url)
-
 
 def _fetch_safely(
     url: str,
@@ -1275,7 +1093,6 @@ def _fetch_safely(
     finally:
         session.close()
 
-
 def extract_urls_from_text(text: str | None, *, limit: int = 5) -> list:
     """Pull HTTP(S) URLs out of arbitrary text, deduped, trailing punct stripped."""
     if not text:
@@ -1299,7 +1116,6 @@ def extract_urls_from_text(text: str | None, *, limit: int = 5) -> list:
         if len(seen) >= limit:
             break
     return seen
-
 
 def fetch_og_image_for_url(url: str):
     """Fetch a webpage safely and return an absolute, SSRF-validated og:image URL."""
@@ -1349,7 +1165,6 @@ def fetch_og_image_for_url(url: str):
         return None
     return absolute
 
-
 def validate_and_clean_image(file_storage):
     """
     Validate image by parsing with Pillow and re-encode to strip embedded data.
@@ -1385,7 +1200,6 @@ def validate_and_clean_image(file_storage):
         
     except Exception as e:
         raise ValueError(f"Invalid image file: {str(e)}")
-
 
 def save_stock_image_to_library(image_url: str, direct_save: bool = False) -> str:
     """
@@ -1511,13 +1325,11 @@ def save_stock_image_to_library(image_url: str, direct_save: bool = False) -> st
     
     return saved_url
 
-
 configure_logging()
 init_db()
 
 # Background processing queue used to process episodes without blocking the web request
 task_queue: Queue = Queue()
-
 
 def _backfill_youtube_source(url: str, transcript: str, summary: str) -> None:
     """Update the matching URL source with the transcript after transcription."""
@@ -1530,7 +1342,6 @@ def _backfill_youtube_source(url: str, transcript: str, summary: str) -> None:
             content=transcript,
             og_image=source['og_image'],
         )
-
 
 def worker() -> None:
     """Background thread processing queued episodes."""
@@ -1582,7 +1393,6 @@ def worker() -> None:
         finally:
             task_queue.task_done()
 
-
 def _proactive_worker() -> None:
     """Run the episode ``worker`` with every generation tagged as proactive.
 
@@ -1593,10 +1403,8 @@ def _proactive_worker() -> None:
     with usage_meter.usage_context("proactive"):
         worker()
 
-
 # Worker thread will be started in main block to avoid duplicates in debug mode
 # (app.debug is False at import time, so we can't check it here)
-
 
 def strip_html(text: str) -> str:
     """Return plain text with HTML tags removed."""
@@ -1607,7 +1415,6 @@ def strip_html(text: str) -> str:
     text = re.sub(r"</p\s*>", "\n", text, flags=re.I)
     text = re.sub(r"<[^>]+>", "", text)
     return unescape(text).strip()
-
 
 def make_short_description(text: str, limit: int = 200) -> str:
     """Return a short preview from the provided text."""
@@ -1620,7 +1427,6 @@ def make_short_description(text: str, limit: int = 200) -> str:
     if len(short) > limit:
         short = short[:limit].rstrip() + "..."
     return short
-
 
 def fetch_article_content(url: str, timeout: int = 15) -> str:
     """Fetch and extract the main content from an article URL.
@@ -1739,7 +1545,6 @@ def fetch_article_content(url: str, timeout: int = 15) -> str:
         app.logger.exception("Error extracting content from %s: %s", url, str(e))
         return ""
 
-
 def fetch_article_content_safe(url: str, timeout: int = 12, max_bytes: int = 3_000_000) -> tuple[str, str]:
     """SSRF-safe article fetch + extraction for agent/automated flows.
 
@@ -1813,104 +1618,6 @@ def fetch_article_content_safe(url: str, timeout: int = 12, max_bytes: int = 3_0
         app.logger.exception("BeautifulSoup extraction failed for %s", final_url)
         return "", final_url
 
-
-def create_jira_issue(summary: str, description: str) -> dict:
-    """Create a JIRA issue using credentials from environment variables."""
-    base = appconfig.get("JIRA_BASE_URL")
-    email = appconfig.get("JIRA_EMAIL")
-    token = appconfig.get("JIRA_API_TOKEN")
-    project = appconfig.get("JIRA_PROJECT_KEY")
-    if not all([base, email, token, project]):
-        raise RuntimeError("JIRA configuration is missing")
-
-    url = f"{base}/rest/api/3/issue"
-    data = {
-        "fields": {
-            "project": {"key": project},
-            "summary": summary,
-            "description": {
-                "type": "doc",
-                "version": 1,
-                "content": [
-                    {
-                        "type": "paragraph",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": description
-                            }
-                        ]
-                    }
-                ]
-            },
-            "issuetype": {"name": "Task"},
-        }
-    }
-    # Use basic auth with an API token
-    resp = requests.post(url, json=data, auth=(email, token))
-    resp.raise_for_status()
-    return resp.json()
-
-
-def get_jira_issue_status(issue_key: str) -> str:
-    """Return the status name for a JIRA issue."""
-    base = appconfig.get("JIRA_BASE_URL")
-    email = appconfig.get("JIRA_EMAIL")
-    token = appconfig.get("JIRA_API_TOKEN")
-    if not all([base, email, token, issue_key]):
-        return ""
-    try:
-        # Fetch the issue data from JIRA
-        url = f"{base}/rest/api/3/issue/{issue_key}"
-        resp = requests.get(url, auth=(email, token))
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("fields", {}).get("status", {}).get("name", "")
-    except Exception:  # pragma: no cover - external call
-        app.logger.exception("Failed to fetch status for %s", issue_key)
-        return ""
-
-
-def get_jira_issue_transitions(issue_key: str) -> list[dict]:
-    """Return available transitions for a JIRA issue."""
-    base = appconfig.get("JIRA_BASE_URL")
-    email = appconfig.get("JIRA_EMAIL")
-    token = appconfig.get("JIRA_API_TOKEN")
-    if not all([base, email, token, issue_key]):
-        return []
-    try:
-        # Fetch transitions that allow moving the issue between states
-        url = f"{base}/rest/api/3/issue/{issue_key}/transitions"
-        resp = requests.get(url, auth=(email, token))
-        resp.raise_for_status()
-        data = resp.json()
-        return [
-            {"id": t.get("id"), "name": t.get("name")}
-            for t in data.get("transitions", [])
-        ]
-    except Exception:  # pragma: no cover - external call
-        app.logger.exception("Failed to fetch transitions for %s", issue_key)
-        return []
-
-
-def transition_jira_issue(issue_key: str, transition_id: str) -> None:
-    """Move a JIRA issue to a new status via transition id."""
-    base = appconfig.get("JIRA_BASE_URL")
-    email = appconfig.get("JIRA_EMAIL")
-    token = appconfig.get("JIRA_API_TOKEN")
-    if not all([base, email, token, issue_key, transition_id]):
-        return
-    try:
-        # Perform the transition request
-        url = f"{base}/rest/api/3/issue/{issue_key}/transitions"
-        data = {"transition": {"id": transition_id}}
-        resp = requests.post(url, json=data, auth=(email, token))
-        resp.raise_for_status()
-    except Exception:  # pragma: no cover - external call
-        app.logger.exception(
-            "Failed to transition %s using id %s", issue_key, transition_id
-        )
-
 # Templates are stored in the ``templates`` directory
 
 def refresh_feed_metadata(feed_id: int, feed_url: str) -> dict:
@@ -1954,8 +1661,6 @@ def refresh_feed_metadata(feed_id: int, feed_url: str) -> dict:
         }
     except Exception:
         return {'type': 'unknown', 'last_post': None, 'item_count': 0}
-
-
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -2071,13 +1776,11 @@ def index():
         now=datetime.now(),
     )
 
-
 @app.route('/feed/<int:feed_id>/delete', methods=['POST'])
 def remove_feed(feed_id: int):
     """Delete a feed and all its associated data."""
     delete_feed(feed_id)
     return redirect(url_for('index'))
-
 
 @app.route('/feeds/bulk-delete', methods=['POST'])
 def bulk_delete_feeds():
@@ -2087,7 +1790,6 @@ def bulk_delete_feeds():
         delete_feeds_bulk(feed_ids)
     return redirect(url_for('index'))
 
-
 @app.route('/feed/<int:feed_id>/refresh')
 def refresh_feed(feed_id: int):
     """Refresh metadata for a specific feed."""
@@ -2095,7 +1797,6 @@ def refresh_feed(feed_id: int):
     if feed:
         refresh_feed_metadata(feed_id, feed['url'])
     return redirect(url_for('index'))
-
 
 @app.route('/feeds/refresh-all')
 def refresh_all_feeds():
@@ -2110,7 +1811,6 @@ def refresh_all_feeds():
     thread = threading.Thread(target=refresh_worker, daemon=True)
     thread.start()
     return redirect(url_for('index'))
-
 
 @app.route('/feed/<int:feed_id>')
 def view_feed(feed_id: int):
@@ -2234,7 +1934,6 @@ def view_feed(feed_id: int):
         pagination=pagination,
     )
 
-
 @app.route('/enqueue')
 def enqueue_episode():
     """Queue an episode for background processing."""
@@ -2247,7 +1946,6 @@ def enqueue_episode():
     queue_episode(audio_url, title, feed_id, published)
     task_queue.put({'url': audio_url, 'title': title, 'feed_id': feed_id, 'published': published})
     return redirect(url_for('status_page'))
-
 
 @app.route('/process_text')
 def process_text_article():
@@ -2299,10 +1997,6 @@ def process_text_article():
         transcript = existing["transcript"]
         summary = existing["summary"]
         actions = existing["action_items"].splitlines()
-        tickets = [dict(t) for t in list_tickets(existing["id"])]
-        for t in tickets:
-            t["status"] = get_jira_issue_status(t["ticket_key"])
-            t["transitions"] = get_jira_issue_transitions(t["ticket_key"])
         articles = [dict(a) for a in list_articles(existing["id"])]
         return render_template(
             'result.html',
@@ -2313,7 +2007,6 @@ def process_text_article():
             description=description,
             feed_id=feed_id,
             url=article_url,
-            tickets=tickets,
             articles=articles,
             current_url=request.full_path,
             is_text=True,
@@ -2348,13 +2041,11 @@ def process_text_article():
         description=description,
         feed_id=feed_id,
         url=article_url,
-        tickets=[],
         articles=[],
         current_url=request.full_path,
         is_text=True,
         original_link=article_url,
     )
-
 
 @app.route('/process')
 def process_episode():
@@ -2385,10 +2076,6 @@ def process_episode():
         transcript = existing["transcript"]
         summary = existing["summary"]
         actions = existing["action_items"].splitlines()
-        tickets = [dict(t) for t in list_tickets(existing["id"])]
-        for t in tickets:
-            t["status"] = get_jira_issue_status(t["ticket_key"])
-            t["transitions"] = get_jira_issue_transitions(t["ticket_key"])
         articles = [dict(a) for a in list_articles(existing["id"])]
         return render_template(
             'result.html',
@@ -2399,7 +2086,6 @@ def process_episode():
             description=description,
             feed_id=feed_id,
             url=audio_url,
-            tickets=tickets,
             articles=articles,
             current_url=request.full_path,
         )
@@ -2447,95 +2133,9 @@ def process_episode():
         description=description,
         feed_id=feed_id,
         url=audio_url,
-        tickets=[],
         articles=[],
         current_url=request.full_path,
     )
-
-
-@app.route('/create_jira', methods=['POST'])
-def create_jira():
-    """Create JIRA tickets for the selected action items."""
-    # Items are the action item texts selected by the user
-    items = request.form.getlist('items')
-    episode_url = request.form.get('episode_url')
-    title = request.form.get('title', 'Episode')
-    if not items:
-        return redirect(request.referrer or url_for('index'))
-    episode = get_episode(episode_url) if episode_url else None
-    episode_id = episode['id'] if episode else None
-    summary_text = episode['summary'] if episode else ''
-    
-    # Get the source (feed/podcast name)
-    source_name = ''
-    if episode and episode['feed_id']:
-        feed = get_feed_by_id(episode['feed_id'])
-        if feed:
-            source_name = feed['title']
-    
-    created = []
-    for item in items:
-        try:
-            # Build description with source if available
-            source_line = f"Source: {source_name}\n" if source_name else ""
-            description = (
-                f"Action item: {item}\n\n"
-                f"{source_line}"
-                f"From episode: {title}\n\n"
-                f"Episode summary:\n{summary_text}"
-            )
-            issue = create_jira_issue(item, description)
-            key = issue.get('key', '')
-            ticket_url = f"{os.environ.get('JIRA_BASE_URL')}/browse/{key}" if key else ''
-            if episode_id is not None and key:
-                add_ticket(episode_id, item, key, ticket_url)
-            created.append({'key': key, 'url': ticket_url})
-        except Exception as exc:  # pragma: no cover - external call
-            created.append({'error': str(exc)})
-    return render_template('jira_result.html', created=created)
-
-
-@app.route('/update_ticket', methods=['POST'])
-def update_ticket():
-    """Update a JIRA ticket's status using a selected transition."""
-    # Ticket key and selected transition id from the form
-    ticket_key = request.form.get('ticket_key')
-    transition_id = request.form.get('transition_id')
-    ref = request.form.get('ref') or url_for('view_tickets')
-    if ticket_key and transition_id:
-        transition_jira_issue(ticket_key, transition_id)
-    return redirect(ref)
-
-
-@app.route('/tickets/<int:ticket_id>/delete', methods=['POST'])
-def delete_ticket_route(ticket_id: int):
-    """Delete a single JIRA ticket from the database."""
-    success = delete_ticket(ticket_id)
-    if success:
-        return jsonify({"success": True, "message": "Ticket deleted"})
-    return jsonify({"error": "Ticket not found"}), 404
-
-
-@app.route('/tickets/delete-selected', methods=['POST'])
-def delete_tickets_selected():
-    """Delete multiple selected JIRA tickets."""
-    data = request.get_json()
-    ticket_ids = data.get('ticket_ids', []) if data else []
-    
-    if not ticket_ids:
-        return jsonify({"error": "No tickets selected"}), 400
-    
-    try:
-        ticket_ids = [int(tid) for tid in ticket_ids]
-    except (ValueError, TypeError):
-        return jsonify({"error": "Invalid ticket IDs"}), 400
-    
-    count = delete_tickets_bulk(ticket_ids)
-    return jsonify({
-        "success": True,
-        "message": f"Deleted {count} ticket{'s' if count != 1 else ''}"
-    })
-
 
 @app.route('/api/routes')
 def list_api_routes():
@@ -2575,7 +2175,6 @@ def list_api_routes():
             })
     routes.sort(key=lambda x: x['path'])
     return jsonify({'routes': routes, 'count': len(routes)})
-
 
 @app.route('/status')
 def status_page():
@@ -2645,7 +2244,6 @@ def status_page():
         search_query=search_query,
     )
 
-
 @app.route('/episode/<int:episode_id>/reprocess')
 def reprocess_episode(episode_id: int):
     """Reprocess an episode - clears existing data and requeues."""
@@ -2680,13 +2278,11 @@ def reprocess_episode(episode_id: int):
             published=episode['published'],
         ))
 
-
 @app.route('/episode/<int:episode_id>/delete')
 def delete_episode(episode_id: int):
     """Delete an episode and all associated data."""
     delete_episode_by_id(episode_id)
     return redirect(url_for('status_page'))
-
 
 @app.route('/episodes/bulk-delete', methods=['POST'])
 def bulk_delete_episodes():
@@ -2695,7 +2291,6 @@ def bulk_delete_episodes():
     if episode_ids:
         delete_episodes_bulk(episode_ids)
     return redirect(url_for('status_page'))
-
 
 @app.route('/episodes/backfill-channels', methods=['POST'])
 def backfill_youtube_channels():
@@ -2712,59 +2307,6 @@ def backfill_youtube_channels():
         except Exception:
             continue
     return jsonify({"success": True, "updated": updated, "total": len(episodes)})
-
-
-@app.route('/tickets')
-def view_tickets():
-    """Display all created JIRA tickets."""
-    sort_by = request.args.get('sort', 'id')
-    sort_order = request.args.get('order', 'desc')
-    filter_status = request.args.get('status', '')
-    search_query = request.args.get('q', '').lower()
-    
-    raw_tickets = [dict(t) for t in list_tickets()]
-    
-    # Fetch JIRA statuses and filter
-    tickets = []
-    all_statuses = set()
-    
-    for t in raw_tickets:
-        t["status"] = get_jira_issue_status(t["ticket_key"])
-        t["transitions"] = get_jira_issue_transitions(t["ticket_key"])
-        all_statuses.add(t["status"] or "Unknown")
-        
-        # Filter by status
-        if filter_status and t["status"] != filter_status:
-            continue
-        
-        # Search filter
-        if search_query:
-            searchable = f"{t['episode_title']} {t['action_item']} {t['ticket_key']}".lower()
-            if search_query not in searchable:
-                continue
-        
-        tickets.append(t)
-    
-    # Sort tickets
-    if sort_by == 'episode':
-        tickets.sort(key=lambda x: (x['episode_title'] or '').lower(), reverse=(sort_order == 'desc'))
-    elif sort_by == 'status':
-        tickets.sort(key=lambda x: (x['status'] or '').lower(), reverse=(sort_order == 'desc'))
-    elif sort_by == 'ticket':
-        tickets.sort(key=lambda x: x['ticket_key'], reverse=(sort_order == 'desc'))
-    else:
-        tickets.sort(key=lambda x: x['id'], reverse=(sort_order == 'desc'))
-    
-    return render_template(
-        'tickets.html',
-        tickets=tickets,
-        sort_by=sort_by,
-        sort_order=sort_order,
-        filter_status=filter_status,
-        search_query=search_query,
-        all_statuses=sorted(all_statuses),
-    )
-
 
 @app.route('/generate_article', methods=['POST'])
 def create_article():
@@ -2820,7 +2362,6 @@ def create_article():
             feed_id=episode['feed_id'],
         )
 
-
 @app.route('/article/<int:article_id>')
 def view_article(article_id: int):
     """Display a generated article."""
@@ -2828,37 +2369,7 @@ def view_article(article_id: int):
     if not article:
         return redirect(url_for('index'))
     
-    # Get saved social posts grouped by platform
-    posts = list_social_posts(article_id)
-    
-    # Get pending schedules for all posts
-    post_ids = [post['id'] for post in posts]
-    pending_schedules = get_pending_schedules_for_social_posts(post_ids)
-    
-    social_posts = {}
-    for post in posts:
-        platform = post['platform']
-        if platform not in social_posts:
-            social_posts[platform] = []
-        
-        # Check if this post is scheduled for this platform
-        schedules = pending_schedules.get(post['id'], [])
-        scheduled_for_platform = {}
-        for sched in schedules:
-            sched_platform = sched['platform']
-            if sched_platform not in scheduled_for_platform:
-                scheduled_for_platform[sched_platform] = sched['scheduled_for']
-        
-        social_posts[platform].append({
-            'id': post['id'],
-            'content': post['content'],
-            'created_at': post['created_at'],
-            'used': bool(post['used']),
-            'scheduled': scheduled_for_platform,  # Dict of platform -> scheduled_for
-        })
-    
-    return render_template('article.html', article=dict(article), social_posts=social_posts)
-
+    return render_template('article.html', article=dict(article))
 
 @app.route('/article/<int:article_id>/edit', methods=['GET', 'POST'])
 def edit_article(article_id: int):
@@ -2878,268 +2389,11 @@ def edit_article(article_id: int):
     
     return render_template('article_edit.html', article=dict(article))
 
-
 @app.route('/article/<int:article_id>/delete', methods=['POST'])
 def remove_article(article_id: int):
     """Delete an article."""
     delete_article(article_id)
     return redirect(url_for('view_articles'))
-
-
-@app.route('/article/<int:article_id>/social', methods=['POST'])
-def generate_article_social(article_id: int):
-    """Generate social media promotional copy for an article and save to database."""
-    article = get_article(article_id)
-    if not article:
-        return {"error": "Article not found"}, 404
-    
-    platforms = request.form.getlist('platforms')
-    if not platforms:
-        platforms = ["twitter", "linkedin", "facebook", "threads"]
-    
-    # Get number of posts per platform (default to 1, max 21)
-    posts_per_platform = request.form.get('posts_per_platform', 1, type=int)
-    posts_per_platform = max(1, min(posts_per_platform, 21))
-    
-    # Get optional extra context for the prompt
-    extra_context = request.form.get('extra_context', '').strip() or None
-    
-    try:
-        social_copy = generate_social_copy(
-            article_content=article['content'],
-            article_topic=article['topic'],
-            platforms=platforms,
-            posts_per_platform=posts_per_platform,
-            extra_context=extra_context,
-        )
-        
-        # Save generated posts to database
-        saved_posts = {}
-        for platform, copy_data in social_copy.items():
-            posts = copy_data if isinstance(copy_data, list) else [copy_data]
-            saved_posts[platform] = []
-            for post_content in posts:
-                post_id = add_social_post(
-                    article_id=article_id,
-                    platform=platform,
-                    content=post_content,
-                )
-                saved_posts[platform].append({
-                    'id': post_id,
-                    'content': post_content,
-                })
-        
-        return {
-            "success": True,
-            "social_copy": social_copy,
-            "saved_posts": saved_posts,
-            "posts_per_platform": posts_per_platform,
-        }
-    except Exception as exc:
-        app.logger.exception("Failed to generate social media copy")
-        return {"error": str(exc)}, 500
-
-
-@app.route('/article/<int:article_id>/social/list', methods=['GET'])
-def list_article_social_posts(article_id: int):
-    """Get all saved social posts for an article."""
-    article = get_article(article_id)
-    if not article:
-        return {"error": "Article not found"}, 404
-    
-    posts = list_social_posts(article_id)
-    
-    # Group posts by platform
-    grouped = {}
-    for post in posts:
-        platform = post['platform']
-        if platform not in grouped:
-            grouped[platform] = []
-        grouped[platform].append({
-            'id': post['id'],
-            'content': post['content'],
-            'created_at': post['created_at'],
-            'used': bool(post['used']),
-        })
-    
-    return {"success": True, "posts": grouped}
-
-
-@app.route('/social/<int:post_id>/delete', methods=['POST'])
-def delete_social_post_route(post_id: int):
-    """Delete a single social post."""
-    delete_social_post(post_id)
-    return {"success": True}
-
-
-@app.route('/social/bulk-delete', methods=['POST'])
-def bulk_delete_social_posts():
-    """Delete multiple social posts at once."""
-    post_ids = request.form.getlist('post_ids', type=int)
-    if post_ids:
-        count = delete_social_posts_bulk(post_ids)
-        return {"success": True, "deleted": count}
-    return {"success": True, "deleted": 0}
-
-
-@app.route('/article/<int:article_id>/social/clear', methods=['POST'])
-def clear_article_social_posts(article_id: int):
-    """Delete all social posts for an article."""
-    count = delete_social_posts_for_article(article_id)
-    return {"success": True, "deleted": count}
-
-
-@app.route('/social/<int:post_id>/toggle-used', methods=['POST'])
-def toggle_social_post_used(post_id: int):
-    """Toggle the used status of a social post."""
-    post = get_social_post(post_id)
-    if not post:
-        return {"error": "Post not found"}, 404
-    
-    new_used = not bool(post['used'])
-    mark_social_post_used(post_id, new_used)
-    return {"success": True, "used": new_used}
-
-
-@app.route('/social/<int:post_id>/edit', methods=['POST'])
-def edit_social_post(post_id: int):
-    """Update the content of a social post."""
-    post = get_social_post(post_id)
-    if not post:
-        return {"error": "Post not found"}, 404
-    
-    content = request.form.get('content', '').strip()
-    if not content:
-        return {"error": "Content cannot be empty"}, 400
-    
-    update_social_post(post_id, content)
-
-    # Auto-fetch og:image if the edit added a new URL and no image is set
-    existing_image = post['image_url'] if 'image_url' in post.keys() else None
-    if not existing_image:
-        old_urls = set(extract_urls_from_text(post['content'] if 'content' in post.keys() else ''))
-        new_urls = extract_urls_from_text(content)
-        if any(u not in old_urls for u in new_urls):
-            _maybe_attach_link_image(post_id, content, kind='social')
-
-    return {"success": True, "content": content}
-
-
-@app.route('/social/<int:post_id>/image', methods=['POST'])
-def edit_social_post_image(post_id: int):
-    """Update the image URL of a social post."""
-    post = get_social_post(post_id)
-    if not post:
-        return jsonify({"error": "Post not found"}), 404
-    
-    image_url = request.form.get('image_url', '').strip() or None
-    update_social_post_image(post_id, image_url)
-    return jsonify({"success": True, "image_url": image_url})
-
-
-@app.route('/social/<int:post_id>/link-image', methods=['GET', 'POST'])
-def social_apply_link_image(post_id: int):
-    """Fetch the og:image of a URL referenced by a social post and attach it."""
-    post = get_social_post(post_id)
-    if not post:
-        return jsonify({"error": "Post not found"}), 404
-
-    content = post['content'] if 'content' in post.keys() else ''
-    detected = extract_urls_from_text(content)
-    current_image = post['image_url'] if 'image_url' in post.keys() else None
-
-    if request.method == 'GET':
-        return jsonify({
-            "success": True,
-            "detected_urls": detected,
-            "image_url": current_image,
-        })
-
-    data = request.get_json(silent=True) or {}
-    override = (data.get('url') or '').strip()
-    allow_external = bool(data.get('allow_external'))
-
-    target = override or (detected[0] if detected else None)
-    if not target:
-        return jsonify({
-            "error": "No URL found in post and none provided.",
-            "detected_urls": detected,
-        }), 400
-    if override and override not in detected and not allow_external:
-        return jsonify({
-            "error": "Override URL is not present in the post body.",
-            "detected_urls": detected,
-        }), 400
-
-    try:
-        _assert_safe_url(target)
-    except UnsafeURLError as exc:
-        return jsonify({"error": f"URL rejected: {exc}", "detected_urls": detected}), 400
-
-    og_image = fetch_og_image_for_url(target)
-    if not og_image:
-        return jsonify({
-            "error": "Could not find an og:image at that URL.",
-            "detected_urls": detected,
-            "source_url": target,
-        }), 422
-
-    try:
-        saved_url = save_stock_image_to_library(og_image)
-    except (UnsafeURLError, RuntimeError, ValueError, requests.RequestException) as exc:
-        app.logger.warning(
-            "Failed to save og:image %s for social post %s: %s", og_image, post_id, exc
-        )
-        return jsonify({
-            "error": f"Failed to download og:image: {exc}",
-            "detected_urls": detected,
-            "source_url": target,
-            "og_image_url": og_image,
-        }), 422
-
-    update_social_post_image(post_id, saved_url)
-    return jsonify({
-        "success": True,
-        "image_url": saved_url,
-        "source_url": target,
-        "og_image_url": og_image,
-        "detected_urls": detected,
-    })
-
-
-@app.route('/social/posts/bulk-image', methods=['POST'])
-def social_bulk_update_images():
-    """Bulk update images for multiple social posts."""
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
-    
-    post_ids = data.get('post_ids', [])
-    image_url = data.get('image_url')  # None to remove image
-    
-    if not post_ids:
-        return jsonify({"error": "No post IDs provided"}), 400
-    
-    # Convert to integers
-    try:
-        post_ids = [int(pid) for pid in post_ids]
-    except (ValueError, TypeError):
-        return jsonify({"error": "Invalid post IDs"}), 400
-    
-    # Update each post
-    updated_count = 0
-    for post_id in post_ids:
-        post = get_social_post(post_id)
-        if post:
-            update_social_post_image(post_id, image_url)
-            updated_count += 1
-    
-    return jsonify({
-        "success": True,
-        "updated_count": updated_count,
-        "message": f"Updated {updated_count} posts"
-    })
-
 
 @app.route('/posts/bulk-replace', methods=['POST'])
 def bulk_replace_posts():
@@ -3152,7 +2406,7 @@ def bulk_replace_posts():
     
     find_text = data.get('find', '')
     replace_text = data.get('replace', '')
-    post_type = data.get('post_type', 'social')  # 'social' or 'standalone'
+    post_type = data.get('post_type', 'standalone')  # 'standalone' only
     case_sensitive = data.get('case_sensitive', False)
     whole_word = data.get('whole_word', False)
     post_ids = data.get('post_ids')  # Optional list of post IDs to filter
@@ -3161,8 +2415,8 @@ def bulk_replace_posts():
     if not find_text:
         return jsonify({"error": "Find text is required"}), 400
     
-    if post_type not in ('social', 'standalone'):
-        return jsonify({"error": "post_type must be 'social' or 'standalone'"}), 400
+    if post_type != 'standalone':
+        return jsonify({"error": "post_type must be 'standalone'"}), 400
     
     # Convert post_ids to integers if provided
     if post_ids:
@@ -3189,7 +2443,6 @@ def bulk_replace_posts():
     except Exception as exc:
         app.logger.exception("Failed to bulk replace posts")
         return jsonify({"error": str(exc)}), 500
-
 
 @app.route('/article/<int:article_id>/refine', methods=['POST'])
 def refine_article_with_ai(article_id: int):
@@ -3219,7 +2472,6 @@ def refine_article_with_ai(article_id: int):
     except Exception as exc:
         app.logger.exception("Failed to refine article")
         return {"error": str(exc)}, 500
-
 
 @app.route('/articles')
 def view_articles():
@@ -3280,2413 +2532,15 @@ def view_articles():
         all_podcasts=sorted(all_podcasts),
     )
 
-
-# ============================================================================
-# LinkedIn Integration Routes
-# ============================================================================
-
-
-# ---------------------------------------------------------------------------
-# Connected accounts
-#
-# A platform holds as many logins as the user connects. The OAuth callbacks
-# already key on the platform's own id for the login, so authorising a second
-# LinkedIn adds an account instead of replacing the first; these routes are
-# what let the user see them, name them, pick which one is the default, and
-# disconnect one without touching the others.
-# ---------------------------------------------------------------------------
-
-# Which client answers for a platform, so one route can ask any of them whether
-# the app has credentials configured for it at all.
-PLATFORM_CLIENTS = {
-    'linkedin': get_linkedin_client,
-    'threads': get_threads_client,
-    'twitter': get_twitter_client,
-    'facebook': get_facebook_client,
-    'instagram': get_instagram_client,
-}
-
-
-def _platform_is_configured(platform):
-    """True when the app has API credentials for the platform.
-
-    A platform with no credentials cannot be connected at all, which is a
-    different thing from a platform with no accounts connected yet, and the
-    accounts screen has to tell the two apart.
-    """
-    factory = PLATFORM_CLIENTS.get(platform)
-    if not factory:
-        return False
-    try:
-        return bool(factory().is_configured())
-    except Exception:  # noqa: BLE001 - a misconfigured client is just "not configured"
-        return False
-
-
-def _accounts_by_platform():
-    """Every connected account, grouped by platform, defaults first."""
-    grouped = {platform: [] for platform in social_publisher.PLATFORMS}
-    for account in list_social_accounts():
-        grouped.setdefault(account['platform'], []).append(account_summary(account))
-    return grouped
-
-
-def _account_needs_attention(platform, summary):
-    """A short reason this account cannot publish yet, or None.
-
-    Connecting is not the same as being able to post: LinkedIn needs a member
-    URN and Facebook needs a Page chosen. Saying so on the accounts screen
-    beats finding out when a scheduled post fails.
-    """
-    if summary['status'] == 'expired':
-        return 'Token expired, reconnect to keep posting'
-    if str(summary.get('external_id') or '').startswith('pending:'):
-        # The platform returned no identity for this login. It is connected but
-        # cannot be told apart from a second login until that is filled in.
-        return {
-            'linkedin': 'Needs its Member ID configured before it can post',
-            'facebook': 'Needs a Page selected before it can post',
-            'threads': 'Needs its User ID configured before it can post',
-            'instagram': 'Needs its User ID configured before it can post',
-        }.get(platform, 'The platform returned no profile, reconnect this account')
-    token = None
-    if platform == 'linkedin':
-        token = get_linkedin_token(summary['id'])
-        if token is not None and not token['user_urn']:
-            return 'Needs its Member ID configured before it can post'
-    elif platform == 'facebook':
-        token = get_facebook_token(summary['id'])
-        if token is not None and not token['page_id']:
-            return 'Needs a Page selected before it can post'
-    else:
-        token = _PLATFORM_TOKEN_GETTERS[platform](summary['id'])
-    if token is None:
-        return 'Sign-in is incomplete, reconnect this account'
-    return None
-
-
-_PLATFORM_TOKEN_GETTERS = {
-    'linkedin': get_linkedin_token,
-    'threads': get_threads_token,
-    'twitter': get_twitter_token,
-    'facebook': get_facebook_token,
-    'instagram': get_instagram_token,
-}
-
-
-def _accounts_payload():
-    """The whole accounts picture: what is connectable, and what is connected."""
-    grouped = _accounts_by_platform()
-    platforms = []
-    for platform in social_publisher.PLATFORMS:
-        accounts = grouped.get(platform, [])
-        for summary in accounts:
-            summary['needs_attention'] = _account_needs_attention(platform, summary)
-            # Only the platforms with a configure screen can be fixed in place.
-            # The link names the account, because those screens act on the
-            # default account when they are not told which one.
-            summary['configure_url'] = (
-                url_for(f'{platform}_configure', account_id=summary['id'])
-                if summary['needs_attention'] and platform in
-                ('linkedin', 'facebook', 'threads', 'instagram') else None
-            )
-        platforms.append({
-            'platform': platform,
-            'name': platform_name(platform),
-            'configured': _platform_is_configured(platform),
-            'accounts': accounts,
-            'connect_url': f'/{platform}/auth?return=accounts',
-        })
-    return {
-        'platforms': platforms,
-        'total': sum(len(p['accounts']) for p in platforms),
-    }
-
-
-def _platform_accounts_json(platform):
-    """The platform's connected accounts, for a status payload.
-
-    The status endpoints answer about one account (whichever is default), which
-    is all the older screens ever needed. Carrying the full list alongside lets
-    a caller notice there is more than one without a second request.
-    """
-    return [account_summary(a) for a in list_social_accounts(platform)]
-
-
-def _remember_oauth_return():
-    """Note that this OAuth run started from the accounts screen.
-
-    Starting from there also says something about intent: the accounts screen's
-    Connect and Connect another buttons always mean "add a login". The callback
-    needs that when the platform returns no identity, because a login it cannot
-    identify would otherwise share a placeholder with any other unidentified one.
-    """
-    from_accounts = request.args.get('return') == 'accounts'
-    session['oauth_return'] = 'accounts' if from_accounts else None
-    session['oauth_new_login'] = from_accounts
-
-
-def _oauth_new_login():
-    """True when this OAuth run was started to add another login. Read once."""
-    return bool(session.pop('oauth_new_login', False))
-
-
-def _oauth_return_redirect(fallback_url):
-    """Send the user back where they started the connection from."""
-    if session.pop('oauth_return', None) == 'accounts':
-        return redirect(url_for('accounts_page') + '?connected=1')
-    return redirect(fallback_url)
-
-
-def _disconnect_platform(platform):
-    """Disconnect one named account, or every account on the platform.
-
-    The per-platform disconnect buttons predate accounts and meant "disconnect
-    this platform", so with no ``account_id`` they still do exactly that. The
-    accounts screen passes an id and takes one login away, leaving the rest
-    posting.
-    """
-    raw = (request.form.get('account_id') or '').strip()
-    if raw:
-        try:
-            account_id = int(raw)
-        except ValueError:
-            return jsonify({"error": "Unknown account"}), 400
-        account = get_social_account(account_id)
-        if not account or account['platform'] != platform:
-            return jsonify({"error": "Account not found"}), 404
-        label = account_label(account)
-        delete_social_account(account_id)
-        return jsonify({
-            "success": True,
-            "message": f"Disconnected {label}",
-            "remaining": count_social_accounts(platform),
-        })
-
-    for account in list_social_accounts(platform):
-        delete_social_account(account['id'])
-    _PLATFORM_TOKEN_DELETERS[platform]()
-    return jsonify({
-        "success": True,
-        "message": f"{platform_name(platform)} disconnected",
-        "remaining": 0,
-    })
-
-
-_PLATFORM_TOKEN_DELETERS = {
-    'linkedin': delete_linkedin_token,
-    'threads': delete_threads_token,
-    'twitter': delete_twitter_token,
-    'facebook': delete_facebook_token,
-    'instagram': delete_instagram_token,
-}
-
-
-@app.route('/accounts')
-def accounts_page():
-    """Manage every connected account across every platform."""
-    return render_template('accounts.html', **_accounts_payload())
-
-
-@app.route('/accounts/list')
-def accounts_list():
-    """The accounts payload as JSON, for the composer's target picker."""
-    return jsonify(_accounts_payload())
-
-
-@app.route('/accounts/<int:account_id>/default', methods=['POST'])
-def accounts_set_default(account_id: int):
-    """Make this the account a bare platform name means."""
-    account = get_social_account(account_id)
-    if not account:
-        return jsonify({"error": "Account not found"}), 404
-    set_default_social_account(account_id)
-    return jsonify({
-        "success": True,
-        "account_id": account_id,
-        "platform": account['platform'],
-        "message": f"{account_label(account)} is now the default {platform_name(account['platform'])} account",
-    })
-
-
-@app.route('/accounts/<int:account_id>/label', methods=['POST'])
-def accounts_set_label(account_id: int):
-    """Name an account, so two logins on one platform are told apart."""
-    account = get_social_account(account_id)
-    if not account:
-        return jsonify({"error": "Account not found"}), 404
-    label = (request.form.get('label') or '').strip()
-    if len(label) > 60:
-        return jsonify({"error": "Keep the name under 60 characters"}), 400
-    set_social_account_label(account_id, label)
-    refreshed = get_social_account(account_id)
-    return jsonify({
-        "success": True,
-        "account_id": account_id,
-        "label": account_label(refreshed),
-    })
-
-
-@app.route('/accounts/<int:account_id>/disconnect', methods=['POST'])
-def accounts_disconnect(account_id: int):
-    """Disconnect one account, leaving the platform's other logins alone.
-
-    Queue entries aimed at it are removed rather than silently redirected: a
-    scheduled post that would now publish from a different account is not the
-    post the user queued.
-    """
-    account = get_social_account(account_id)
-    if not account:
-        return jsonify({"error": "Account not found"}), 404
-
-    label = account_label(account)
-    platform = account['platform']
-    removed = 0
-    for entry in list_scheduled_posts(status='pending'):
-        entry_account = entry['account_id'] if 'account_id' in entry.keys() else None
-        if entry_account == account_id:
-            delete_scheduled_post(entry['id'])
-            removed += 1
-
-    delete_social_account(account_id)
-    return jsonify({
-        "success": True,
-        "platform": platform,
-        "unqueued": removed,
-        "message": f"Disconnected {label}",
-        "remaining": count_social_accounts(platform),
-    })
-
-
-
-@app.route('/linkedin/status')
-def linkedin_status():
-    """Check LinkedIn connection status."""
-    client = get_linkedin_client()
-    token = get_linkedin_token()
-    
-    if not client.is_configured():
-        return jsonify({
-            "connected": False,
-            "configured": False,
-            "message": "LinkedIn credentials not configured. Set LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET.",
-        })
-    
-    if not token:
-        return jsonify({
-            "connected": False,
-            "configured": True,
-            "message": "Not connected to LinkedIn",
-        })
-    
-    # Check if token is expired
-    if is_token_expired(token['expires_at']):
-        # Try to refresh if we have a refresh token
-        if token['refresh_token']:
-            try:
-                new_token = client.refresh_access_token(token['refresh_token'])
-                expires_at = calculate_token_expiry(new_token.get('expires_in', 5184000))
-                update_linkedin_token(
-                    access_token=new_token['access_token'],
-                    expires_at=expires_at,
-                    refresh_token=new_token.get('refresh_token'),
-                )
-                return jsonify({
-                    "connected": True,
-                    "configured": True,
-                    "display_name": token['display_name'],
-                    "email": token['email'],
-                    "expires_at": expires_at,
-                    "message": "Connected (token refreshed)",
-                })
-            except Exception as e:
-                app.logger.warning("Failed to refresh LinkedIn token: %s", e)
-                return jsonify({
-                    "connected": False,
-                    "configured": True,
-                    "message": "Token expired. Please reconnect.",
-                })
-        else:
-            return jsonify({
-                "connected": False,
-                "configured": True,
-                "message": "Token expired. Please reconnect.",
-            })
-    
-    # Check if user_urn is configured (needed for posting)
-    needs_configuration = not token['user_urn']
-    
-    return jsonify({
-        "connected": True,
-        "configured": True,
-        "needs_configuration": needs_configuration,
-        "display_name": token['display_name'],
-        "email": token['email'],
-        "user_urn": token['user_urn'],
-        "expires_at": token['expires_at'],
-        "configure_url": url_for('linkedin_configure') if needs_configuration else None,
-        "accounts": _platform_accounts_json('linkedin'),
-    })
-
-
-@app.route('/linkedin/auth')
-def linkedin_auth():
-    """Start LinkedIn OAuth flow."""
-    client = get_linkedin_client()
-    
-    if not client.is_configured():
-        return jsonify({"error": "LinkedIn not configured"}), 400
-    
-    auth_url, state = client.get_authorization_url()
-    session['linkedin_oauth_state'] = state
-    _remember_oauth_return()
-    
-    return redirect(auth_url)
-
-
-@app.route('/linkedin/callback')
-def linkedin_callback():
-    """Handle LinkedIn OAuth callback."""
-    error = request.args.get('error')
-    if error:
-        error_desc = request.args.get('error_description', 'Unknown error')
-        app.logger.error("LinkedIn OAuth error: %s - %s", error, error_desc)
-        return render_template(
-            'article_error.html',
-            error=f"LinkedIn authorization failed: {error_desc}",
-        )
-    
-    code = request.args.get('code')
-    state = request.args.get('state')
-    
-    # Verify state to prevent CSRF
-    stored_state = session.pop('linkedin_oauth_state', None)
-    if not stored_state or stored_state != state:
-        app.logger.warning("LinkedIn OAuth state mismatch")
-        return render_template(
-            'article_error.html',
-            error="Security verification failed. Please try again.",
-        )
-    
-    if not code:
-        return render_template(
-            'article_error.html',
-            error="No authorization code received from LinkedIn.",
-        )
-    
-    client = get_linkedin_client()
-    
-    try:
-        # Exchange code for token
-        token_data = client.exchange_code_for_token(code)
-        access_token = token_data['access_token']
-        expires_in = token_data.get('expires_in', 5184000)  # Default 60 days
-        refresh_token = token_data.get('refresh_token')
-        
-        # Calculate expiry
-        expires_at = calculate_token_expiry(expires_in)
-        
-        # Try to get user info - may return None if only w_member_social scope
-        user_info = client.get_user_info(access_token)
-        
-        if user_info:
-            member_id = user_info.get('sub') or user_info.get('id', '')
-            user_urn = f"urn:li:person:{member_id}" if member_id else ''
-            display_name = user_info.get('name', '') or user_info.get('localizedFirstName', 'LinkedIn User')
-            email = user_info.get('email', '')
-        else:
-            # Profile endpoints didn't work - user needs to manually configure
-            member_id = ''
-            user_urn = ''
-            display_name = 'LinkedIn User (needs configuration)'
-            email = ''
-        
-        # Save token (with or without profile info)
-        token_row = save_linkedin_token(
-            new_login=_oauth_new_login(),
-            access_token=access_token,
-            expires_at=expires_at,
-            member_id=member_id,
-            user_urn=user_urn,
-            display_name=display_name,
-            email=email,
-            refresh_token=refresh_token,
-        )
-        
-        app.logger.info("LinkedIn connected for user: %s", display_name)
-        
-        # If we couldn't get profile info, redirect to configuration page
-        if not user_urn:
-            # Name the account that just connected. Left out, the configure
-            # screen acts on the platform's default account, so with a second
-            # login it would write this person's Member ID onto the first one.
-            return redirect(url_for(
-                'linkedin_configure', new=1,
-                account_id=account_id_for_token('linkedin', token_row),
-            ))
-        
-        # Redirect to articles page with success message
-        return _oauth_return_redirect(url_for('view_articles') + '?linkedin=connected')
-        
-    except Exception as e:
-        app.logger.exception("LinkedIn OAuth exchange failed")
-        return render_template(
-            'article_error.html',
-            error=f"Failed to connect to LinkedIn: {str(e)}",
-        )
-
-
-@app.route('/linkedin/disconnect', methods=['POST'])
-def linkedin_disconnect():
-    """Disconnect one LinkedIn account, or the platform when none is named."""
-    return _disconnect_platform('linkedin')
-
-
-@app.route('/linkedin/configure', methods=['GET', 'POST'])
-def linkedin_configure():
-    """Configure LinkedIn member ID manually.
-    
-    This is needed when the user only has 'Share on LinkedIn' product
-    which doesn't provide profile access scopes.
-    """
-    from database import update_linkedin_member_urn
-
-    # With more than one LinkedIn connected, the accounts screen says which one
-    # is being configured; without it this is still the default account.
-    account_id = request.args.get('account_id', type=int)
-    token = get_linkedin_token(account_id)
-    if not token:
-        return redirect(url_for('schedule_list') + '?error=not_connected')
-    
-    if request.method == 'POST':
-        member_id = request.form.get('member_id', '').strip()
-        display_name = request.form.get('display_name', '').strip() or 'LinkedIn User'
-        
-        if not member_id:
-            return render_template(
-                'linkedin_configure.html',
-                token=token,
-                error="Member ID is required",
-                is_new=request.args.get('new') == '1',
-            )
-        
-        # A real account cannot be moved onto another account's Member ID, so
-        # say so rather than reporting a generic failure.
-        if identity_in_use('linkedin', member_id, account_id=account_id):
-            return render_template(
-                'linkedin_configure.html',
-                token=token,
-                error="That Member ID already belongs to another connected LinkedIn account.",
-                is_new=request.args.get('new') == '1',
-            )
-
-        # Update the token with the manual member ID
-        success = update_linkedin_member_urn(
-            member_id=member_id,
-            display_name=display_name,
-            account_id=account_id,
-        )
-        
-        if success:
-            app.logger.info("LinkedIn member ID configured manually: %s", member_id)
-            return redirect(url_for('schedule_list') + '?linkedin=configured')
-        else:
-            return render_template(
-                'linkedin_configure.html',
-                token=token,
-                error="Failed to save configuration",
-                is_new=request.args.get('new') == '1',
-            )
-    
-    # GET request - show configuration form
-    return render_template(
-        'linkedin_configure.html',
-        token=token,
-        is_new=request.args.get('new') == '1',
-    )
-
-
-@app.route('/linkedin/post/<int:post_id>', methods=['POST'])
-def linkedin_post_social(post_id: int):
-    """Post a social media post to LinkedIn immediately."""
-    return _publish_social_post(post_id, 'linkedin')
-
-
-# ============================================================================
-# Threads Integration Routes
-# ============================================================================
-
-
-@app.route('/threads/status')
-def threads_status():
-    """Check Threads connection status."""
-    client = get_threads_client()
-    token = get_threads_token()
-    
-    if not client.is_configured():
-        return jsonify({
-            "connected": False,
-            "configured": False,
-            "message": "Threads credentials not configured. Set THREADS_APP_ID and THREADS_APP_SECRET.",
-        })
-    
-    if not token:
-        return jsonify({
-            "connected": False,
-            "configured": True,
-            "message": "Not connected to Threads",
-        })
-    
-    # Check if token is expired
-    if threads_is_token_expired(token['expires_at']):
-        # Try to refresh the token
-        try:
-            new_token = client.refresh_access_token(token['access_token'])
-            expires_at = threads_calculate_token_expiry(new_token.get('expires_in', 5184000))
-            update_threads_token(
-                access_token=new_token['access_token'],
-                expires_at=expires_at,
-            )
-            return jsonify({
-                "connected": True,
-                "configured": True,
-                "username": token['username'],
-                "display_name": token['display_name'],
-                "profile_picture_url": token['profile_picture_url'],
-                "expires_at": expires_at,
-                "message": "Connected (token refreshed)",
-            })
-        except Exception as e:
-            app.logger.warning("Failed to refresh Threads token: %s", e)
-            return jsonify({
-                "connected": False,
-                "configured": True,
-                "message": "Token expired. Please reconnect.",
-            })
-    
-    return jsonify({
-        "connected": True,
-        "configured": True,
-        "username": token['username'],
-        "display_name": token['display_name'],
-        "profile_picture_url": token['profile_picture_url'],
-        "user_id": token['user_id'],
-        "expires_at": token['expires_at'],
-        "accounts": _platform_accounts_json('threads'),
-    })
-
-
-@app.route('/threads/auth')
-def threads_auth():
-    """Start Threads OAuth flow."""
-    client = get_threads_client()
-    
-    if not client.is_configured():
-        return jsonify({"error": "Threads not configured"}), 400
-    
-    auth_url, state = client.get_authorization_url()
-    session['threads_oauth_state'] = state
-    _remember_oauth_return()
-    
-    return redirect(auth_url)
-
-
-@app.route('/threads/callback')
-def threads_callback():
-    """Handle Threads OAuth callback."""
-    error = request.args.get('error')
-    if error:
-        error_desc = request.args.get('error_description', 'Unknown error')
-        app.logger.error("Threads OAuth error: %s - %s", error, error_desc)
-        return render_template(
-            'article_error.html',
-            error=f"Threads authorization failed: {error_desc}",
-        )
-    
-    code = request.args.get('code')
-    state = request.args.get('state')
-    
-    # Verify state to prevent CSRF
-    stored_state = session.pop('threads_oauth_state', None)
-    if not stored_state or stored_state != state:
-        app.logger.warning("Threads OAuth state mismatch")
-        return render_template(
-            'article_error.html',
-            error="Security verification failed. Please try again.",
-        )
-    
-    if not code:
-        return render_template(
-            'article_error.html',
-            error="No authorization code received from Threads.",
-        )
-    
-    client = get_threads_client()
-    
-    try:
-        # Step 1: Exchange code for short-lived token
-        token_data = client.exchange_code_for_token(code)
-        short_lived_token = token_data['access_token']
-        user_id = token_data.get('user_id', '')
-        
-        # Step 2: Exchange for long-lived token (60 days)
-        long_lived_data = client.get_long_lived_token(short_lived_token)
-        access_token = long_lived_data['access_token']
-        expires_in = long_lived_data.get('expires_in', 5184000)  # Default 60 days
-        
-        # Calculate expiry
-        expires_at = threads_calculate_token_expiry(expires_in)
-        
-        # Get user profile
-        user_info = client.get_user_profile(access_token)
-        
-        if user_info:
-            user_id = user_info.get('id', user_id)
-            username = user_info.get('username', '')
-            display_name = user_info.get('name', '') or username
-            remote_picture_url = user_info.get('threads_profile_picture_url', '')
-        else:
-            username = ''
-            display_name = 'Threads User'
-            remote_picture_url = ''
-        
-        # Download and store profile picture locally (CDN URLs expire)
-        profile_picture_url = ''
-        if remote_picture_url:
-            try:
-                img_resp = requests.get(remote_picture_url, timeout=15)
-                if img_resp.status_code == 200:
-                    pic_filename = f"threads_profile_{user_id}.jpg"
-                    pic_path = os.path.join(app.static_folder, pic_filename)
-                    with open(pic_path, 'wb') as f:
-                        f.write(img_resp.content)
-                    profile_picture_url = url_for('static', filename=pic_filename)
-                    app.logger.info("Saved Threads profile picture to %s", pic_path)
-                else:
-                    app.logger.warning("Failed to download Threads profile picture: %s", img_resp.status_code)
-            except Exception as pic_err:
-                app.logger.warning("Could not save Threads profile picture: %s", pic_err)
-        
-        # Save token
-        save_threads_token(
-            new_login=_oauth_new_login(),
-            access_token=access_token,
-            expires_at=expires_at,
-            user_id=user_id,
-            username=username,
-            display_name=display_name,
-            profile_picture_url=profile_picture_url,
-        )
-        
-        app.logger.info("Threads connected for user: @%s", username)
-        
-        # Redirect to schedule page with success message
-        return _oauth_return_redirect(url_for('schedule_list') + '?threads=connected')
-        
-    except Exception as e:
-        app.logger.exception("Threads OAuth exchange failed")
-        return render_template(
-            'article_error.html',
-            error=f"Failed to connect to Threads: {str(e)}",
-        )
-
-
-@app.route('/threads/disconnect', methods=['POST'])
-def threads_disconnect():
-    """Disconnect one Threads account, or the platform when none is named."""
-    return _disconnect_platform('threads')
-
-
-@app.route('/threads/configure', methods=['GET', 'POST'])
-def threads_configure():
-    """Configure Threads user info manually or view setup instructions."""
-    account_id = request.args.get('account_id', type=int)
-    token = get_threads_token(account_id)
-
-    if request.method == 'POST':
-        if not token:
-            return redirect(url_for('schedule_list') + '?error=threads_not_connected')
-
-        user_id = request.form.get('user_id', '').strip()
-        username = request.form.get('username', '').strip()
-        display_name = request.form.get('display_name', '').strip() or 'Threads User'
-
-        if not user_id:
-            return render_template(
-                'threads_configure.html',
-                token=token,
-                error="User ID is required",
-            )
-
-        if identity_in_use('threads', user_id, account_id=account_id):
-            return render_template(
-                'threads_configure.html',
-                token=token,
-                error="That User ID already belongs to another connected Threads account.",
-            )
-
-        success = update_threads_user_info(
-            user_id=user_id,
-            username=username or None,
-            display_name=display_name,
-            account_id=account_id,
-        )
-
-        if success:
-            app.logger.info("Threads user info configured manually: %s (@%s)", user_id, username)
-            return redirect(url_for('schedule_list') + '?threads=configured')
-        else:
-            return render_template(
-                'threads_configure.html',
-                token=token,
-                error="Failed to save configuration. Make sure Threads is connected first.",
-            )
-
-    # GET request – show configuration / setup instructions
-    return render_template(
-        'threads_configure.html',
-        token=token,
-        is_new=request.args.get('new') == '1',
-    )
-
-
-def _instagram_token_is_dead(token):
-    """True when an Instagram token is past its expiry, not merely close to it.
-
-    Instagram only refreshes a long-lived token that is still valid, so once
-    the expiry has passed the login can never post again until someone
-    reconnects it. A token inside the refresh window is still alive.
-    """
-    return token is None or instagram_is_token_expired(token['expires_at'], buffer_minutes=0)
-
-
-def _live_instagram_token():
-    """(account, token) for the first connected Instagram login that can post.
-
-    The default account comes first; the rest follow in the order the accounts
-    screen lists them. Returns (None, None) when every login has expired.
-    """
-    for account in list_social_accounts('instagram'):
-        token = get_instagram_token(account['id'])
-        if not _instagram_token_is_dead(token):
-            return account, token
-    return None, None
-
-
-def _promote_over_dead_instagram_default(account_id):
-    """Make a freshly connected login the default if the default can no longer post.
-
-    A new login normally joins as a second account and leaves the default where
-    it is. But an expired default would keep every post that does not name an
-    account aimed at a login that is guaranteed to fail, and the status card
-    would keep reporting the platform as disconnected, even though the user has
-    just connected a working account. Returns True when the default moved.
-    """
-    default = get_default_social_account('instagram')
-    if not default or default['id'] == account_id:
-        return False
-    if not _instagram_token_is_dead(get_instagram_token(default['id'])):
-        return False
-    return set_default_social_account(account_id)
-
-
-@app.route('/instagram/status')
-def instagram_status():
-    """Check Instagram connection status."""
-    client = get_instagram_client()
-    token = get_instagram_token()
-
-    if not client.is_configured():
-        return jsonify({
-            "connected": False,
-            "configured": False,
-            "message": "Instagram credentials not configured. Set INSTAGRAM_APP_ID and INSTAGRAM_APP_SECRET.",
-        })
-
-    if not token:
-        return jsonify({
-            "connected": False,
-            "configured": True,
-            "message": "Not connected to Instagram",
-        })
-
-    account_type = token['account_type'] if 'account_type' in token.keys() else None
-    warning = None
-    if account_type and account_type.upper() not in ('BUSINESS', 'MEDIA_CREATOR', 'CREATOR'):
-        warning = (
-            "Connected account is not a professional (Business/Creator) account. "
-            "Instagram content publishing requires one."
-        )
-
-    # Check if token is expired
-    if instagram_is_token_expired(token['expires_at']):
-        # Try to refresh the token
-        try:
-            new_token = client.refresh_access_token(token['access_token'])
-            expires_at = instagram_calculate_token_expiry(new_token.get('expires_in', 5184000))
-            update_instagram_token(
-                access_token=new_token['access_token'],
-                expires_at=expires_at,
-            )
-            return jsonify({
-                "connected": True,
-                "configured": True,
-                "username": token['username'],
-                "display_name": token['display_name'],
-                "profile_picture_url": token['profile_picture_url'],
-                "account_type": account_type,
-                "warning": warning,
-                "expires_at": expires_at,
-                "message": "Connected (token refreshed)",
-            })
-        except Exception as e:
-            app.logger.warning("Failed to refresh Instagram token: %s", e)
-            # The default login is dead, but another connected login may not
-            # be. Reporting the whole platform as disconnected in that case is
-            # what made a successful connect look like it had failed.
-            live_account, live_token = _live_instagram_token()
-            if live_token is not None:
-                live_type = live_token['account_type'] if 'account_type' in live_token.keys() else None
-                return jsonify({
-                    "connected": True,
-                    "configured": True,
-                    "username": live_token['username'],
-                    "display_name": live_token['display_name'],
-                    "profile_picture_url": live_token['profile_picture_url'],
-                    "account_type": live_type,
-                    "warning": (
-                        f"@{token['username']} (the default) has expired and needs "
-                        f"reconnecting; posts that do not name an account will fail "
-                        f"until it is reconnected or another account is made default."
-                    ),
-                    "user_id": live_token['user_id'],
-                    "expires_at": live_token['expires_at'],
-                    "default_expired": True,
-                    "accounts": _platform_accounts_json('instagram'),
-                })
-            return jsonify({
-                "connected": False,
-                "configured": True,
-                "message": "Token expired. Please reconnect.",
-                "accounts": _platform_accounts_json('instagram'),
-            })
-
-    return jsonify({
-        "connected": True,
-        "configured": True,
-        "username": token['username'],
-        "display_name": token['display_name'],
-        "profile_picture_url": token['profile_picture_url'],
-        "account_type": account_type,
-        "warning": warning,
-        "user_id": token['user_id'],
-        "expires_at": token['expires_at'],
-        "accounts": _platform_accounts_json('instagram'),
-    })
-
-
-@app.route('/instagram/auth')
-def instagram_auth():
-    """Start Instagram OAuth flow."""
-    client = get_instagram_client()
-
-    if not client.is_configured():
-        return jsonify({"error": "Instagram not configured"}), 400
-
-    auth_url, state = client.get_authorization_url()
-    session['instagram_oauth_state'] = state
-    _remember_oauth_return()
-
-    return redirect(auth_url)
-
-
-@app.route('/instagram/callback')
-def instagram_callback():
-    """Handle Instagram OAuth callback."""
-    error = request.args.get('error')
-    if error:
-        error_desc = request.args.get('error_description', 'Unknown error')
-        app.logger.error("Instagram OAuth error: %s - %s", error, error_desc)
-        return render_template(
-            'article_error.html',
-            error=f"Instagram authorization failed: {error_desc}",
-        )
-
-    code = request.args.get('code')
-    state = request.args.get('state')
-
-    # Verify state to prevent CSRF
-    stored_state = session.pop('instagram_oauth_state', None)
-    if not stored_state or stored_state != state:
-        app.logger.warning("Instagram OAuth state mismatch")
-        return render_template(
-            'article_error.html',
-            error="Security verification failed. Please try again.",
-        )
-
-    if not code:
-        return render_template(
-            'article_error.html',
-            error="No authorization code received from Instagram.",
-        )
-
-    client = get_instagram_client()
-
-    try:
-        # Step 1: Exchange code for short-lived token
-        token_data = client.exchange_code_for_token(code)
-        short_lived_token = token_data['access_token']
-        user_id = str(token_data.get('user_id', ''))
-
-        # Step 2: Exchange for long-lived token (60 days)
-        long_lived_data = client.get_long_lived_token(short_lived_token)
-        access_token = long_lived_data['access_token']
-        expires_in = long_lived_data.get('expires_in', 5184000)  # Default 60 days
-
-        # Calculate expiry
-        expires_at = instagram_calculate_token_expiry(expires_in)
-
-        # Get user profile
-        user_info = client.get_user_profile(access_token)
-
-        if user_info:
-            user_id = str(user_info.get('id', user_id))
-            ig_user_id = str(user_info.get('user_id', '') or '')
-            username = user_info.get('username', '')
-            display_name = user_info.get('name', '') or username
-            account_type = user_info.get('account_type', '')
-            remote_picture_url = user_info.get('profile_picture_url', '')
-        else:
-            ig_user_id = ''
-            username = ''
-            display_name = 'Instagram User'
-            account_type = ''
-            remote_picture_url = ''
-
-        # Download and store profile picture locally (CDN URLs expire)
-        profile_picture_url = ''
-        if remote_picture_url:
-            try:
-                img_resp = requests.get(remote_picture_url, timeout=15)
-                if img_resp.status_code == 200:
-                    pic_filename = f"instagram_profile_{user_id}.jpg"
-                    pic_path = os.path.join(app.static_folder, pic_filename)
-                    with open(pic_path, 'wb') as f:
-                        f.write(img_resp.content)
-                    profile_picture_url = url_for('static', filename=pic_filename)
-                    app.logger.info("Saved Instagram profile picture to %s", pic_path)
-                else:
-                    app.logger.warning("Failed to download Instagram profile picture: %s", img_resp.status_code)
-            except Exception as pic_err:
-                app.logger.warning("Could not save Instagram profile picture: %s", pic_err)
-
-        # Save token
-        save_instagram_token(
-            new_login=_oauth_new_login(),
-            access_token=access_token,
-            expires_at=expires_at,
-            user_id=user_id,
-            username=username,
-            ig_user_id=ig_user_id or None,
-            display_name=display_name,
-            profile_picture_url=profile_picture_url,
-            account_type=account_type or None,
-        )
-
-        app.logger.info("Instagram connected for user: @%s (%s)", username, account_type or 'unknown type')
-
-        connected = find_social_account('instagram', ig_user_id or user_id)
-        if connected and _promote_over_dead_instagram_default(connected['id']):
-            app.logger.info("@%s is now the Instagram default (the previous default had expired)", username)
-
-        # Redirect to schedule page with success message
-        return _oauth_return_redirect(url_for('schedule_list') + '?instagram=connected')
-
-    except Exception as e:
-        app.logger.exception("Instagram OAuth exchange failed")
-        return render_template(
-            'article_error.html',
-            error=f"Failed to connect to Instagram: {str(e)}",
-        )
-
-
-@app.route('/instagram/disconnect', methods=['POST'])
-def instagram_disconnect():
-    """Disconnect one Instagram account, or the platform when none is named."""
-    return _disconnect_platform('instagram')
-
-
-@app.route('/instagram/configure', methods=['GET', 'POST'])
-def instagram_configure():
-    """Configure Instagram user info manually or view setup instructions."""
-    account_id = request.args.get('account_id', type=int)
-    token = get_instagram_token(account_id)
-
-    if request.method == 'POST':
-        if not token:
-            return redirect(url_for('schedule_list') + '?error=instagram_not_connected')
-
-        user_id = request.form.get('user_id', '').strip()
-        username = request.form.get('username', '').strip()
-        display_name = request.form.get('display_name', '').strip() or 'Instagram User'
-        ig_user_id = request.form.get('ig_user_id', '').strip()
-
-        if not user_id:
-            return render_template(
-                'instagram_configure.html',
-                token=token,
-                error="User ID is required",
-            )
-
-        if identity_in_use('instagram', ig_user_id or user_id, account_id=account_id):
-            return render_template(
-                'instagram_configure.html',
-                token=token,
-                error="That Instagram account is already connected.",
-            )
-
-        success = update_instagram_user_info(
-            user_id=user_id,
-            username=username or None,
-            display_name=display_name,
-            ig_user_id=ig_user_id or None,
-            account_id=account_id,
-        )
-
-        if success:
-            app.logger.info("Instagram user info configured manually: %s (@%s)", user_id, username)
-            return redirect(url_for('schedule_list') + '?instagram=configured')
-        else:
-            return render_template(
-                'instagram_configure.html',
-                token=token,
-                error="Failed to save configuration. Make sure Instagram is connected first.",
-            )
-
-    # GET request – show configuration / setup instructions
-    return render_template(
-        'instagram_configure.html',
-        token=token,
-        is_new=request.args.get('new') == '1',
-    )
-
-
-@app.route('/threads/post/<int:post_id>', methods=['POST'])
-def threads_post_social(post_id: int):
-    """Post a social media post to Threads immediately."""
-    return _publish_social_post(post_id, 'threads')
-
-
-# ============================================================================
-# Facebook Integration Routes
-# ============================================================================
-
-
-@app.route('/facebook/status')
-def facebook_status():
-    """Check Facebook connection status."""
-    client = get_facebook_client()
-    token = get_facebook_token()
-
-    if not client.is_configured():
-        return jsonify({
-            "connected": False,
-            "configured": False,
-            "message": "Facebook credentials not configured. Set FACEBOOK_APP_ID and FACEBOOK_APP_SECRET.",
-        })
-
-    if not token:
-        return jsonify({
-            "connected": False,
-            "configured": True,
-            "message": "Not connected to Facebook",
-        })
-
-    if facebook_is_token_expired(token['expires_at']):
-        try:
-            new_token = client.refresh_access_token(token['access_token'])
-            expires_at = facebook_calculate_token_expiry(new_token.get('expires_in', 5184000))
-            update_facebook_token(
-                access_token=new_token['access_token'],
-                expires_at=expires_at,
-            )
-            token = get_facebook_token()
-        except Exception as e:
-            app.logger.warning("Failed to refresh Facebook token: %s", e)
-            return jsonify({
-                "connected": False,
-                "configured": True,
-                "message": "Token expired. Please reconnect.",
-            })
-
-    return jsonify({
-        "connected": True,
-        "configured": True,
-        "user_name": token['user_name'],
-        "user_id": token['user_id'],
-        "page_name": token['page_name'],
-        "page_id": token['page_id'],
-        "expires_at": token['expires_at'],
-        "accounts": _platform_accounts_json('facebook'),
-    })
-
-
-@app.route('/facebook/auth')
-def facebook_auth():
-    """Start Facebook OAuth flow."""
-    client = get_facebook_client()
-
-    if not client.is_configured():
-        return jsonify({"error": "Facebook not configured"}), 400
-
-    auth_url, state = client.get_authorization_url()
-    session['facebook_oauth_state'] = state
-    _remember_oauth_return()
-
-    return redirect(auth_url)
-
-
-@app.route('/facebook/callback')
-def facebook_callback():
-    """Handle Facebook OAuth callback."""
-    error = request.args.get('error')
-    if error:
-        error_desc = request.args.get('error_description', 'Unknown error')
-        app.logger.error("Facebook OAuth error: %s - %s", error, error_desc)
-        return render_template(
-            'article_error.html',
-            error=f"Facebook authorization failed: {error_desc}",
-        )
-
-    code = request.args.get('code')
-    state = request.args.get('state')
-
-    stored_state = session.pop('facebook_oauth_state', None)
-    if not stored_state or stored_state != state:
-        app.logger.warning("Facebook OAuth state mismatch")
-        return render_template(
-            'article_error.html',
-            error="Security verification failed. Please try again.",
-        )
-
-    if not code:
-        return render_template(
-            'article_error.html',
-            error="No authorization code received from Facebook.",
-        )
-
-    client = get_facebook_client()
-
-    try:
-        token_data = client.exchange_code_for_token(code)
-        short_lived_token = token_data['access_token']
-
-        long_lived_data = client.get_long_lived_token(short_lived_token)
-        access_token = long_lived_data['access_token']
-        expires_in = long_lived_data.get('expires_in', 5184000)
-
-        expires_at = facebook_calculate_token_expiry(expires_in)
-
-        user_info = client.get_user_profile(access_token)
-        user_id = user_info.get('id', '') if user_info else ''
-        user_name = user_info.get('name', 'Facebook User') if user_info else 'Facebook User'
-
-        pages = client.get_user_pages(access_token)
-        page_id = pages[0]['id'] if pages else None
-        page_name = pages[0]['name'] if pages else None
-        page_access_token = pages[0]['access_token'] if pages else None
-
-        groups = client.get_user_groups(access_token)
-        group_ids = ','.join(g['id'] for g in groups) if groups else None
-
-        token_row = save_facebook_token(
-            new_login=_oauth_new_login(),
-            access_token=access_token,
-            expires_at=expires_at,
-            user_id=user_id,
-            user_name=user_name,
-            page_id=page_id,
-            page_name=page_name,
-            page_access_token=page_access_token,
-            group_ids=group_ids,
-        )
-
-        app.logger.info("Facebook connected for user: %s", user_name)
-
-        if pages and len(pages) > 1:
-            return redirect(url_for(
-                'facebook_configure', new=1,
-                account_id=account_id_for_token('facebook', token_row),
-            ))
-
-        return _oauth_return_redirect(url_for('schedule_list') + '?facebook=connected')
-
-    except Exception as e:
-        app.logger.exception("Facebook OAuth exchange failed")
-        return render_template(
-            'article_error.html',
-            error=f"Failed to connect to Facebook: {str(e)}",
-        )
-
-
-@app.route('/facebook/disconnect', methods=['POST'])
-def facebook_disconnect():
-    """Disconnect one Facebook account, or the platform when none is named."""
-    return _disconnect_platform('facebook')
-
-
-@app.route('/facebook/configure', methods=['GET', 'POST'])
-def facebook_configure():
-    """Configure which Facebook Page/Group to post to."""
-    # Each Facebook login publishes as one Page, so picking a Page configures a
-    # single account rather than the platform.
-    account_id = request.args.get('account_id', type=int)
-    token = get_facebook_token(account_id)
-    error = None
-
-    if request.method == 'POST':
-        if not token:
-            return redirect(url_for('schedule_list') + '?error=facebook_not_connected')
-
-        page_id = request.form.get('page_id', '').strip()
-        group_ids = request.form.get('group_ids', '').strip()
-
-        if page_id and identity_in_use('facebook', page_id, account_id=account_id):
-            # Two accounts on one Page would publish the same post twice.
-            error = "That Page is already connected as another Facebook account."
-        else:
-            if page_id:
-                client = get_facebook_client()
-                pages = client.get_user_pages(token['access_token'])
-                selected = next((p for p in pages if p['id'] == page_id), None)
-                if selected:
-                    update_facebook_page_selection(
-                        page_id=selected['id'],
-                        page_name=selected['name'],
-                        page_access_token=selected['access_token'],
-                        account_id=account_id,
-                    )
-
-            if group_ids is not None:
-                update_facebook_group_ids(group_ids, account_id=account_id)
-
-            app.logger.info("Facebook page/group selection updated")
-            return redirect(url_for('schedule_list') + '?facebook=configured')
-
-    pages = []
-    groups = []
-    if token:
-        client = get_facebook_client()
-        pages = client.get_user_pages(token['access_token'])
-        groups = client.get_user_groups(token['access_token'])
-
-    return render_template(
-        'facebook_configure.html',
-        token=token,
-        pages=pages,
-        groups=groups,
-        error=error,
-        is_new=request.args.get('new') == '1',
-    )
-
-
-@app.route('/facebook/post/<int:post_id>', methods=['POST'])
-def facebook_post_social(post_id: int):
-    """Post a social media post to Facebook immediately."""
-    return _publish_social_post(post_id, 'facebook')
-
-
-@app.route('/compose/post/<int:post_id>/facebook', methods=['POST'])
-def compose_post_to_facebook(post_id: int):
-    """Post a standalone post to Facebook immediately."""
-    return _compose_publish_one(post_id, 'facebook')
-
-
-# ============================================================================
-# Twitter/X Integration Routes
-# ============================================================================
-
-
-@app.route('/twitter/status')
-def twitter_status():
-    """Check Twitter/X connection status."""
-    client = get_twitter_client()
-    token = get_twitter_token()
-
-    if not client.is_configured():
-        return jsonify({
-            "connected": False,
-            "configured": False,
-            "message": "Twitter credentials not configured. Set TWITTER_CLIENT_ID and TWITTER_CLIENT_SECRET.",
-        })
-
-    if not token:
-        return jsonify({
-            "connected": False,
-            "configured": True,
-            "message": "Not connected to X/Twitter",
-        })
-
-    if twitter_is_token_expired(token['expires_at']):
-        if token['refresh_token']:
-            try:
-                new_token = client.refresh_access_token(token['refresh_token'])
-                expires_at = twitter_calculate_token_expiry(new_token.get('expires_in', 7200))
-                update_twitter_token(
-                    access_token=new_token['access_token'],
-                    expires_at=expires_at,
-                    refresh_token=new_token.get('refresh_token'),
-                )
-                return jsonify({
-                    "connected": True,
-                    "configured": True,
-                    "username": token['username'],
-                    "display_name": token['display_name'],
-                    "user_id": token['user_id'],
-                    "expires_at": expires_at,
-                    "message": "Connected (token refreshed)",
-                })
-            except Exception as e:
-                app.logger.warning("Failed to refresh Twitter token: %s", e)
-                return jsonify({
-                    "connected": False,
-                    "configured": True,
-                    "message": "Token expired. Please reconnect.",
-                })
-        else:
-            return jsonify({
-                "connected": False,
-                "configured": True,
-                "message": "Token expired and no refresh token. Please reconnect.",
-            })
-
-    return jsonify({
-        "connected": True,
-        "configured": True,
-        "username": token['username'],
-        "display_name": token['display_name'],
-        "user_id": token['user_id'],
-        "expires_at": token['expires_at'],
-        "accounts": _platform_accounts_json('twitter'),
-    })
-
-
-@app.route('/twitter/auth')
-def twitter_auth():
-    """Start Twitter OAuth 2.0 PKCE flow."""
-    client = get_twitter_client()
-
-    if not client.is_configured():
-        return jsonify({"error": "Twitter not configured"}), 400
-
-    auth_url, state, code_verifier = client.get_authorization_url()
-    session['twitter_oauth_state'] = state
-    _remember_oauth_return()
-    session['twitter_code_verifier'] = code_verifier
-
-    return redirect(auth_url)
-
-
-@app.route('/twitter/callback')
-def twitter_callback():
-    """Handle Twitter OAuth 2.0 callback."""
-    error = request.args.get('error')
-    if error:
-        error_desc = request.args.get('error_description', 'Unknown error')
-        app.logger.error("Twitter OAuth error: %s - %s", error, error_desc)
-        return render_template(
-            'article_error.html',
-            error=f"Twitter authorization failed: {error_desc}",
-        )
-
-    code = request.args.get('code')
-    state = request.args.get('state')
-
-    stored_state = session.pop('twitter_oauth_state', None)
-    code_verifier = session.pop('twitter_code_verifier', None)
-
-    if not stored_state or stored_state != state:
-        app.logger.warning("Twitter OAuth state mismatch")
-        return render_template(
-            'article_error.html',
-            error="Security verification failed. Please try again.",
-        )
-
-    if not code or not code_verifier:
-        return render_template(
-            'article_error.html',
-            error="No authorization code or PKCE verifier. Please try again.",
-        )
-
-    client = get_twitter_client()
-
-    try:
-        token_data = client.exchange_code_for_token(code, code_verifier)
-        access_token = token_data['access_token']
-        refresh_token = token_data.get('refresh_token', '')
-        expires_in = token_data.get('expires_in', 7200)
-
-        expires_at = twitter_calculate_token_expiry(expires_in)
-
-        user_info = client.get_user_info(access_token)
-
-        if user_info:
-            user_id = user_info.get('id', '')
-            username = user_info.get('username', '')
-            display_name = user_info.get('name', username or 'X User')
-        else:
-            user_id = ''
-            username = ''
-            display_name = 'X User'
-
-        save_twitter_token(
-            new_login=_oauth_new_login(),
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_at=expires_at,
-            user_id=user_id,
-            username=username,
-            display_name=display_name,
-        )
-
-        app.logger.info("Twitter connected for user: @%s", username)
-
-        return _oauth_return_redirect(url_for('view_articles') + '?twitter=connected')
-
-    except Exception as e:
-        app.logger.exception("Twitter OAuth exchange failed")
-        return render_template(
-            'article_error.html',
-            error=f"Failed to connect to X/Twitter: {str(e)}",
-        )
-
-
-@app.route('/twitter/disconnect', methods=['POST'])
-def twitter_disconnect():
-    """Disconnect one X/Twitter account, or the platform when none is named."""
-    return _disconnect_platform('twitter')
-
-
-@app.route('/twitter/post/<int:post_id>', methods=['POST'])
-def twitter_post_social(post_id: int):
-    """Post a social media post to X/Twitter immediately."""
-    return _publish_social_post(post_id, 'twitter')
-
-
-@app.route('/compose/post/<int:post_id>/twitter', methods=['POST'])
-def compose_post_to_twitter(post_id: int):
-    """Post a standalone post to X/Twitter immediately."""
-    return _compose_publish_one(post_id, 'twitter')
-
-
-# ============================================================================
-# Scheduled Posts Routes
-# ============================================================================
-
-
-@app.route('/schedule/add', methods=['POST'])
-def schedule_add():
-    """Add a post to the schedule queue."""
-    post_type = request.form.get('post_type')  # 'social' or 'article'
-    scheduled_for = request.form.get('scheduled_for')  # ISO datetime (optional if using queue)
-    social_post_id = request.form.get('social_post_id', type=int)
-    article_id = request.form.get('article_id', type=int)
-    use_queue = request.form.get('use_queue') == '1'  # Auto-schedule to next available slot
-    platform = request.form.get('platform', 'linkedin')  # Platform: 'linkedin' or 'threads'
-
-    if platform in DRAFT_ONLY_PLATFORMS:
-        return jsonify({
-            "error": f"{platform} is draft-only: copy the post and publish it manually."
-        }), 400
-    
-    # If using queue, get the next available time slot for this platform
-    if use_queue or not scheduled_for:
-        scheduled_for = get_next_available_slot(platform=platform)
-        if not scheduled_for:
-            return jsonify({
-                "error": f"No time slots available for {platform}. Please add posting times in the Schedule settings."
-            }), 400
-    
-    if post_type == 'social' and not social_post_id:
-        return jsonify({"error": "Social post ID is required"}), 400
-    
-    if post_type == 'article' and not article_id:
-        return jsonify({"error": "Article ID is required"}), 400
-    
-    # Verify the post/article exists
-    if social_post_id:
-        post = get_social_post(social_post_id)
-        if not post:
-            return jsonify({"error": "Social post not found"}), 404
-    
-    if article_id:
-        article = get_article(article_id)
-        if not article:
-            return jsonify({"error": "Article not found"}), 404
-    
-    try:
-        scheduled_id = add_scheduled_post(
-            scheduled_for=scheduled_for,
-            post_type=post_type,
-            social_post_id=social_post_id,
-            article_id=article_id,
-            platform=platform,
-        )
-        
-        # Format the display time
-        scheduled_for_display = scheduled_for
-        try:
-            dt = datetime.fromisoformat(scheduled_for)
-            scheduled_for_display = dt.strftime('%A, %B %d at %I:%M %p')
-        except (ValueError, TypeError):
-            pass
-        
-        return jsonify({
-            "success": True,
-            "scheduled_id": scheduled_id,
-            "scheduled_for": scheduled_for,
-            "scheduled_for_display": scheduled_for_display,
-            "message": f"Post scheduled for {scheduled_for_display}",
-        })
-        
-    except Exception as e:
-        app.logger.exception("Failed to schedule post")
-        return jsonify({"error": str(e)}), 500
-
-
-def _scheduled_entry_view(row):
-    """One queue entry as the schedule page shows it."""
-    entry = dict(row)
-    if entry.get('scheduled_for'):
-        try:
-            dt = datetime.fromisoformat(entry['scheduled_for'])
-            entry['scheduled_for_display'] = dt.strftime('%Y-%m-%d %H:%M')
-        except (ValueError, TypeError):
-            entry['scheduled_for_display'] = entry['scheduled_for']
-    content = entry.get('social_content') or entry.get('standalone_content') or ''
-    entry['content_preview'] = content[:100] + ('...' if len(content) > 100 else '')
-    # Only pending entries can be dragged to a new place in the queue.
-    entry['is_draggable'] = entry.get('status') == 'pending'
-    # Collaborators and Reel tags live on the saved post and are read from it when
-    # the entry publishes; the queue shows what will go out. Reel tags only count
-    # when the post goes out as a Reel.
-    if entry.get('platform') == 'instagram':
-        entry['ig_collaborators'] = _json_list_column(entry, 'standalone_ig_collaborators')
-        reel = _ig_effective_format(
-            entry.get('standalone_ig_post_type'), entry.get('standalone_video_url')) == 'reel'
-        entry['ig_tags'] = _json_list_column(entry, 'standalone_ig_reel_tags') if reel else []
-    else:
-        entry['ig_collaborators'] = []
-        entry['ig_tags'] = []
-    return entry
-
-
-# What the page needs to know about each platform an entry goes to. The entry
-# itself carries the copy; this is the part that differs between platforms.
-_QUEUE_MEMBER_FIELDS = (
-    'id', 'platform', 'account_id', 'status', 'scheduled_for',
-    'scheduled_for_display', 'posted_at', 'linkedin_post_urn', 'error_message',
-)
-
-
-def _scheduled_queue_groups(rows):
-    """Queue entries grouped the way the schedule page shows them.
-
-    The queue holds one entry per platform and account, so one post sent to
-    three places is three entries. The page shows it as one row: the group
-    keeps the first entry's fields (so a lone entry looks exactly as it always
-    did) and adds ``ids`` and ``members`` for the rest. Every action on a
-    multi-platform row is sent to each id in ``ids``.
-
-    ``source_ids`` are the saved posts behind the entries (the copy that
-    Edit Content rewrites) and ``source_type`` says which kind they are.
-    """
-    accounts = {}
-
-    def account_label(entry):
-        account_id = entry.get('account_id')
-        if not account_id:
-            return None
-        if account_id not in accounts:
-            account = get_social_account(account_id)
-            accounts[account_id] = (
-                social_publisher.account_label(account, entry.get('platform')) if account else None
-            )
-        return accounts[account_id]
-
-    groups = []
-    for members in group_scheduled_rows(rows):
-        entries = [_scheduled_entry_view(row) for row in members]
-        group = dict(entries[0])
-        platforms = [entry.get('platform') for entry in entries]
-        slim = []
-        for entry in entries:
-            member = {key: entry.get(key) for key in _QUEUE_MEMBER_FIELDS}
-            member['platform_name'] = social_publisher.platform_name(entry.get('platform'))
-            member['account_label'] = account_label(entry)
-            # Two accounts on one platform need telling apart; otherwise the
-            # platform's own name is all the badge needs.
-            member['badge_label'] = (
-                member['account_label'] if platforms.count(entry.get('platform')) > 1 else None
-            )
-            slim.append(member)
-        group['ids'] = [entry['id'] for entry in entries]
-        group['members'] = slim
-        group['platforms'] = platforms
-        # The row stands for every platform it goes to, so it shows the people
-        # on any of its Instagram entries (the group copies the first entry's
-        # fields, which may be another platform's).
-        for field in ('ig_collaborators', 'ig_tags'):
-            group[field] = list(dict.fromkeys(
-                handle for entry in entries for handle in entry.get(field, [])))
-        group['source_type'] = (
-            'social' if group.get('social_post_id')
-            else 'standalone' if group.get('standalone_post_id') else None
-        )
-        group['source_ids'] = [
-            entry.get('social_post_id') or entry.get('standalone_post_id')
-            for entry in entries
-            if entry.get('social_post_id') or entry.get('standalone_post_id')
-        ]
-        groups.append(group)
-    return groups
-
-
-def _scheduled_queue_filters():
-    """The status, platform, date and sort filters of the queue, from the query string."""
-    sort_order = request.args.get('sort', 'asc')
-    return {
-        'status': request.args.get('status', 'pending'),
-        'platform': request.args.get('platform', ''),
-        'date_from': request.args.get('date_from', '').strip(),
-        'date_to': request.args.get('date_to', '').strip(),
-        'sort_order': sort_order if sort_order in ('asc', 'desc') else 'asc',
-    }
-
-
-def _list_scheduled_rows(filters):
-    return list_scheduled_posts(
-        status=filters['status'] if filters['status'] else None,
-        platform=filters['platform'] if filters['platform'] else None,
-        date_from=filters['date_from'] if filters['date_from'] else None,
-        date_to=filters['date_to'] if filters['date_to'] else None,
-        sort_order=filters['sort_order'],
-    )
-
-
-@app.route('/schedule')
-def schedule_list():
-    """View all scheduled posts."""
-    filters = _scheduled_queue_filters()
-    status_filter = filters['status']
-    platform_filter = filters['platform']
-    date_from = filters['date_from']
-    date_to = filters['date_to']
-    sort_order = filters['sort_order']
-
-    # Initialize default time slots if none exist
-    initialize_default_time_slots()
-
-    posts = _list_scheduled_rows(filters)
-    groups = _scheduled_queue_groups(posts)
-    
-    # Check LinkedIn connection status
-    token = get_linkedin_token()
-    linkedin_connected = token is not None and not is_token_expired(token['expires_at']) if token else False
-    
-    # Check Threads connection status
-    threads_token = get_threads_token()
-    threads_connected = threads_token is not None and not threads_is_token_expired(threads_token['expires_at']) if threads_token else False
-    
-    # Get configured time slots
-    time_slots = list_time_slots()
-    time_slots_list = []
-    day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    for slot in time_slots:
-        slot_dict = dict(slot)
-        if slot_dict['day_of_week'] == -1:
-            slot_dict['day_display'] = 'Every day'
-        else:
-            slot_dict['day_display'] = day_names[slot_dict['day_of_week']]
-        time_slots_list.append(slot_dict)
-    
-    # Get daily posting limits
-    daily_limits = get_all_daily_limits()
-
-    # Get Threads username for constructing view URLs (kept for backward compatibility)
-    threads_username = threads_token['username'] if threads_token and 'username' in threads_token.keys() else None
-
-    # Count entries by platform: the badges count what will be published, so a
-    # post going to two platforms counts once on each.
-    linkedin_count = sum(1 for p in posts if p['platform'] == 'linkedin')
-    threads_count = sum(1 for p in posts if p['platform'] == 'threads')
-    facebook_count = sum(1 for p in posts if p['platform'] == 'facebook')
-
-    return render_template(
-        'schedule.html',
-        queue_groups=groups,
-        entry_count=len(posts),
-        status_filter=status_filter,
-        platform_filter=platform_filter,
-        date_from=date_from,
-        date_to=date_to,
-        sort_order=sort_order,
-        linkedin_connected=linkedin_connected,
-        threads_connected=threads_connected,
-        time_slots=time_slots_list,
-        daily_limits=daily_limits,
-        threads_username=threads_username,
-        linkedin_count=linkedin_count,
-        threads_count=threads_count,
-        facebook_count=facebook_count,
-    )
-
-
-@app.route('/schedule/list-json')
-def schedule_list_json():
-    """Return the queue as JSON for AJAX refresh.
-
-    ``groups`` is what the page draws: one item per post, however many
-    platforms it goes to (see _scheduled_queue_groups). ``total_count`` counts
-    those posts; ``entry_count`` counts the per-platform entries behind them.
-    ``posts`` is the same queue as one flat entry per platform, as this feed
-    always returned it, for anything that reads entries rather than rows.
-    """
-    filters = _scheduled_queue_filters()
-    # The page defaults to pending; a refresh asks for exactly what is selected,
-    # so an empty status here means "all statuses".
-    filters['status'] = request.args.get('status', '')
-
-    posts = _list_scheduled_rows(filters)
-    groups = _scheduled_queue_groups(posts)
-
-    linkedin_count = sum(1 for p in posts if p['platform'] == 'linkedin')
-    threads_count = sum(1 for p in posts if p['platform'] == 'threads')
-    facebook_count = sum(1 for p in posts if p['platform'] == 'facebook')
-
-    return jsonify({
-        "success": True,
-        "groups": groups,
-        "posts": [_scheduled_entry_view(row) for row in posts],
-        "linkedin_count": linkedin_count,
-        "threads_count": threads_count,
-        "facebook_count": facebook_count,
-        "total_count": len(groups),
-        "entry_count": len(posts),
-    })
-
-
-@app.route('/schedule/<int:scheduled_id>/cancel', methods=['POST'])
-def schedule_cancel(scheduled_id: int):
-    """Cancel a scheduled post."""
-    success = cancel_scheduled_post(scheduled_id)
-    
-    if success:
-        return jsonify({"success": True, "message": "Post cancelled"})
-    else:
-        return jsonify({"error": "Could not cancel post (may already be posted or cancelled)"}), 400
-
-
-@app.route('/schedule/remove-from-queue', methods=['POST'])
-def schedule_remove_from_queue():
-    """Remove a post from queue by its source post ID (social or standalone) and platform."""
-    from database import cancel_scheduled_post_by_source
-    
-    post_type = request.form.get('post_type', '')  # 'social' or 'standalone'
-    post_id = request.form.get('post_id', type=int)
-    platform = request.form.get('platform', 'linkedin')
-    
-    if not post_type or not post_id:
-        return jsonify({"error": "post_type and post_id are required"}), 400
-    
-    if post_type not in ['social', 'standalone']:
-        return jsonify({"error": "Invalid post_type"}), 400
-    
-    success = cancel_scheduled_post_by_source(post_type, post_id, platform)
-    
-    if success:
-        return jsonify({"success": True, "message": f"Removed from {platform} queue"})
-    else:
-        return jsonify({"error": "Post not found in queue"}), 400
-
-
-@app.route('/schedule/<int:scheduled_id>/delete', methods=['POST'])
-def schedule_delete(scheduled_id: int):
-    """Delete a scheduled post."""
-    delete_scheduled_post(scheduled_id)
-    return jsonify({"success": True, "message": "Post deleted"})
-
-
-def _scheduled_post_content(post):
-    """The copy, image and video a queue entry will publish.
-
-    Returns ``(content, image_url, video_url, error)``; on failure the first
-    three are None. Only a saved Compose post can carry a video.
-    """
-    if post['post_type'] == 'social' and post['social_content']:
-        image = post['social_image_url'] if 'social_image_url' in post.keys() else None
-        return post['social_content'], image, None, None
-    if post['post_type'] == 'standalone' and post['standalone_content']:
-        image = post['standalone_image_url'] if 'standalone_image_url' in post.keys() else None
-        video = post['standalone_video_url'] if 'standalone_video_url' in post.keys() else None
-        return post['standalone_content'], image, video, None
-    if post['post_type'] == 'article' and post['article_content']:
-        return f"{post['article_topic']}\n\n{post['article_content'][:2800]}", None, None, None
-    return None, None, None, 'No content found'
-
-
-def _publish_scheduled_entry(post):
-    """Publish one queue entry as the account it names, and record the outcome.
-
-    The entry carries its own account, so two accounts on the same platform sit
-    in the queue independently: each publishes with its own token and each
-    fails, retries and redistributes on its own.
-    """
-    platform = post['platform'] if 'platform' in post.keys() else 'linkedin'
-    account_id = post['account_id'] if 'account_id' in post.keys() else None
-    content, image_url, video_url, error = _scheduled_post_content(post)
-    if error:
-        return {"success": False, "platform": platform, "platform_name": platform_name(platform),
-                "account_id": account_id, "account_label": platform_name(platform),
-                "permalink": None, "error": error, "needs_reconnect": False}
-
-    result = social_publisher.publish(
-        platform,
-        account_id,
-        content=content,
-        image_url=image_url,
-        video_url=video_url,
-        standalone_post_id=post['standalone_post_id'],
-        social_post_id=post['social_post_id'],
-        # An article's topic becomes the link-preview title on LinkedIn.
-        article_title=post['article_topic'] if 'article_topic' in post.keys() else None,
-    )
-
-    if result['success']:
-        update_scheduled_post_status(
-            post['id'], status='posted', linkedin_post_urn=result['permalink'],
-        )
-        if post['social_post_id']:
-            mark_social_post_used(post['social_post_id'], True)
-        if post['standalone_post_id']:
-            mark_standalone_post_used(post['standalone_post_id'], True)
-        # Posting ahead of the slot leaves a gap; pull the rest of this
-        # platform's queue forward so the cadence stays even.
-        try:
-            if datetime.now() < datetime.fromisoformat(post['scheduled_for']):
-                redistribute_scheduled_posts(platform)
-        except (ValueError, TypeError):
-            pass
-    return result
-
-
-@app.route('/schedule/<int:scheduled_id>/post-now', methods=['POST'])
-def schedule_post_now(scheduled_id: int):
-    """Immediately post a pending scheduled post."""
-    post = get_scheduled_post(scheduled_id)
-
-    if not post:
-        return jsonify({"error": "Post not found"}), 404
-
-    if post['status'] != 'pending':
-        return jsonify({"error": "Only pending posts can be posted immediately"}), 400
-
-    try:
-        result = _publish_scheduled_entry(post)
-    except Exception as e:  # noqa: BLE001
-        app.logger.exception("Error posting now for post %d", scheduled_id)
-        return jsonify({"error": str(e)}), 500
-
-    if result['success']:
-        return jsonify({
-            "success": True,
-            "message": f"Posted to {result['account_label']}!",
-            "permalink": result['permalink'],
-        })
-    return jsonify({"error": f"Failed: {result['error']}"}), 400
-
-
-@app.route('/schedule/<int:scheduled_id>/retry', methods=['POST'])
-def schedule_retry(scheduled_id: int):
-    """Retry a failed scheduled post."""
-    post = get_scheduled_post(scheduled_id)
-
-    if not post:
-        return jsonify({"error": "Post not found"}), 404
-
-    if post['status'] != 'failed':
-        return jsonify({"error": "Only failed posts can be retried"}), 400
-
-    try:
-        result = _publish_scheduled_entry(post)
-    except Exception as e:  # noqa: BLE001
-        app.logger.exception("Error retrying post %d", scheduled_id)
-        return jsonify({"error": str(e)}), 500
-
-    if result['success']:
-        return jsonify({
-            "success": True,
-            "message": f"Posted to {result['account_label']}!",
-            "permalink": result['permalink'],
-        })
-    # A retry that fails again stays failed, with the newest reason recorded so
-    # the schedule page shows why rather than the reason from the first attempt.
-    update_scheduled_post_status(
-        scheduled_id, status='failed', error_message=result['error'],
-    )
-    return jsonify({"error": f"Failed: {result['error']}"}), 400
-
-
-
-@app.route('/schedule/clear-queue', methods=['POST'])
-def schedule_clear_queue():
-    """Clear all pending scheduled posts."""
-    count = clear_pending_scheduled_posts()
-    return jsonify({
-        "success": True, 
-        "message": f"Cleared {count} pending post{'s' if count != 1 else ''} from queue"
-    })
-
-
-@app.route('/schedule/delete-selected', methods=['POST'])
-def schedule_delete_selected():
-    """Delete multiple selected scheduled posts."""
-    data = request.get_json()
-    post_ids = data.get('post_ids', []) if data else []
-    
-    if not post_ids:
-        return jsonify({"error": "No posts selected"}), 400
-    
-    # Ensure all IDs are integers
-    try:
-        post_ids = [int(pid) for pid in post_ids]
-    except (ValueError, TypeError):
-        return jsonify({"error": "Invalid post IDs"}), 400
-    
-    count = delete_scheduled_posts_bulk(post_ids)
-    return jsonify({
-        "success": True,
-        "message": f"Deleted {count} post{'s' if count != 1 else ''}"
-    })
-
-
-@app.route('/schedule/reorder', methods=['POST'])
-def schedule_reorder():
-    """Reorder pending scheduled posts by swapping their scheduled times."""
-    from database import reorder_scheduled_posts
-    
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
-    
-    post_ids = data.get('post_ids', [])
-    
-    if not post_ids or len(post_ids) < 2:
-        return jsonify({"error": "At least 2 post IDs required"}), 400
-    
-    try:
-        post_ids = [int(pid) for pid in post_ids]
-    except (ValueError, TypeError):
-        return jsonify({"error": "Invalid post IDs"}), 400
-    
-    success = reorder_scheduled_posts(post_ids)
-    
-    if success:
-        return jsonify({
-            "success": True,
-            "message": f"Reordered {len(post_ids)} posts"
-        })
-    else:
-        return jsonify({"error": "Failed to reorder posts"}), 500
-
-
-@app.route('/schedule/move-position', methods=['POST'])
-def schedule_move_position():
-    """Move selected pending posts to the top or bottom of the queue."""
-    from database import move_posts_to_position
-    
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
-    
-    post_ids = data.get('post_ids', [])
-    position = data.get('position', '')
-    
-    if not post_ids:
-        return jsonify({"error": "No post IDs provided"}), 400
-    
-    if position not in ('top', 'bottom'):
-        return jsonify({"error": "Position must be 'top' or 'bottom'"}), 400
-    
-    try:
-        post_ids = [int(pid) for pid in post_ids]
-    except (ValueError, TypeError):
-        return jsonify({"error": "Invalid post IDs"}), 400
-    
-    success = move_posts_to_position(post_ids, position)
-    
-    if success:
-        return jsonify({
-            "success": True,
-            "message": f"Moved {len(post_ids)} post(s) to {position}"
-        })
-    else:
-        return jsonify({"error": "Failed to move posts"}), 500
-
-
-@app.route('/schedule/<int:scheduled_id>/edit', methods=['POST'])
-def schedule_edit(scheduled_id: int):
-    """Edit the scheduled time for a pending post."""
-    scheduled_for = request.form.get('scheduled_for', '').strip()
-    
-    if not scheduled_for:
-        return jsonify({"error": "Scheduled time is required"}), 400
-    
-    # Validate datetime format
-    try:
-        dt = datetime.fromisoformat(scheduled_for.replace('Z', '+00:00'))
-        # Ensure it's in the future (use local time for comparison since form uses local time)
-        # Allow a small buffer (1 minute) to avoid edge cases
-        if dt <= datetime.now() - timedelta(minutes=1):
-            return jsonify({"error": "Scheduled time must be in the future"}), 400
-        # Normalize to ISO format
-        scheduled_for = dt.isoformat(timespec="seconds")
-    except (ValueError, TypeError):
-        return jsonify({"error": "Invalid datetime format"}), 400
-    
-    # A row that stands for one post on several platforms sends its ids, so the
-    # copies move together instead of splitting into two rows. Only ids that
-    # really are in this entry's group count: the browser's list can be stale,
-    # and a time change must not reach an unrelated post.
-    ids = [scheduled_id]
-    requested = _requested_post_ids(scheduled_id, field='ids')
-    if requested:
-        in_group = set(get_scheduled_group_ids(scheduled_id))
-        ids += [i for i in requested if i != scheduled_id and i in in_group]
-
-    # Every id is tried; the edit succeeds when the one the request is about
-    # was still pending. A copy that already went out stays where it is.
-    updated = [update_scheduled_post_time(i, scheduled_for) for i in ids]
-    success = updated[0]
-    
-    if success:
-        # Format the display time
-        try:
-            display = dt.strftime('%A, %B %d at %I:%M %p')
-        except:
-            display = scheduled_for
-        
-        return jsonify({
-            "success": True,
-            "scheduled_for": scheduled_for,
-            "scheduled_for_display": display,
-            "updated_ids": [i for i, ok in zip(ids, updated) if ok],
-            "message": f"Post rescheduled for {display}",
-        })
-    else:
-        return jsonify({
-            "error": "Could not update post (may not be pending or not found)"
-        }), 400
-
-
-# ============================================================================
-# Time Slot Management Routes
-# ============================================================================
-
-
-@app.route('/schedule/slots', methods=['GET'])
-def schedule_slots():
-    """Get all configured time slots."""
-    slots = list_time_slots()
-    day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    
-    slots_list = []
-    for slot in slots:
-        # list_time_slots() already returns dicts with 'platforms' key
-        slot_dict = dict(slot)
-        if slot_dict['day_of_week'] == -1:
-            slot_dict['day_display'] = 'Every day'
-        else:
-            slot_dict['day_display'] = day_names[slot_dict['day_of_week']]
-        slots_list.append(slot_dict)
-    
-    return jsonify({"slots": slots_list})
-
-
-@app.route('/schedule/slots/add', methods=['POST'])
-def schedule_slot_add():
-    """Add a new time slot."""
-    day_of_week = request.form.get('day_of_week', type=int, default=-1)
-    time_slot = request.form.get('time_slot', '').strip()
-    platforms = request.form.getlist('platforms')
-    
-    if not time_slot:
-        return jsonify({"error": "Time is required"}), 400
-    
-    # Validate time format (HH:MM)
-    try:
-        hour, minute = map(int, time_slot.split(':'))
-        if not (0 <= hour <= 23 and 0 <= minute <= 59):
-            raise ValueError()
-        time_slot = f"{hour:02d}:{minute:02d}"
-    except (ValueError, AttributeError):
-        return jsonify({"error": "Invalid time format. Use HH:MM (24-hour)"}), 400
-    
-    # Validate day_of_week
-    if day_of_week < -1 or day_of_week > 6:
-        return jsonify({"error": "Invalid day of week"}), 400
-    
-    # Validate platforms (empty list = all platforms)
-    valid_platforms = {'linkedin', 'threads', 'facebook', 'twitter', 'instagram'}
-    platforms = [p for p in platforms if p in valid_platforms]
-    
-    slot_id = add_time_slot(
-        day_of_week=day_of_week,
-        time_slot=time_slot,
-        enabled=True,
-        platforms=platforms if platforms else None,
-    )
-    
-    # Redistribute all pending posts to use the new optimal slots
-    redistributed = {}
-    for p in valid_platforms:
-        redistributed[p] = redistribute_scheduled_posts(p)
-    
-    day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    day_display = 'Every day' if day_of_week == -1 else day_names[day_of_week]
-    
-    return jsonify({
-        "success": True,
-        "slot": {
-            "id": slot_id,
-            "day_of_week": day_of_week,
-            "day_display": day_display,
-            "time_slot": time_slot,
-            "enabled": True,
-            "platforms": platforms,
-        },
-        "redistributed": redistributed,
-    })
-
-
-@app.route('/schedule/slots/<int:slot_id>/toggle', methods=['POST'])
-def schedule_slot_toggle(slot_id: int):
-    """Toggle a time slot's enabled state."""
-    slots = list_time_slots()
-    slot = next((s for s in slots if s['id'] == slot_id), None)
-    
-    if not slot:
-        return jsonify({"error": "Slot not found"}), 404
-    
-    new_enabled = not bool(slot['enabled'])
-    update_time_slot(slot_id, enabled=new_enabled)
-    
-    # Redistribute all pending posts to use the new optimal slots
-    redistribute_scheduled_posts('linkedin')
-    redistribute_scheduled_posts('threads')
-    
-    return jsonify({
-        "success": True,
-        "enabled": new_enabled,
-    })
-
-
-@app.route('/schedule/slots/<int:slot_id>/edit', methods=['POST'])
-def schedule_slot_edit(slot_id: int):
-    """Edit a time slot's day, time, and platform assignments."""
-    day_of_week = request.form.get('day_of_week', type=int)
-    time_slot = request.form.get('time_slot', '').strip()
-    platforms = request.form.getlist('platforms')
-    
-    if day_of_week is None:
-        return jsonify({"error": "Day of week is required"}), 400
-    
-    if not time_slot:
-        return jsonify({"error": "Time is required"}), 400
-    
-    # Validate time format (HH:MM)
-    try:
-        hour, minute = map(int, time_slot.split(':'))
-        if not (0 <= hour <= 23 and 0 <= minute <= 59):
-            raise ValueError()
-        time_slot = f"{hour:02d}:{minute:02d}"
-    except (ValueError, AttributeError):
-        return jsonify({"error": "Invalid time format. Use HH:MM (24-hour)"}), 400
-    
-    # Validate day_of_week
-    if day_of_week < -1 or day_of_week > 6:
-        return jsonify({"error": "Invalid day of week"}), 400
-    
-    # Validate platforms (empty list = all platforms)
-    valid_platforms = {'linkedin', 'threads', 'facebook', 'twitter', 'instagram'}
-    platforms = [p for p in platforms if p in valid_platforms]
-    
-    # Update the slot (pass empty list to clear platform restrictions)
-    update_time_slot(
-        slot_id,
-        day_of_week=day_of_week,
-        time_slot=time_slot,
-        platforms=platforms,
-    )
-    
-    # Redistribute all pending posts to use the new optimal slots
-    redistributed = {}
-    for p in valid_platforms:
-        redistributed[p] = redistribute_scheduled_posts(p)
-    
-    return jsonify({
-        "success": True,
-        "platforms": platforms,
-        "redistributed": redistributed,
-    })
-
-
-@app.route('/schedule/slots/<int:slot_id>/delete', methods=['POST'])
-def schedule_slot_delete(slot_id: int):
-    """Delete a time slot."""
-    delete_time_slot(slot_id)
-    
-    # Redistribute all pending posts to use the remaining slots
-    redistribute_scheduled_posts('linkedin')
-    redistribute_scheduled_posts('threads')
-    return jsonify({"success": True, "message": "Slot deleted"})
-
-
-@app.route('/schedule/daily-limits', methods=['GET', 'POST'])
-def schedule_daily_limits():
-    """Get or update daily posting limits per platform."""
-    if request.method == 'GET':
-        limits = get_all_daily_limits()
-        return jsonify({
-            "linkedin": limits.get('linkedin', 0),
-            "threads": limits.get('threads', 0),
-            "facebook": limits.get('facebook', 0),
-            "twitter": limits.get('twitter', 0),
-            "instagram": limits.get('instagram', 0),
-        })
-
-    # POST - update limits
-    platform = request.form.get('platform', '').strip().lower()
-    limit = request.form.get('limit', type=int, default=0)
-
-    if platform not in ('linkedin', 'threads', 'facebook', 'twitter', 'instagram'):
-        return jsonify({"error": "Invalid platform. Must be one of: linkedin, threads, facebook, twitter, instagram"}), 400
-    
-    if limit < 0:
-        return jsonify({"error": "Limit must be 0 or greater (0 = unlimited)"}), 400
-    
-    set_daily_limit(platform, limit)
-    
-    # Redistribute posts for this platform to respect the new limit
-    redistributed = redistribute_scheduled_posts(platform)
-    
-    return jsonify({
-        "success": True,
-        "platform": platform,
-        "limit": limit,
-        "redistributed": redistributed,
-        "message": f"{'Unlimited' if limit == 0 else limit} posts per day for {platform.capitalize()}"
-    })
-
-
-@app.route('/schedule/next-slot', methods=['GET'])
-def schedule_next_slot():
-    """Get the next available posting slot for a platform."""
-    platform = request.args.get('platform', 'linkedin')
-    next_slot = get_next_available_slot(platform=platform)
-    
-    if not next_slot:
-        return jsonify({
-            "available": False,
-            "message": f"No time slots available for {platform}",
-        })
-    
-    try:
-        dt = datetime.fromisoformat(next_slot)
-        display = dt.strftime('%A, %B %d at %I:%M %p')
-    except (ValueError, TypeError):
-        display = next_slot
-    
-    return jsonify({
-        "available": True,
-        "scheduled_for": next_slot,
-        "display": display,
-    })
-
-
-@app.route('/schedule/debug', methods=['GET'])
-def schedule_debug():
-    """Debug endpoint to check time slots and scheduling state."""
-    import sqlite3
-    from database import get_enabled_time_slots, list_time_slots
-    
-    # Get all time slots (enabled and disabled)
-    all_slots = list_time_slots()
-    enabled_slots = get_enabled_time_slots()
-    
-    # Get current server time info
-    now = datetime.now()
-    day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    
-    # Get next available slots
-    next_linkedin = get_next_available_slot('linkedin')
-    next_threads = get_next_available_slot('threads')
-    
-    # Get pending scheduled posts
-    from database import DB_PATH as _DB_PATH
-    with sqlite3.connect(_DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        cur = conn.execute(
-            """
-            SELECT id, scheduled_for, platform, status 
-            FROM scheduled_posts 
-            WHERE status = 'pending'
-            ORDER BY scheduled_for ASC
-            LIMIT 10
-            """
-        )
-        pending_posts = [dict(row) for row in cur.fetchall()]
-    
-    return jsonify({
-        "server_time": {
-            "now": now.isoformat(),
-            "display": now.strftime('%A, %B %d, %Y at %I:%M:%S %p'),
-            "day_of_week": now.weekday(),
-            "day_name": day_names[now.weekday()],
-        },
-        "time_slots": {
-            "all_count": len(all_slots),
-            "enabled_count": len(enabled_slots),
-            "all": [{"id": s['id'], "day_of_week": s['day_of_week'], "time_slot": s['time_slot'], "enabled": s['enabled']} for s in all_slots],
-            "enabled": [{"id": s['id'], "day_of_week": s['day_of_week'], "time_slot": s['time_slot']} for s in enabled_slots],
-        },
-        "next_available": {
-            "linkedin": next_linkedin,
-            "threads": next_threads,
-        },
-        "pending_posts": pending_posts,
-    })
-
-
-# ============================================================================
-# Command Center Routes
-# ============================================================================
-
-# Saved posts are paginated per platform so the Compose page stays small even
-# with thousands of imported/generated posts.
 POSTS_PAGE_SIZE = 20
 # The most cards one /compose/posts/more request will render. "Load all" asks
 # for this many at a time rather than for everything at once, so a library of
 # thousands of posts arrives as it renders instead of as one huge response.
 POSTS_MAX_BATCH = 100
 
-
 # Every platform a saved post can target, in the order a Compose card draws its
 # ticks. One list so the chips, the composer and the filter bar agree. The app
-# is Chinese-first: only the domestic platforms are offered. The Western
-# platforms (linkedin, threads, twitter, facebook, instagram) stay wired up —
-# their clients, accounts and queued posts keep working — but nothing in the
-# UI offers them any more.
+# is Chinese-first: only the domestic platforms are offered.
 COMPOSE_PLATFORMS = ('xiaohongshu', 'douyin', 'wechat', 'zhihu', 'toutiao')
 
 # Platforms with no posting API yet: content is generated and saved as
@@ -5694,7 +2548,6 @@ COMPOSE_PLATFORMS = ('xiaohongshu', 'douyin', 'wechat', 'zhihu', 'toutiao')
 # publishing will go through an open-source publisher once one is wired in.
 # These platforms are refused by the schedule/publish routes.
 DRAFT_ONLY_PLATFORMS = ('xiaohongshu', 'douyin', 'wechat')
-
 
 def _group_standalone_posts(rows):
     """Collapse per-platform rows into one entry per distinct post.
@@ -5710,8 +2563,8 @@ def _group_standalone_posts(rows):
     disappearing into the first one.
 
     A target is a platform plus the account it publishes as, not a platform on
-    its own, which is what lets one card carry two LinkedIn accounts side by
-    side instead of the second row starting a card of its own.
+    its own, which is what lets one card carry two accounts for the same
+    platform side by side instead of the second row starting a card of its own.
 
     ``rows`` must already be in display order; each group takes the position of
     its first row, kept as ``head`` so sorts have a representative row.
@@ -5732,66 +2585,22 @@ def _group_standalone_posts(rows):
             candidates.append(group)
     return groups
 
-
 def _row_video(row):
     """A saved post row's video URL, or '' for one without (or from before videos)."""
     return (row['video_url'] if 'video_url' in row.keys() else None) or ''
 
+def _account_label(account, platform=None):
+    """What to call an account on screen: its label, profile name or handle.
 
-def _ig_effective_format(ig_post_type, video_url):
-    """What an Instagram row actually publishes as.
-
-    A row left on the default feed format but carrying a video goes out as a
-    Reel (feed video no longer exists), and Reel-only things like people tags
-    follow that, not the stored format.
+    Mirrors what the retired multi-account publisher did, so the composer's
+    chips can still tell two logins on one platform apart.
     """
-    ig_post_type = ig_post_type or 'feed'
-    return 'reel' if ig_post_type == 'feed' and video_url else ig_post_type
-
-
-def _requested_ig_people(payload=None):
-    """The Instagram collaborators and Reel tags a request carries, cleaned.
-
-    Reads ``ig_collaborators`` and ``ig_reel_tags`` from a form or a JSON body,
-    each as a list, a JSON list in a string, or text with one username per comma
-    or line. A field the request does not carry comes back as None ("leave it
-    alone"); one it carries empty comes back as [] ("clear it"). The cleaning is
-    the client's own (``normalize_handles``), so a handle the API would refuse
-    is refused here, with the same words, before anything is saved.
-
-    Returns ``(collaborators, reel_tags, error)``; ``error`` is a ready-to-return
-    response when the input is not usable.
-    """
-    payload = payload if payload is not None else (request.get_json(silent=True) or request.form)
-
-    def read(field):
-        if hasattr(payload, 'getlist'):
-            values = payload.getlist(field)
-            if not values:
-                return None
-            raw = values if len(values) > 1 else values[0]
-        else:
-            raw = payload.get(field)
-            if raw is None:
-                return None
-        if isinstance(raw, str) and raw.strip().startswith('['):
-            try:
-                raw = json.loads(raw)
-            except ValueError:
-                pass
-        return raw
-
-    try:
-        raw_collaborators = read('ig_collaborators')
-        raw_tags = read('ig_reel_tags')
-        collaborators = (None if raw_collaborators is None else normalize_handles(
-            raw_collaborators, what='collaborator', limit=MAX_COLLABORATORS))
-        reel_tags = (None if raw_tags is None else normalize_handles(
-            raw_tags, what='tagged account', limit=MAX_REEL_TAGS))
-    except InstagramInputError as exc:
-        return None, None, (jsonify({"error": str(exc)}), 400)
-    return collaborators, reel_tags, None
-
+    if account is None:
+        return domestic_publisher.display_name(platform or '')
+    for field in ('label', 'display_name', 'handle'):
+        if field in account.keys() and account[field]:
+            return str(account[field])
+    return domestic_publisher.display_name(account['platform'] if 'platform' in account.keys() else (platform or ''))
 
 def _row_target_key(row):
     """The (platform, account) a saved post row publishes to.
@@ -5803,14 +2612,12 @@ def _row_target_key(row):
     account_id = row['account_id'] if 'account_id' in row.keys() else None
     return (row['platform'], account_id)
 
-
 def _group_row_for_platform(group, platform):
     """The card's row for a platform, or None. First account wins when several."""
     for (row_platform, _account), row in group['platforms'].items():
         if row_platform == platform:
             return row
     return None
-
 
 def _ordered_group_rows(group):
     """A card's rows in the order its target chips are drawn.
@@ -5830,7 +2637,6 @@ def _ordered_group_rows(group):
     ordered.extend(row for slot, row in slots.items() if slot[0] not in COMPOSE_PLATFORMS)
     return ordered
 
-
 def _rows_for_groups(groups, platform=None):
     """Flatten cards back to the rows the row-level endpoints act on."""
     rows = []
@@ -5840,7 +2646,6 @@ def _rows_for_groups(groups, platform=None):
                 rows.append(row)
     return rows
 
-
 def _json_list_column(row, column):
     """Read a JSON-list column, tolerating NULL and older malformed values."""
     raw = row[column] if column in row.keys() else None
@@ -5849,7 +2654,6 @@ def _json_list_column(row, column):
     except (ValueError, TypeError):
         return []
     return value if isinstance(value, list) else []
-
 
 def _account_lookup():
     """Every connected account by id, read once per request.
@@ -5863,7 +2667,6 @@ def _account_lookup():
         g._social_accounts = cached
     return cached
 
-
 def _default_account_for(platform):
     """The account id a bare platform name resolves to, from the cached lookup."""
     for account in _account_lookup().values():
@@ -5873,7 +2676,6 @@ def _default_account_for(platform):
         if account['platform'] == platform:
             return account['id']
     return None
-
 
 def _publish_target_options():
     """Every (platform, account) a card can be ticked for.
@@ -5898,12 +2700,11 @@ def _publish_target_options():
             options.append({
                 'platform': platform,
                 'account_id': account['id'],
-                'label': account_label(account, platform),
+                'label': _account_label(account, platform),
                 'show_label': len(mine) > 1,
                 'is_default': bool(account['is_default']),
             })
     return options
-
 
 @app.context_processor
 def _inject_publish_targets():
@@ -5917,14 +2718,12 @@ def _inject_publish_targets():
     """
     return {'PUBLISH_TARGETS': _publish_target_options(),
             'DRAFT_ONLY_PLATFORMS': DRAFT_ONLY_PLATFORMS,
-            'IG_MAX_COLLABORATORS': MAX_COLLABORATORS,
             'push_platforms': {
                 p: {"label": domestic_publisher.display_name(p),
                     "enabled": p in domestic_publisher.enabled_platforms()}
                 for p in domestic_publisher.DOMESTIC_ARTICLE_PLATFORMS},
             'agent_online': agent_hub.agent_online(),
             'login_states': agent_hub.login_states_view()}
-
 
 def _row_account_label(row):
     """What to call the account a card row publishes as, or None.
@@ -5941,24 +2740,19 @@ def _row_account_label(row):
         # Only one account on this platform, so naming it adds nothing.
         return None
     account = accounts.get(account_id)
-    return account_label(account, row['platform']) if account else None
-
+    return _account_label(account, row['platform']) if account else None
 
 def _enrich_post_group(group, scheduled_info, posted_info, brief_names):
     """Turn a group of standalone_posts rows into the template's card dict."""
     rows = _ordered_group_rows(group)
-    # Instagram's row carries the extra media state (format, carousel items,
-    # people tags) and its own controls, so it is the card's primary row when
-    # present: every DOM id and every /compose/post/<id>/... call the card makes
-    # then points at the one row that has that state.
-    primary = _group_row_for_platform(group, 'instagram') or rows[0]
+    primary = rows[0]
 
     platforms = [
         {
             'platform': row['platform'],
             'id': row['id'],
             # A row written before it carried an account, or one aimed at "just
-            # LinkedIn", reports the platform's default account so its chip
+            # the platform", reports the platform's default account so its chip
             # matches the target the composer offers for that platform.
             'account_id': (row['account_id'] if 'account_id' in row.keys() else None)
                           or _default_account_for(row['platform']),
@@ -5993,26 +2787,8 @@ def _enrich_post_group(group, scheduled_info, posted_info, brief_names):
         'brief_id': brief_id,
         'brief_name': brief_names.get(brief_id) if brief_id else None,
         'display_index': group.get('display_index'),
-        'ig': None,
     }
-
-    ig_row = _group_row_for_platform(group, 'instagram')
-    if ig_row is not None:
-        card['ig'] = {
-            'id': ig_row['id'],
-            'ig_post_type': (ig_row['ig_post_type'] if 'ig_post_type' in ig_row.keys() else None) or 'feed',
-            'media_items': _json_list_column(ig_row, 'media_items'),
-            'ig_user_tags': _json_list_column(ig_row, 'ig_user_tags'),
-            'ig_collaborators': _json_list_column(ig_row, 'ig_collaborators'),
-            'ig_reel_tags': _json_list_column(ig_row, 'ig_reel_tags'),
-            # What the post goes out as: a video makes the default format a Reel,
-            # and Reel tags only apply there.
-            'ig_effective_format': _ig_effective_format(
-                (ig_row['ig_post_type'] if 'ig_post_type' in ig_row.keys() else None),
-                _row_video(ig_row)),
-        }
     return card
-
 
 @app.route('/compose')
 def compose_page():
@@ -6058,10 +2834,6 @@ def compose_page():
     if selected_source_id:
         selected_source = get_url_source(selected_source_id)
     
-    # Check platform connections
-    linkedin_connected = bool(get_linkedin_token())
-    threads_connected = bool(get_threads_token())
-    
     # Get recent freeform prompts for reuse
     recent_prompts = list_recent_prompts(limit=20)
     recent_prompts_list = [
@@ -6105,8 +2877,6 @@ def compose_page():
         brief_filter_options=brief_filter_options,
         saved_sources=saved_sources,
         selected_source=selected_source,
-        linkedin_connected=linkedin_connected,
-        threads_connected=threads_connected,
         recent_prompts=recent_prompts_list,
         recent_image_prompts=recent_image_prompts_list,
         library_prompts=library_prompts_list,
@@ -6115,7 +2885,6 @@ def compose_page():
         file_formats=[f for f in document_extractor.supported_formats() if f['available']],
         file_accept=document_extractor.accept_attribute(),
     )
-
 
 @app.route('/compose/posts/more')
 def compose_posts_more():
@@ -6165,17 +2934,14 @@ def compose_posts_more():
         "total": total,
     })
 
-
 def _valid_post_platform(raw):
     """Normalize an optional ?platform= filter, returning None when unset."""
     platform = (raw or '').strip()
     return platform or None
 
-
 # The Compose filter bar's non-platform filters, in the same vocabulary the
 # <select> options use, so the server can reproduce the client's predicate.
 _POST_FILTER_KEYS = ('used', 'queued', 'image', 'source', 'brief')
-
 
 # Sort orders for the Compose list, keyed by the <select> values. The default
 # ('' / unknown) is the newest-first order list_standalone_posts() already
@@ -6186,7 +2952,6 @@ _POST_SORT_KEYS = {
     'longest': lambda row: -len(row['content'] or ''),
     'shortest': lambda row: len(row['content'] or ''),
 }
-
 
 def _sort_post_groups(groups, sort):
     """Order matched cards for the Compose sort control.
@@ -6202,15 +2967,14 @@ def _sort_post_groups(groups, sort):
         return groups
     return sorted(groups, key=lambda group: key(group['head']))
 
-
 def _group_matches_filters(rows, filters, scheduled_info):
     """Mirror the client-side filter bar's predicate for one card.
 
     A card is the same copy on one or more platforms, so the filters that read
-    per-platform state match on *any* of them: a post already queued on Threads
-    but not on X still belongs in the "Not Queued" list, or its X tick could
-    never be queued from there. A platform filter narrows that to the platform
-    being asked about.
+    per-platform state match on *any* of them: a post already queued on one
+    platform but not on another still belongs in the "Not Queued" list, or its
+    tick could never be queued from there. A platform filter narrows that to
+    the platform being asked about.
     """
     platform = filters.get('platform')
     if platform and platform not in {row['platform'] for row in rows}:
@@ -6256,7 +3020,6 @@ def _group_matches_filters(rows, filters, scheduled_info):
 
     return True
 
-
 def _filtered_post_groups(args):
     """Return (matching cards, index_by_id) for the Compose filters in ``args``.
 
@@ -6295,7 +3058,6 @@ def _filtered_post_groups(args):
     ]
     return _sort_post_groups(matched, args.get('sort')), index_by_id
 
-
 def _filtered_standalone_posts(args):
     """Return (rows behind the matching cards, index_by_id) for ``args``.
 
@@ -6305,11 +3067,10 @@ def _filtered_standalone_posts(args):
     page is showing — there is no second copy of the predicate to drift.
 
     A platform filter narrows to that platform's rows: with the list showing
-    only X, a bulk delete must not take the Threads twin with it.
+    only one platform, a bulk delete must not take its sibling rows with it.
     """
     groups, index_by_id = _filtered_post_groups(args)
     return _rows_for_groups(groups, _valid_post_platform(args.get('platform'))), index_by_id
-
 
 def _selected_standalone_posts(payload):
     """Resolve a Compose bulk-action selection to the rows it should act on.
@@ -6339,7 +3100,6 @@ def _selected_standalone_posts(payload):
         return None, (jsonify({"error": "Invalid post IDs"}), 400)
     return [r for r in list_standalone_posts() if r['id'] in wanted], None
 
-
 @app.route('/compose/posts/ids')
 def compose_posts_ids():
     """Return the id + platform of saved posts matching the Compose filters.
@@ -6367,16 +3127,13 @@ def compose_posts_ids():
         payload["posts"] = [{'id': row['id'], 'platform': row['platform']} for row in rows]
     return jsonify(payload)
 
-
 # How many matching posts the Find & Replace modal renders at once. Replace All
 # still applies to every match — the cap only bounds the preview list.
 POST_SEARCH_RESULT_LIMIT = 200
 
-
 def _search_flag(value):
     """Read a checkbox-style query/JSON parameter."""
     return str(value if value is not None else '').lower() in ('1', 'true', 'yes', 'on')
-
 
 def _search_exclude_words(raw):
     """Parse the modal's comma-separated 'exclude posts containing' list."""
@@ -6386,7 +3143,6 @@ def _search_exclude_words(raw):
         parts = str(raw or '').split(',')
     return [w.strip().lower() for w in parts if w and w.strip()]
 
-
 def _post_search_pattern(find_text, case_sensitive, whole_word):
     """The Find & Replace pattern — identical to the one the replace applies."""
     flags = 0 if case_sensitive else re.IGNORECASE
@@ -6394,7 +3150,6 @@ def _post_search_pattern(find_text, case_sensitive, whole_word):
     if whole_word:
         body = r'\b' + body + r'\b'
     return re.compile(body, flags)
-
 
 @app.route('/compose/posts/search')
 def compose_posts_search():
@@ -6468,7 +3223,6 @@ def compose_posts_search():
         "searched": len(groups),
         "truncated": matched_posts > len(posts),
     })
-
 
 @app.route('/compose/posts/replace', methods=['POST'])
 def compose_posts_replace():
@@ -6565,118 +3319,6 @@ def compose_posts_replace():
         "affected_count": affected_count,
     })
 
-
-SCHEDULABLE_PLATFORMS = ['linkedin', 'threads', 'facebook', 'twitter', 'instagram']
-
-
-def _queue_unscheduled_rows(platform, rows):
-    """Queue every unused, not-yet-scheduled row into the platform's free slots.
-
-    Returns ``(queued, skipped, no_slots)``.
-    """
-    all_ids = [r['id'] for r in rows]
-    already_scheduled = get_pending_schedules_for_standalone_posts(all_ids) if all_ids else {}
-
-    queued = 0
-    skipped = 0
-    no_slots = False
-    for row in rows:
-        post = dict(row)
-        pid = post['id']
-        if post.get('used'):
-            continue
-        if pid in already_scheduled:
-            continue
-
-        if platform == 'instagram':
-            ig_post_type = post.get('ig_post_type')
-            raw_items = post.get('media_items')
-            try:
-                media_items = json.loads(raw_items) if raw_items else []
-            except (ValueError, TypeError):
-                media_items = []
-            _, media_err = _ensure_instagram_media(
-                post.get('content'),
-                post.get('image_url'),
-                ig_post_type,
-                media_items,
-                standalone_post_id=pid,
-                video_url=post.get('video_url'),
-            )
-            if media_err:
-                skipped += 1
-                continue
-
-        slot = get_next_available_slot(platform)
-        if not slot:
-            no_slots = True
-            break
-        add_scheduled_post(
-            social_post_id=None,
-            article_id=None,
-            standalone_post_id=pid,
-            post_type='standalone',
-            platform=platform,
-            scheduled_for=slot,
-            status='pending',
-        )
-        queued += 1
-
-    return queued, skipped, no_slots
-
-
-@app.route('/compose/posts/queue-all-unscheduled', methods=['POST'])
-def compose_queue_all_unscheduled():
-    """Queue unscheduled, unused saved posts (server-side).
-
-    Two modes:
-      ``platform=<name>``   the platform card's "Queue All" — every unscheduled
-                            post on that platform.
-      ``{"filters": {...}, "platforms": [...]}``  a "select all across every
-                            page" selection — the server re-derives the matching
-                            posts and queues each platform in this one request.
-    """
-    payload = request.get_json(silent=True) or {}
-    filters = payload.get('filters')
-
-    if filters is not None:
-        rows, error = _selected_standalone_posts({'filters': filters})
-        if error:
-            return error
-        # The caller says which platforms its Queue button covers, so the server
-        # never queues a platform the toolbar didn't count.
-        platforms = payload.get('platforms') or SCHEDULABLE_PLATFORMS
-        unsupported = [p for p in platforms if p not in SCHEDULABLE_PLATFORMS]
-        if unsupported:
-            return jsonify({"error": f"Platform {unsupported[0]} does not support scheduling"}), 400
-        rows_by_platform = {}
-        for row in rows:
-            if row['platform'] in platforms:
-                rows_by_platform.setdefault(row['platform'], []).append(row)
-    else:
-        platform = (request.form.get('platform') or payload.get('platform') or '').strip()
-        if platform not in SCHEDULABLE_PLATFORMS:
-            return jsonify({"error": f"Platform {platform} does not support scheduling"}), 400
-        rows_by_platform = {platform: list_standalone_posts(platform=platform)}
-
-    queued = 0
-    skipped = 0
-    no_slots = False
-    for platform, platform_rows in rows_by_platform.items():
-        # Running out of slots on one platform doesn't stop the others.
-        p_queued, p_skipped, p_no_slots = _queue_unscheduled_rows(platform, platform_rows)
-        queued += p_queued
-        skipped += p_skipped
-        no_slots = no_slots or p_no_slots
-
-    return jsonify({
-        "success": True,
-        "queued": queued,
-        "skipped": skipped,
-        "no_slots": no_slots,
-    })
-
-
 @app.route('/compose/recent-prompts')
 def compose_recent_prompts():
     """Return recent freeform prompts for reuse via AJAX."""
@@ -6694,7 +3336,6 @@ def compose_recent_prompts():
         "prompts": prompts_list,
     })
 
-
 @app.route('/compose/clear-prompts', methods=['POST'])
 def compose_clear_prompts():
     """Clear the recent prompts history."""
@@ -6708,7 +3349,6 @@ def compose_clear_prompts():
     except Exception as e:
         app.logger.exception("Failed to clear prompts")
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/compose/delete-prompt', methods=['POST'])
 def compose_delete_prompt():
@@ -6728,7 +3368,6 @@ def compose_delete_prompt():
     except Exception as e:
         app.logger.exception("Failed to delete prompt")
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/compose/delete-prompts-bulk', methods=['POST'])
 def compose_delete_prompts_bulk():
@@ -6750,11 +3389,9 @@ def compose_delete_prompts_bulk():
         app.logger.exception("Failed to delete prompts")
         return jsonify({"error": str(e)}), 500
 
-
 # ---------------------------------------------------------------------------
 # Prompt Library (curated, named reusable prompts)
 # ---------------------------------------------------------------------------
-
 
 def _serialize_library_prompts():
     """Return the saved library prompts as plain dicts for JSON / templates."""
@@ -6770,12 +3407,10 @@ def _serialize_library_prompts():
         })
     return result
 
-
 @app.route('/compose/library')
 def compose_library_list():
     """Return all saved library prompts as JSON."""
     return jsonify({"success": True, "prompts": _serialize_library_prompts()})
-
 
 @app.route('/compose/library/save', methods=['POST'])
 def compose_library_save():
@@ -6800,7 +3435,6 @@ def compose_library_save():
     except Exception as e:
         app.logger.exception("Failed to save library prompt")
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/compose/library/update', methods=['POST'])
 def compose_library_update():
@@ -6832,7 +3466,6 @@ def compose_library_update():
         app.logger.exception("Failed to update library prompt")
         return jsonify({"error": str(e)}), 500
 
-
 @app.route('/compose/library/delete', methods=['POST'])
 def compose_library_delete():
     """Delete a library prompt by id."""
@@ -6854,7 +3487,6 @@ def compose_library_delete():
         app.logger.exception("Failed to delete library prompt")
         return jsonify({"error": str(e)}), 500
 
-
 def _parse_ai_provider(form):
     """Parse the compose AI-provider selection into ``(provider, model, use_local)``.
 
@@ -6875,7 +3507,6 @@ def _parse_ai_provider(form):
         provider = None              # local is signalled via use_local, not provider
     return provider, model, use_local
 
-
 def _condense_notice(meta):
     """Build a user-facing notice when long source content was condensed.
 
@@ -6894,7 +3525,6 @@ def _condense_notice(meta):
         notice += " Only the first part of a very large source was used."
     return notice
 
-
 @app.route('/compose/generate', methods=['POST'])
 def compose_generate():
     """Generate social media posts using LLM based on source type."""
@@ -6912,12 +3542,12 @@ def compose_generate():
         return jsonify({"error": "Content is required"}), 400
 
     if not platforms:
-        platforms = ['linkedin', 'threads', 'twitter']
+        platforms = ['xiaohongshu', 'douyin', 'wechat']
     
 
     # Copy is generated once per platform; the accounts decide how many rows
-    # that copy is saved into, so picking two LinkedIn accounts costs no extra
-    # generation and produces one card aimed at both.
+    # that copy is saved into, so picking two accounts for the same platform
+    # costs no extra generation and produces one card aimed at both.
     accounts_by_platform = _requested_accounts_by_platform(set(platforms))
 
     posts_per_platform = max(1, min(posts_per_platform, 10))
@@ -6938,47 +3568,6 @@ def compose_generate():
                 model=ai_model,
             )
         elif source_type == 'url':
-            if is_github_repo_url(content):
-                owner, repo_name = parse_github_repo_url(content)
-                repo_data = fetch_github_repo(owner, repo_name)
-                gh_extra = extra_context or ""
-                gh_extra = f"This content is from the GitHub repository {repo_data['title']}. Include the repo URL ({content}) as credit.\n{gh_extra}".strip()
-                # Condense long repo content (README, etc.) instead of truncating.
-                gh_text, condense_meta = condense_document_text(
-                    repo_data['content'],
-                    provider=ai_provider,
-                    model=ai_model,
-                    use_local=use_local,
-                )
-                notice = _condense_notice(condense_meta)
-                generated = generate_posts_from_text(
-                    text=gh_text,
-                    platforms=platforms,
-                    tone=tone,
-                    topic=repo_data['title'],
-                    posts_per_platform=posts_per_platform,
-                    extra_context=gh_extra,
-                    use_local=use_local,
-                    source_url=content,
-                    provider=ai_provider,
-                    model=ai_model,
-                )
-                source_data = {
-                    "url": content,
-                    "title": repo_data['title'],
-                    "description": repo_data['description'],
-                    "content": repo_data['content'],
-                    "og_image": repo_data['og_image'],
-                }
-                source_id = add_url_source(
-                    url=content,
-                    title=repo_data['title'],
-                    description=repo_data['description'],
-                    content=repo_data['content'],
-                    og_image=repo_data['og_image'],
-                )
-                source_data["source_id"] = source_id
-            else:
                 result = generate_posts_from_url(
                     url=content,
                     platforms=platforms,
@@ -7169,10 +3758,8 @@ def compose_generate():
             if platform == 'raw':
                 continue
             
-            # Normalize platform name (LLMs sometimes return "Threads" or "X")
+            # Normalize platform name (LLMs sometimes capitalise names)
             norm_platform = platform.lower().strip()
-            platform_aliases = {"x": "twitter"}
-            norm_platform = platform_aliases.get(norm_platform, norm_platform)
 
             # Drop platforms the user didn't ask for (local models hallucinate extras)
             if norm_platform not in requested_platforms:
@@ -7219,12 +3806,10 @@ def compose_generate():
         app.logger.exception("Failed to generate posts")
         return jsonify({"error": str(e)}), 500
 
-
 @app.route('/compose/ollama-status', methods=['GET'])
 def compose_ollama_status():
     """Return Ollama availability and installed vision models."""
     return jsonify(check_ollama_status())
-
 
 @app.route('/compose/post/<int:post_id>', methods=['GET'])
 def compose_get_post(post_id: int):
@@ -7234,7 +3819,6 @@ def compose_get_post(post_id: int):
         return jsonify({"error": "Post not found"}), 404
     return jsonify(dict(post))
 
-
 @app.route('/compose/post/create', methods=['POST'])
 def compose_create_post():
     """Create a standalone post manually (no AI generation).
@@ -7242,8 +3826,8 @@ def compose_create_post():
     Takes one ``platform`` or several (repeated or comma-joined ``platforms``),
     or ``targets`` when a platform's account matters: the composer writes one
     row per ticked target, which is exactly the set of rows the resulting card
-    is a view over. Ticking two LinkedIn accounts and Threads writes three rows
-    and posts the same copy to all three.
+    is a view over. Ticking two accounts for a platform writes two rows
+    and posts the same copy to both.
 
     An optional ``video`` file or ``video_url`` is attached to every one of
     those rows; ``video_warnings`` in the reply says what each platform will
@@ -7270,18 +3854,6 @@ def compose_create_post():
     if not content:
         return jsonify({"error": "Content is required"}), 400
 
-    # Collaborators and Reel tags belong to the Instagram rows. They are read and
-    # refused here, before any row exists, so a bad handle leaves nothing behind;
-    # and sent without an Instagram target they are refused rather than dropped.
-    collaborators, reel_tags, people_error = _requested_ig_people()
-    if people_error:
-        return people_error
-    if (collaborators or reel_tags) and not any(t['platform'] == 'instagram' for t in targets):
-        return jsonify({
-            "error": "Collaborators and tags are Instagram features: tick an Instagram "
-                     "account for this post, or clear them."
-        }), 400
-
     # Last, so a request that was going to be refused anyway never uploads a
     # video; and before any row is written, so a video that cannot be used
     # leaves no half-made post behind.
@@ -7298,8 +3870,6 @@ def compose_create_post():
             image_url=image_url,
             video_url=video_url,
             account_id=target['account_id'],
-            **({'ig_collaborators': collaborators, 'ig_reel_tags': reel_tags}
-               if target['platform'] == 'instagram' else {}),
         )
         for target in targets
     ]
@@ -7324,10 +3894,7 @@ def compose_create_post():
         "targets": targets,
         "warnings": target_errors,
         "video_warnings": video_report.get('warnings', []),
-        "ig_collaborators": collaborators or [],
-        "ig_reel_tags": reel_tags or [],
     })
-
 
 # ---------------------------------------------------------------------------
 # Compose card helpers
@@ -7338,7 +3905,6 @@ def compose_create_post():
 # alone would split the card in two, since (content, image) is what groups the
 # rows in the first place.
 # ---------------------------------------------------------------------------
-
 
 def _requested_platforms(field):
     """Read a repeated or comma-joined platform field, lowercased and deduped."""
@@ -7356,7 +3922,6 @@ def _requested_platforms(field):
                 platforms.append(part)
     return platforms
 
-
 def _save_post_for_accounts(account_ids, **kwargs):
     """Write the same copy once per account, returning the row ids.
 
@@ -7368,14 +3933,13 @@ def _save_post_for_accounts(account_ids, **kwargs):
     return [add_standalone_post(account_id=account_id, **kwargs)
             for account_id in account_ids]
 
-
 def _requested_accounts_by_platform(platforms):
     """Which accounts each requested platform should be written for.
 
     Reads the same ``targets`` field the composer sends elsewhere. A platform
     named without any account falls back to its default account, so ticking
-    "LinkedIn" and ticking "LinkedIn: Work, LinkedIn: Studio" both work and mean
-    what they say.
+    "xiaohongshu" and ticking "xiaohongshu: Work, xiaohongshu: Studio" both work
+    and mean what they say.
     """
     targets, _errors = _requested_targets('targets')
     grouped = {}
@@ -7384,12 +3948,11 @@ def _requested_accounts_by_platform(platforms):
             grouped.setdefault(target['platform'], []).append(target['account_id'])
     return grouped
 
-
 def _requested_targets(field='targets'):
     """Read the (platform, account) pairs a card is aimed at.
 
     A target is written ``platform`` or ``platform:account_id``, so the same
-    field carries "LinkedIn" and "LinkedIn, the second one" without the caller
+    field carries "xiaohongshu" and "xiaohongshu: the second one" without the caller
     having to send two parallel lists. A bare platform means whichever account
     is that platform's default, decided when the row is written rather than
     when it publishes, so the saved post records a concrete target.
@@ -7415,7 +3978,7 @@ def _requested_targets(field='targets'):
                 continue
             account_id = resolve_account_id(platform, int(account_part))
             if not account_id:
-                errors.append(f"That {platform_name(platform)} account is not connected")
+                errors.append(f"That {domestic_publisher.display_name(platform)} account is not connected")
                 continue
         else:
             account_id = resolve_account_id(platform)
@@ -7426,7 +3989,6 @@ def _requested_targets(field='targets'):
         seen.add(key)
         targets.append({'platform': platform, 'account_id': account_id})
     return targets, errors
-
 
 def _requested_post_ids(default_id, field='post_ids'):
     """The card's rows as sent by the page, always including ``default_id``.
@@ -7456,7 +4018,6 @@ def _requested_post_ids(default_id, field='post_ids'):
         ids.append(default_id)
     return ids
 
-
 def _card_rows(post, post_ids):
     """The rows of ``post_ids`` that really are ``post``'s card, ``post`` first.
 
@@ -7473,7 +4034,6 @@ def _card_rows(post, post_ids):
             rows.append(row)
     return rows
 
-
 def _apply_card_image(post, image_url):
     """Set an image on every row of ``post``'s card; returns the ids written.
 
@@ -7485,7 +4045,6 @@ def _apply_card_image(post, image_url):
     for row in rows:
         update_standalone_post_image(row['id'], image_url)
     return [row['id'] for row in rows]
-
 
 def _apply_card_video(post, video_url):
     """Set (or with None, clear) the video on every row of ``post``'s card.
@@ -7499,12 +4058,11 @@ def _apply_card_video(post, video_url):
         update_standalone_post_video(row['id'], video_url)
     return [row['id'] for row in rows]
 
-
 def _post_card_html(post_ids, display_index=None):
     """Render one Compose card for ``post_ids``, or '' if none of them survive.
 
     Handing the freshly rendered card back to the page is what keeps a platform
-    toggle simple: ticking Instagram brings a whole set of Instagram-only
+    toggle simple: ticking a platform brings a whole set of platform-specific
     controls with it, and re-rendering beats patching them in by hand.
     """
     rows = [row for row in (get_standalone_post(pid) for pid in post_ids) if row]
@@ -7527,7 +4085,6 @@ def _post_card_html(post_ids, display_index=None):
     )
     return render_template('partials/post_items.html', groups=[card])
 
-
 @app.route('/compose/post/<int:post_id>/card', methods=['POST'])
 def compose_render_post_card(post_id: int):
     """Re-render one Compose card.
@@ -7546,7 +4103,6 @@ def compose_render_post_card(post_id: int):
         ),
     })
 
-
 def _find_target_row(rows, platform, account_id):
     """The row in ``rows`` that already is this (platform, account) target.
 
@@ -7564,31 +4120,14 @@ def _find_target_row(rows, platform, account_id):
             return row
     return None
 
-
-def _card_ig_people(rows):
-    """The (collaborators, reel tags) the card's Instagram rows already carry."""
-    for row in rows or ():
-        if row['platform'] == 'instagram':
-            return _json_list_column(row, 'ig_collaborators'), _json_list_column(row, 'ig_reel_tags')
-    return [], []
-
-
 def _copy_post_to_target(post, platform, account_id, siblings=()):
     """Save ``post``'s copy, image, video and brief as a new row for one target.
 
     This is what "also post it there" means in the database: the row per
     (platform, copy) is the only record that a card goes to that platform.
-    A new Instagram row joins whatever collaborators and Reel tags the card's
-    other Instagram rows already carry (``siblings`` are the card's rows), or a
-    second Instagram account would publish the same card without them.
     Returns the new row's id.
     """
-    ig_collaborators, ig_reel_tags = (
-        _card_ig_people([post, *siblings]) if platform == 'instagram' else ([], [])
-    )
     return add_standalone_post(
-        ig_collaborators=ig_collaborators or None,
-        ig_reel_tags=ig_reel_tags or None,
         source_type=post['source_type'],
         source_content=post['source_content'],
         platform=platform,
@@ -7600,15 +4139,14 @@ def _copy_post_to_target(post, platform, account_id, siblings=()):
         account_id=account_id,
     )
 
-
 @app.route('/compose/post/<int:post_id>/platform', methods=['POST'])
 def compose_toggle_post_platform(post_id: int):
     """Tick or untick one of a card's targets.
 
     A target is a platform plus the account it publishes as. ``action=add``
     copies the card's copy and image into a new saved post for that target, so
-    ticking Instagram is what creates the Instagram post and ticking a second
-    LinkedIn account is what creates the second LinkedIn post.
+    ticking a platform is what creates the post for that platform, and ticking
+    a second account on it is what creates the second post.
     ``action=remove`` deletes that target's row, which is the only thing that
     ever recorded "this post also goes there".
 
@@ -7635,7 +4173,7 @@ def compose_toggle_post_platform(post_id: int):
             if raw_account.isdigit() else None
         if not account_id:
             return jsonify({
-                "error": f"That {platform_name(platform)} account is not connected"
+                "error": f"That {domestic_publisher.display_name(platform)} account is not connected"
             }), 400
     else:
         account_id = resolve_account_id(platform)
@@ -7648,11 +4186,11 @@ def compose_toggle_post_platform(post_id: int):
     display_index = request.form.get('display_index', type=int)
     existing = _find_target_row(rows, platform, account_id)
 
-    target_name = platform_name(platform)
+    target_name = domestic_publisher.display_name(platform)
     if account_id:
         account = get_social_account(account_id)
         if account:
-            target_name = account_label(account, platform)
+            target_name = _account_label(account, platform)
 
     if action == 'add':
         if existing:
@@ -7675,25 +4213,6 @@ def compose_toggle_post_platform(post_id: int):
         return jsonify({"error": f"This post does not go to {target_name}"}), 400
 
     target_id = existing['id']
-    scheduled = get_pending_schedules_for_standalone_posts([target_id]).get(target_id, {})
-    posted = get_posted_info_for_standalone_posts([target_id]).get(target_id, {})
-    force = str(request.form.get('force') or '').strip().lower() in ('1', 'true', 'yes', 'on')
-
-    if (scheduled or posted) and not force:
-        return jsonify({
-            "success": False,
-            "needs_confirm": True,
-            "platform": platform,
-            "queued": bool(scheduled),
-            "posted": bool(posted),
-            "scheduled_for": scheduled.get(platform),
-        }), 409
-
-    if scheduled:
-        for entry in list_scheduled_posts(status='pending'):
-            if entry['standalone_post_id'] == target_id:
-                delete_scheduled_post(entry['id'])
-
     delete_standalone_post(target_id)
     ids = [row['id'] for row in rows if row['id'] != target_id]
     return jsonify({
@@ -7706,7 +4225,6 @@ def compose_toggle_post_platform(post_id: int):
         "post_ids": ids,
         "html": _post_card_html(ids, display_index) if ids else '',
     })
-
 
 def _selected_post_groups(payload):
     """Resolve a Compose bulk-action selection to the whole cards it names.
@@ -7749,16 +4267,43 @@ def _selected_post_groups(payload):
         return None, (jsonify({"error": "The selected posts no longer exist"}), 400)
     return selected, None
 
-
 # The most skipped targets one bulk request lists by name. The count is always
 # exact; the list only bounds the size of the reply.
 BULK_SKIP_LIST_LIMIT = 50
 
-
 def _target_display_name(platform, account_id):
     """What to call a (platform, account) target in a message."""
     return _row_account_label({'platform': platform, 'account_id': account_id}) \
-        or platform_name(platform)
+        or domestic_publisher.display_name(platform)
+
+SCHEDULABLE_PLATFORMS: tuple = ()
+
+def platform_name(platform: str) -> str:
+    """The platform's name as a person writes it."""
+    return domestic_publisher.display_name(platform)
+
+
+def _queue_row(row, already, card_rows=None, no_slots=None):
+    """Queue one saved post row into its platform's next free slot.
+
+    Kept for the bulk-add ``queue`` option: the Western posting APIs are gone,
+    so no domestic platform is schedulable from this server yet, and every row
+    is refused with the way out instead of being silently dropped.
+    """
+    platform = row['platform']
+    target_name = _row_account_label(row) or platform_name(platform)
+
+    def skip(error):
+        return None, {"post_id": row['id'], "platform": platform,
+                      "target": target_name, "error": error}
+
+    if platform in DRAFT_ONLY_PLATFORMS:
+        return skip(f"{platform} is draft-only: copy the post and publish it manually.")
+    if platform not in SCHEDULABLE_PLATFORMS:
+        return skip(f"{target_name} does not support scheduling yet")
+    if already.get(row['id']):
+        return skip(f"Already queued for {target_name}")
+    return skip("No available time slots")
 
 
 def _bulk_platform_request():
@@ -7783,13 +4328,12 @@ def _bulk_platform_request():
         return None, None, None, error
     return payload, targets, groups, None
 
-
 @app.route('/compose/posts/bulk-add-platform', methods=['POST'])
 def compose_bulk_add_platform():
     """Give every selected card the chosen posting targets, optionally queueing them.
 
-    Body: ``{"post_ids": [...] | "filters": {...}, "targets": ["linkedin",
-    "linkedin:<account id>", ...], "queue": bool, "render": bool}``.
+    Body: ``{"post_ids": [...] | "filters": {...}, "targets": ["xiaohongshu",
+    "xiaohongshu:<account id>", ...], "queue": bool, "render": bool}``.
 
     For each card and target this does what ticking that chip does one card at a
     time: a card that already goes there is left alone, otherwise its copy, image
@@ -7825,7 +4369,6 @@ def compose_bulk_add_platform():
     ]
     skipped = []
     skipped_count = 0
-    added_instagram = []
     no_slots = set()
     results = []
 
@@ -7846,8 +4389,6 @@ def compose_bulk_add_platform():
                 card_rows.append(row)
                 stats['added'] += 1
                 changed = True
-                if target['platform'] == 'instagram':
-                    added_instagram.append(row['id'])
             else:
                 stats['already'] += 1
             landed.append((stats, row, is_new))
@@ -7892,12 +4433,6 @@ def compose_bulk_add_platform():
                 'html': _post_card_html(ids, group.get('display_index')),
             })
 
-    # Read after queueing: Instagram may have found a stock image by then.
-    needs_image = sum(
-        1 for row_id in added_instagram
-        if not (get_standalone_post(row_id)['image_url'] or '').strip()
-    )
-
     reply = {
         "success": True,
         "cards": len(groups),
@@ -7907,20 +4442,18 @@ def compose_bulk_add_platform():
         "already_queued": sum(t['already_queued'] for t in by_target),
         "skipped": skipped,
         "skipped_count": skipped_count,
-        "needs_image": needs_image,
         "by_target": by_target,
     }
     if render:
         reply["results"] = results
     return jsonify(reply)
 
-
 @app.route('/compose/posts/bulk-remove-platform', methods=['POST'])
 def compose_bulk_remove_platform():
     """Take the chosen posting targets off every selected card.
 
-    Body: ``{"post_ids": [...] | "filters": {...}, "targets": ["threads",
-    "linkedin:<account id>", ...], "force": bool, "render": bool}``.
+    Body: ``{"post_ids": [...] | "filters": {...}, "targets": ["douyin",
+    "xiaohongshu:<account id>", ...], "force": bool, "render": bool}``.
 
     The bulk form of unticking a chip: each matching row is deleted, and a card
     that never went to a target is left alone and counted. Three things are kept
@@ -8028,7 +4561,6 @@ def compose_bulk_remove_platform():
         reply["results"] = results
     return jsonify(reply)
 
-
 @app.route('/compose/import', methods=['POST'])
 def compose_import_file():
     """Import posts from a CSV or XLSX file into the Command Center."""
@@ -8036,8 +4568,8 @@ def compose_import_file():
 
     # Chinese names import as their platform id too: a sheet written in
     # Chinese should not have to know the internal identifiers.
-    IMPORT_PLATFORMS = {'xiaohongshu', 'douyin', 'wechat', '小红书', '抖音', '公众号',
-                        'threads', 'linkedin', 'facebook', 'twitter', 'instagram'}
+    IMPORT_PLATFORMS = {'xiaohongshu', 'douyin', 'wechat', 'zhihu', 'toutiao',
+                        '小红书', '抖音', '公众号', '知乎', '头条'}
     TRUTHY = {'true', '1', 'yes', 'y', 't'}
 
     def _is_truthy(val) -> bool:
@@ -8133,8 +4665,8 @@ def compose_import_file():
         platforms = []
         for token in tokens:
             normalized = token.lower()
-            normalized = {'x': 'twitter', '小红书': 'xiaohongshu', '抖音': 'douyin',
-                          '公众号': 'wechat', '微信': 'wechat'}.get(normalized, normalized)
+            normalized = {'小红书': 'xiaohongshu', '抖音': 'douyin', '知乎': 'zhihu',
+                          '头条': 'toutiao', '公众号': 'wechat', '微信': 'wechat'}.get(normalized, normalized)
             if normalized in seen:
                 continue
             seen.add(normalized)
@@ -8146,7 +4678,7 @@ def compose_import_file():
                 "row": i,
                 "reason": "unsupported_platform",
                 "message": f"Unsupported platform '{raw_platform}'",
-                "fix": "Change the Platform value to one of: Threads, LinkedIn, Facebook, Twitter/X, Instagram. Use commas to list multiple (e.g. 'Twitter,Threads').",
+                "fix": "Change the Platform value to one of: xiaohongshu, douyin, wechat, zhihu, toutiao (or 小红书, 抖音, 公众号, 知乎, 头条). Use commas to list multiple (e.g. '小红书,抖音').",
                 "platform": raw_platform or "(blank)",
                 "preview": content_preview,
             })
@@ -8206,7 +4738,6 @@ def compose_import_file():
         "by_platform": by_platform,
     })
 
-
 @app.route('/compose/post/<int:post_id>/edit', methods=['POST'])
 def compose_edit_post(post_id: int):
     """Edit a standalone post's content.
@@ -8246,7 +4777,6 @@ def compose_edit_post(post_id: int):
         "updated_ids": [row['id'] for row in rows],
     })
 
-
 @app.route('/compose/post/<int:post_id>/image', methods=['POST'])
 def compose_update_post_image(post_id: int):
     """Update a standalone post's image URL.
@@ -8264,7 +4794,6 @@ def compose_update_post_image(post_id: int):
         "image_url": image_url,
         "updated_ids": _apply_card_image(post, image_url),
     })
-
 
 def _requested_video():
     """The video a request carries, checked and ready to attach.
@@ -8299,7 +4828,6 @@ def _requested_video():
         'warnings': video_media.check_compat(size_bytes=size),
     }, None
 
-
 @app.route('/compose/post/<int:post_id>/video', methods=['POST'])
 def compose_update_post_video(post_id: int):
     """Attach, replace or clear a standalone post's video.
@@ -8324,212 +4852,6 @@ def compose_update_post_video(post_id: int):
         "updated_ids": _apply_card_video(post, video_url),
         **report,
     })
-
-
-@app.route('/compose/post/<int:post_id>/media', methods=['POST'])
-def compose_set_post_media(post_id: int):
-    """Set a standalone post's Instagram media format and media list.
-
-    Form/JSON: ig_post_type in {feed,carousel,reel,story}; media_items = JSON
-    string list of {"url","kind":"image"|"video"}.
-    """
-    post = get_standalone_post(post_id)
-    if not post:
-        return jsonify({"error": "Post not found"}), 404
-
-    payload = request.get_json(silent=True) or request.form
-    ig_post_type = (payload.get('ig_post_type') or 'feed').strip().lower()
-    if ig_post_type not in ('feed', 'carousel', 'reel', 'story'):
-        return jsonify({"error": f"Invalid post type: {ig_post_type}"}), 400
-
-    raw_items = payload.get('media_items') or '[]'
-    if isinstance(raw_items, str):
-        try:
-            items = json.loads(raw_items)
-        except (ValueError, TypeError):
-            return jsonify({"error": "media_items must be valid JSON"}), 400
-    else:
-        items = raw_items
-    if not isinstance(items, list):
-        return jsonify({"error": "media_items must be a list"}), 400
-
-    # Normalize items to {url, kind}
-    clean = []
-    for it in items:
-        if not isinstance(it, dict):
-            continue
-        url = (it.get('url') or '').strip()
-        if not url:
-            continue
-        kind = 'video' if it.get('kind') == 'video' else 'image'
-        clean.append({"url": url, "kind": kind})
-
-    # Validate item counts per type (light server-side guard; publish re-validates)
-    if ig_post_type == 'carousel' and clean and not (2 <= len(clean) <= 10):
-        return jsonify({"error": "Carousels need between 2 and 10 items."}), 400
-    if ig_post_type in ('reel', 'story') and len(clean) > 1:
-        return jsonify({"error": f"A {ig_post_type} takes a single media item."}), 400
-    if ig_post_type == 'story':
-        held = _json_list_column(post, 'ig_collaborators')
-        if held:
-            return jsonify({
-                "error": "Instagram Stories cannot have collaborators. Clear "
-                         + ", ".join('@' + c for c in held) + " first."
-            }), 400
-
-    set_standalone_post_media(post_id, ig_post_type, clean)
-    return jsonify({"success": True, "ig_post_type": ig_post_type, "media_items": clean})
-
-
-@app.route('/compose/post/<int:post_id>/reel-options', methods=['POST'])
-def compose_set_post_reel_options(post_id: int):
-    """Set an Instagram Reel's cover frame and collaborators.
-
-    JSON/Form: ``thumb_offset_ms`` (milliseconds into the video) and
-    ``collaborators`` (a list, or a comma separated string, of up to three
-    usernames). Instagram cannot change either once the Reel is published, so
-    they are stored on the post and sent when it publishes, now or from the
-    queue. An empty body clears them; a key left out stays as it is.
-
-    The cover frame belongs to this post's row. The collaborators are the same
-    list the Compose card shows for every Instagram format, so they are written
-    to every Instagram row of the card (``post_ids``), not kept in a second place.
-    """
-    post = get_standalone_post(post_id)
-    if not post:
-        return jsonify({"error": "Post not found"}), 404
-    payload = request.get_json(silent=True)
-    if payload is None:
-        payload = request.form.to_dict()
-    options, error = _clean_reel_options(payload)
-    if error:
-        return jsonify({"error": error}), 400
-
-    # An empty body clears both; otherwise only the keys sent are changed
-    # (collaborators of None means "leave them as they are").
-    sent = {'thumb_offset_ms', 'collaborators'} & set(payload)
-    if not sent:
-        thumb, collaborators = None, []
-    else:
-        thumb = (options.get('thumb_offset_ms') if 'thumb_offset_ms' in sent
-                 else _reel_publish_kwargs(post['ig_reel_options']).get('thumb_offset_ms'))
-        collaborators = options.get('collaborators', []) if 'collaborators' in sent else None
-
-    rows = []
-    if collaborators is not None:
-        rows = [row for row in _card_rows(post, _requested_post_ids(post_id))
-                if row['platform'] == 'instagram']
-        if collaborators and not rows:
-            return jsonify({"error": "This post does not go to Instagram."}), 400
-        if collaborators and any(
-                _ig_effective_format(row['ig_post_type'], _row_video(row)) == 'story' for row in rows):
-            return jsonify({"error": "Instagram Stories cannot have collaborators."}), 400
-
-    set_standalone_post_reel_options(post_id, {'thumb_offset_ms': thumb} if thumb is not None else None)
-    for row in rows:
-        set_standalone_post_ig_people(row['id'], collaborators, _json_list_column(row, 'ig_reel_tags'))
-    saved = {}
-    if thumb is not None:
-        saved['thumb_offset_ms'] = thumb
-    final = collaborators if collaborators is not None else _json_list_column(post, 'ig_collaborators')
-    if final:
-        saved['collaborators'] = final
-    return jsonify({"success": True, "reel_options": saved})
-
-
-@app.route('/compose/post/<int:post_id>/user-tags', methods=['POST'])
-def compose_set_post_user_tags(post_id: int):
-    """Set the Instagram people-tags for a standalone post (feed photos only).
-
-    JSON/Form: user_tags = JSON list of {"username", "x", "y"} with x/y in 0..1.
-    An empty list clears the tags.
-    """
-    post = get_standalone_post(post_id)
-    if not post:
-        return jsonify({"error": "Post not found"}), 404
-
-    payload = request.get_json(silent=True) or request.form
-    raw_tags = payload.get('user_tags')
-    if raw_tags is None:
-        raw_tags = []
-    if isinstance(raw_tags, str):
-        try:
-            tags = json.loads(raw_tags or '[]')
-        except (ValueError, TypeError):
-            return jsonify({"error": "user_tags must be valid JSON"}), 400
-    else:
-        tags = raw_tags
-    if not isinstance(tags, list):
-        return jsonify({"error": "user_tags must be a list"}), 400
-    if len(tags) > 20:
-        return jsonify({"error": "At most 20 people can be tagged."}), 400
-
-    clean = []
-    for tag in tags:
-        if not isinstance(tag, dict):
-            continue
-        username = (tag.get('username') or '').strip().lstrip('@')
-        if not username or not re.fullmatch(r'[A-Za-z0-9._]{1,30}', username):
-            return jsonify({"error": f"Invalid Instagram username: {tag.get('username')!r}"}), 400
-        try:
-            x = min(max(float(tag.get('x', 0.5)), 0.0), 1.0)
-            y = min(max(float(tag.get('y', 0.5)), 0.0), 1.0)
-        except (TypeError, ValueError):
-            return jsonify({"error": "Tag x/y must be numbers"}), 400
-        clean.append({"username": username, "x": round(x, 4), "y": round(y, 4)})
-
-    set_standalone_post_user_tags(post_id, clean)
-    return jsonify({"success": True, "user_tags": clean})
-
-
-@app.route('/compose/post/<int:post_id>/ig-people', methods=['POST'])
-def compose_set_post_ig_people(post_id: int):
-    """Set an Instagram post's collaborators and Reel tags, on its whole card.
-
-    JSON/Form: ``ig_collaborators`` (up to 3 usernames: they are invited and
-    appear on the post only once they accept) and ``ig_reel_tags`` (usernames to
-    tag when the post is a Reel). Each is a list, a JSON list, or text with one
-    username per comma or line; one left out stays as it is, one sent empty is
-    cleared. The values go on every Instagram row of the card (``post_ids``), so
-    a second Instagram account cannot publish the same card without them.
-    """
-    post = get_standalone_post(post_id)
-    if not post:
-        return jsonify({"error": "Post not found"}), 404
-
-    collaborators, reel_tags, error = _requested_ig_people()
-    if error:
-        return error
-    if collaborators is None and reel_tags is None:
-        return jsonify({"error": "Send ig_collaborators and/or ig_reel_tags."}), 400
-
-    rows = [row for row in _card_rows(post, _requested_post_ids(post_id))
-            if row['platform'] == 'instagram']
-    if not rows:
-        return jsonify({"error": "This post does not go to Instagram."}), 400
-
-    if collaborators:
-        for row in rows:
-            if _ig_effective_format(row['ig_post_type'], _row_video(row)) == 'story':
-                return jsonify({
-                    "error": "Instagram Stories cannot have collaborators. Change the "
-                             "format first, or clear them."
-                }), 400
-
-    for row in rows:
-        set_standalone_post_ig_people(
-            row['id'],
-            collaborators if collaborators is not None else _json_list_column(row, 'ig_collaborators'),
-            reel_tags if reel_tags is not None else _json_list_column(row, 'ig_reel_tags'),
-        )
-    saved = get_standalone_post(rows[0]['id'])
-    return jsonify({
-        "success": True,
-        "ig_collaborators": _json_list_column(saved, 'ig_collaborators'),
-        "ig_reel_tags": _json_list_column(saved, 'ig_reel_tags'),
-        "updated_ids": [row['id'] for row in rows],
-    })
-
 
 @app.route('/compose/post/<int:post_id>/stock-image', methods=['GET'])
 def compose_get_stock_images(post_id: int):
@@ -8578,7 +4900,6 @@ def compose_get_stock_images(post_id: int):
         "images": images,
         "configured_services": get_stock_image_services(),
     })
-
 
 @app.route('/compose/post/<int:post_id>/stock-image', methods=['POST'])
 def compose_apply_stock_image(post_id: int):
@@ -8633,7 +4954,6 @@ def compose_apply_stock_image(post_id: int):
         "saved_to_library": saved_url != image_url,
         "updated_ids": _apply_card_image(post, saved_url),
     })
-
 
 @app.route('/compose/post/<int:post_id>/link-image', methods=['GET', 'POST'])
 def compose_apply_link_image(post_id: int):
@@ -8730,7 +5050,6 @@ def compose_apply_link_image(post_id: int):
         "updated_ids": _apply_card_image(post, saved_url),
     })
 
-
 @app.route('/compose/post/<int:post_id>/refresh-source-image', methods=['POST'])
 def compose_refresh_source_image(post_id: int):
     """Re-pull the image from the post's original source (YouTube/article).
@@ -8794,18 +5113,15 @@ def compose_refresh_source_image(post_id: int):
         "updated_ids": _apply_card_image(post, saved_url),
     })
 
-
 def _maybe_attach_link_image(
     post_id: int,
     content: str | None,
-    kind: str = 'standalone',
     sibling_ids: list | None = None,
 ) -> None:
     """Schedule a background fetch of the first URL's og:image for the post.
 
     No-op if the post already has an image, has no URLs, or all fetches fail.
     Designed to be called from request handlers without blocking the response.
-    `kind` is 'standalone' (compose) or 'social' (per-article posts).
     `sibling_ids` are the other rows of the same Compose card: one fetch, one
     image, applied to all of them so they stay a single card.
     """
@@ -8815,10 +5131,7 @@ def _maybe_attach_link_image(
     if not urls:
         return
 
-    if kind == 'social':
-        loader, updater = get_social_post, update_social_post_image
-    else:
-        loader, updater = get_standalone_post, update_standalone_post_image
+    loader, updater = get_standalone_post, update_standalone_post_image
 
     def _worker(pid: int, candidate_urls: list) -> None:
         try:
@@ -8849,7 +5162,7 @@ def _maybe_attach_link_image(
                     if latest and not latest_image:
                         updater(target, saved_url)
                         app.logger.info(
-                            "Auto-attached og:image to %s post %s from %s", kind, target, candidate
+                            "Auto-attached og:image to post %s from %s", target, candidate
                         )
                 return
         except Exception:
@@ -8860,264 +5173,6 @@ def _maybe_attach_link_image(
     except RuntimeError:
         # Executor shut down (e.g. during reload); run inline as a best effort
         _worker(post_id, urls)
-
-
-def _ensure_instagram_image(
-    content: str | None,
-    image_url: str | None,
-    *,
-    standalone_post_id: int | None = None,
-    social_post_id: int | None = None,
-) -> tuple[str | None, str | None]:
-    """Instagram feed posts require an image; return (image_url, error).
-
-    If the post has no image, try to attach a stock image based on the content
-    and persist it back to the source post so the record reflects what gets
-    published. error is set only when no image could be obtained.
-    """
-    if image_url:
-        return image_url, None
-
-    stock_url = None
-    if content:
-        try:
-            stock_url = get_image_for_post(content)
-        except Exception as exc:
-            app.logger.warning("Stock image lookup for Instagram post failed: %s", exc)
-
-    if stock_url:
-        try:
-            if standalone_post_id:
-                update_standalone_post_image(standalone_post_id, stock_url)
-            elif social_post_id:
-                update_social_post_image(social_post_id, stock_url)
-        except Exception as exc:
-            app.logger.warning("Could not persist auto-attached Instagram image: %s", exc)
-        return stock_url, None
-
-    return None, (
-        "Instagram requires an image and no stock image could be found. "
-        "Attach an image to the post and retry."
-    )
-
-
-def _ensure_instagram_media(
-    content: str | None,
-    image_url: str | None,
-    ig_post_type: str | None,
-    media_items: list | None,
-    *,
-    standalone_post_id: int | None = None,
-    social_post_id: int | None = None,
-    video_url: str | None = None,
-) -> tuple[list | None, str | None]:
-    """Validate/prepare Instagram media by format. Returns (resolved_items, error).
-
-    resolved_items is the list of {"url","kind"} to publish. error is set on failure.
-    - feed: delegates to _ensure_instagram_image (stock auto-attach); 1 image.
-      A card that carries a video has nothing to look for: Instagram no longer
-      has feed video, so the video goes out as a Reel and resolves to it.
-    - carousel: 2-10 items.
-    - reel: exactly one video item (the card's video when the builder is empty).
-    - story: exactly one media item (the card's video when the builder is empty).
-    """
-    ig_post_type = ig_post_type or 'feed'
-    items = [it for it in (media_items or []) if it]
-    card_video = [{"url": video_url, "kind": "video"}] if video_url else []
-
-    if ig_post_type == 'feed':
-        if card_video:
-            return card_video, None
-        url, err = _ensure_instagram_image(
-            content, image_url,
-            standalone_post_id=standalone_post_id, social_post_id=social_post_id,
-        )
-        if err:
-            return None, err
-        return [{"url": url, "kind": "image"}], None
-
-    if ig_post_type == 'carousel':
-        if not (2 <= len(items) <= 10):
-            return None, "Instagram carousels need between 2 and 10 items. Add media and retry."
-        if any(not it.get("url") for it in items):
-            return None, "A carousel item is missing its media URL."
-        return items, None
-
-    if ig_post_type == 'reel':
-        videos = [it for it in items if it.get("kind") == "video" and it.get("url")] or card_video
-        if len(videos) != 1:
-            return None, "Instagram Reels require exactly one video. Attach a video and retry."
-        return [videos[0]], None
-
-    if ig_post_type == 'story':
-        valid = [it for it in items if it.get("url")] or card_video
-        if len(valid) != 1:
-            return None, "A story needs exactly one image or video. Attach one and retry."
-        return [valid[0]], None
-
-    return None, f"Unknown Instagram post type: {ig_post_type}"
-
-
-def _clean_reel_options(raw) -> tuple[dict | None, str | None]:
-    """Validate Reel options from a request: ``(options, error)``.
-
-    ``thumb_offset_ms`` is where the cover frame is taken (milliseconds into the
-    video); ``collaborators`` is up to three usernames, cleaned by the same
-    ``normalize_handles`` every other path uses. Missing keys are left out of the
-    result.
-    """
-    if not isinstance(raw, dict):
-        return None, "Reel options must be an object"
-    options: dict = {}
-    offset = raw.get('thumb_offset_ms')
-    if offset not in (None, ''):
-        try:
-            offset = int(offset)
-        except (TypeError, ValueError):
-            return None, "thumb_offset_ms must be a whole number of milliseconds"
-        if offset < 0:
-            return None, "thumb_offset_ms cannot be negative"
-        options['thumb_offset_ms'] = offset
-    try:
-        clean = normalize_handles(raw.get('collaborators'), what='collaborator',
-                                  limit=MAX_COLLABORATORS)
-    except InstagramInputError as exc:
-        return None, str(exc)
-    if clean:
-        options['collaborators'] = clean
-    return options, None
-
-
-def _reel_publish_kwargs(raw) -> dict:
-    """The stored Reel options as keyword arguments for ``publish_reel_post``.
-
-    A post with none passes nothing, so the client call is exactly what it was
-    before the option existed.
-    """
-    if not raw:
-        return {}
-    try:
-        stored = json.loads(raw) if isinstance(raw, str) else raw
-    except (ValueError, TypeError):
-        return {}
-    options, error = _clean_reel_options(stored)
-    if error or not options:
-        return {}
-    return options
-
-
-def _instagram_publish_for_post(
-    access_token: str,
-    *,
-    content: str | None,
-    image_url: str | None,
-    standalone_post_id: int | None = None,
-    social_post_id: int | None = None,
-    video_url: str | None = None,
-) -> dict:
-    """Publish an Instagram post honoring its media format (feed/carousel/reel/story).
-
-    Reads ig_post_type + media_items from the standalone post (feed when absent),
-    validates via _ensure_instagram_media, routes to the right client method, and
-    returns the client result dict unchanged. On a validation failure the result
-    carries ``guard_error: True`` so the worker can fail fast instead of retrying.
-
-    A card-level ``video_url`` publishes as a Reel when the format is still the
-    default feed; a format chosen on purpose (carousel, reel, story) is kept, and
-    a reel or story with an empty builder falls back to the card's video.
-    """
-    ig_post_type = 'feed'
-    media_items: list = []
-    user_tags: list = []
-    reel_options: dict = {}
-    collaborators: list = []
-    reel_tags: list = []
-    if standalone_post_id:
-        row = get_standalone_post(standalone_post_id)
-        if row:
-            row = dict(row)
-            video_url = video_url or row.get('video_url')
-            ig_post_type = row.get('ig_post_type') or 'feed'
-            collaborators = _json_list_column(row, 'ig_collaborators')
-            reel_tags = _json_list_column(row, 'ig_reel_tags')
-            raw = row.get('media_items')
-            if raw:
-                try:
-                    media_items = json.loads(raw)
-                except (ValueError, TypeError):
-                    media_items = []
-            raw_tags = row.get('ig_user_tags')
-            if raw_tags:
-                try:
-                    user_tags = json.loads(raw_tags)
-                except (ValueError, TypeError):
-                    user_tags = []
-            reel_options = _reel_publish_kwargs(row.get('ig_reel_options'))
-
-    resolved, err = _ensure_instagram_media(
-        content, image_url, ig_post_type, media_items,
-        standalone_post_id=standalone_post_id, social_post_id=social_post_id,
-        video_url=video_url,
-    )
-    if err:
-        return {"success": False, "error": {"message": err}, "friendly": err, "guard_error": True}
-
-    # The people on the post are checked before any request is made, and a post
-    # is refused rather than published without them: collaborators that cannot
-    # be sent (a Story takes none) or are not valid handles fail the post.
-    effective = _ig_effective_format(ig_post_type, video_url)
-    # A Reel's collaborators were first stored inside its options; init_db moves them
-    # to ig_collaborators, and until it has they still go out.
-    legacy_collaborators = reel_options.pop('collaborators', None) or []
-    if not collaborators and effective == 'reel':
-        collaborators = legacy_collaborators
-    try:
-        collaborators = normalize_handles(collaborators, limit=MAX_COLLABORATORS)
-        # Reel tags saved on a post that is not a Reel are not sent, so they are
-        # not checked either.
-        reel_tags = (normalize_handles(reel_tags, what='tagged account', limit=MAX_REEL_TAGS)
-                     if effective == 'reel' else [])
-    except InstagramInputError as exc:
-        err = str(exc)
-        return {"success": False, "error": {"message": err}, "friendly": err, "guard_error": True}
-    if collaborators and effective == 'story':
-        err = ("Instagram Stories cannot have collaborators. Remove "
-               + ", ".join('@' + c for c in collaborators)
-               + " or change the format, then post again.")
-        return {"success": False, "error": {"message": err}, "friendly": err, "guard_error": True}
-
-    client = get_instagram_client()
-    caption = (content or "")[:2200]
-    # Only what is set is passed on, so a post without people calls the client
-    # exactly as it always did.
-    people = {'collaborators': collaborators} if collaborators else {}
-    # A Reel also carries its cover frame (thumb_offset_ms) when one was set.
-    reel_people = dict(reel_options, **people, **({'user_tags': reel_tags} if reel_tags else {}))
-
-    if ig_post_type == 'feed' and video_url:
-        return client.publish_reel_post(access_token, caption, resolved[0]["url"], **reel_people)
-
-    if ig_post_type == 'carousel':
-        return client.publish_carousel_post(access_token, caption, resolved, **people)
-    if ig_post_type == 'reel':
-        return client.publish_reel_post(access_token, caption, resolved[0]["url"], **reel_people)
-    if ig_post_type == 'story':
-        item = resolved[0]
-        if item.get("kind") == "video":
-            return client.publish_story_post(access_token, video_url=item["url"])
-        return client.publish_story_post(access_token, image_url=item["url"])
-    # feed (default)
-    return client.publish_image_post(
-        access_token, caption, resolved[0]["url"], user_tags=user_tags or None,
-        **people,
-    )
-
-
-# Instagram is the one platform whose publish depends on helpers that live here
-# (format routing, media validation, people tags), so the shared publish path
-# borrows this rather than reimplementing it.
-social_publisher.set_instagram_publisher(_instagram_publish_for_post)
-
 
 @app.route('/compose/stock-images/search', methods=['GET'])
 def compose_search_stock_images():
@@ -9163,7 +5218,6 @@ def compose_search_stock_images():
         "configured_services": get_stock_image_services(),
     })
 
-
 @app.route('/compose/stock-images/status', methods=['GET'])
 def compose_stock_images_status():
     """Check if stock image APIs are configured.
@@ -9178,7 +5232,6 @@ def compose_stock_images_status():
         "configured": stock_images_configured(),
         "services": get_stock_image_services(),
     })
-
 
 @app.route('/compose/upload-image', methods=['POST'])
 def compose_upload_image():
@@ -9208,7 +5261,7 @@ def compose_upload_image():
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     
-    # Upload to Cloudinary if configured (for public URLs that work with Threads)
+    # Upload to Cloudinary if configured (for public URLs)
     if cloudinary_ready():
         try:
             result = cloudinary.uploader.upload(
@@ -9260,9 +5313,8 @@ def compose_upload_image():
         "image_url": image_url,
         "filename": unique_filename,
         "storage": "local",
-        "warning": "Image stored locally - may not work with Threads/external platforms" if not cloudinary_ready() else None
+        "warning": "Image stored locally - may not work with external platforms" if not cloudinary_ready() else None
     })
-
 
 def _store_uploaded_video(file):
     """Validate an uploaded video and put it on Cloudinary.
@@ -9341,10 +5393,9 @@ def _store_uploaded_video(file):
         "warnings": video_media.check_compat(size_bytes=size, duration_seconds=duration),
     }, None, 200
 
-
 @app.route('/compose/upload-video', methods=['POST'])
 def compose_upload_video():
-    """Upload a video for a post, Instagram Reel, video Story or carousel item."""
+    """Upload a video for a post."""
     if 'video' not in request.files:
         return jsonify({"error": "No video file provided"}), 400
 
@@ -9356,7 +5407,6 @@ def compose_upload_video():
     if error:
         return jsonify({"error": error}), status
     return jsonify({"success": True, **payload})
-
 
 def _load_image_for_fit(url: str) -> bytes:
     """Load raw image bytes for the media-fit endpoint.
@@ -9384,376 +5434,6 @@ def _load_image_for_fit(url: str) -> bytes:
         allowed_content_types=("image/",),
     )
     return data
-
-
-def _ig_crop_to_canvas(img: Image.Image, tw: int, th: int,
-                       focus_x: float = 0.5, focus_y: float = 0.5) -> Image.Image:
-    """Scale the image to cover the canvas, then crop around the focus point."""
-    w, h = img.size
-    scale = max(tw / w, th / h)
-    new_w = max(tw, round(w * scale))
-    new_h = max(th, round(h * scale))
-    img = img.resize((new_w, new_h), Image.LANCZOS)
-    left = min(max(round(focus_x * new_w - tw / 2), 0), new_w - tw)
-    top = min(max(round(focus_y * new_h - th / 2), 0), new_h - th)
-    return img.crop((left, top, left + tw, top + th))
-
-
-def _ig_pad_to_canvas(img: Image.Image, tw: int, th: int,
-                      pad_style: str = 'blur') -> Image.Image:
-    """Fit the image inside the canvas and fill the borders.
-
-    pad_style 'blur' mimics Instagram's look (blurred, darkened cover of the
-    same image); 'black'/'white' use a solid background.
-    """
-    w, h = img.size
-    if pad_style == 'blur':
-        canvas = _ig_crop_to_canvas(img, tw, th).filter(ImageFilter.GaussianBlur(40))
-        canvas = ImageEnhance.Brightness(canvas).enhance(0.65)
-    else:
-        color = (0, 0, 0) if pad_style == 'black' else (255, 255, 255)
-        canvas = Image.new('RGB', (tw, th), color)
-    scale = min(tw / w, th / h)
-    fit_w = max(1, round(w * scale))
-    fit_h = max(1, round(h * scale))
-    fitted = img.resize((fit_w, fit_h), Image.LANCZOS)
-    canvas.paste(fitted, ((tw - fit_w) // 2, (th - fit_h) // 2))
-    return canvas
-
-
-def _store_fitted_image(jpeg_bytes: bytes, prefix: str) -> str:
-    """Persist a processed JPEG to Cloudinary (if configured) or local uploads.
-
-    Returns the URL to use for the post — absolute for local storage, matching
-    the upload routes so Instagram's fetcher can reach it.
-    """
-    if cloudinary_ready():
-        try:
-            result = cloudinary.uploader.upload(
-                jpeg_bytes,
-                folder="insights",
-                resource_type="image",
-            )
-            saved_url = result['secure_url']
-            add_uploaded_image(
-                filename=result['public_id'].split('/')[-1],
-                url=saved_url,
-                storage='cloudinary',
-                size=result.get('bytes', len(jpeg_bytes)),
-            )
-            return saved_url
-        except Exception as e:
-            app.logger.error("Cloudinary upload of fitted image failed: %s", e)
-            # Fall back to local storage
-    unique_filename = f"{prefix}_{uuid.uuid4().hex}.jpg"
-    with open(os.path.join(UPLOAD_FOLDER, unique_filename), 'wb') as f:
-        f.write(jpeg_bytes)
-    add_uploaded_image(
-        filename=unique_filename,
-        url=f"/static/uploads/{unique_filename}",
-        storage='local',
-        size=len(jpeg_bytes),
-    )
-    return f"{request.host_url}static/uploads/{unique_filename}"
-
-
-@app.route('/compose/media/fit', methods=['POST'])
-def compose_fit_media():
-    """Resize an image to an exact Instagram canvas (crop or pad).
-    ---
-    tags:
-      - Compose
-    parameters:
-      - name: body
-        in: body
-        required: true
-        schema:
-          type: object
-          properties:
-            url:
-              type: string
-              description: Source image URL (upload, library, or public URL)
-            target:
-              type: string
-              enum: [story, reel, feed_square, feed_portrait, feed_landscape]
-            mode:
-              type: string
-              enum: [crop, pad]
-              description: crop = fill canvas and cut overflow; pad = fit inside and fill borders
-            focus_x:
-              type: number
-              description: Crop anchor 0..1 (0.5 = center), crop mode only
-            focus_y:
-              type: number
-            pad_style:
-              type: string
-              enum: [blur, black, white]
-    responses:
-      200:
-        description: New image URL and dimensions
-      400:
-        description: Validation or processing error
-    """
-    data = request.get_json(silent=True) or {}
-    url = (data.get('url') or '').strip()
-    target = (data.get('target') or '').strip()
-    mode = (data.get('mode') or 'crop').strip()
-    pad_style = (data.get('pad_style') or 'blur').strip()
-
-    if not url:
-        return jsonify({"error": "url is required"}), 400
-    if target not in IG_FIT_TARGETS:
-        return jsonify({
-            "error": f"target must be one of: {', '.join(sorted(IG_FIT_TARGETS))}"
-        }), 400
-    if mode not in ('crop', 'pad'):
-        return jsonify({"error": "mode must be crop or pad"}), 400
-    if pad_style not in ('blur', 'black', 'white'):
-        return jsonify({"error": "pad_style must be blur, black, or white"}), 400
-    try:
-        focus_x = min(max(float(data.get('focus_x', 0.5)), 0.0), 1.0)
-        focus_y = min(max(float(data.get('focus_y', 0.5)), 0.0), 1.0)
-    except (TypeError, ValueError):
-        return jsonify({"error": "focus_x/focus_y must be numbers"}), 400
-
-    try:
-        raw = _load_image_for_fit(url)
-    except (UnsafeURLError, ValueError, RuntimeError, requests.RequestException) as e:
-        return jsonify({"error": f"Could not load image: {e}"}), 400
-
-    tw, th = IG_FIT_TARGETS[target]
-    try:
-        img = Image.open(io.BytesIO(raw))
-        img.load()
-        img = img.convert('RGB')
-        if mode == 'crop':
-            fitted = _ig_crop_to_canvas(img, tw, th, focus_x, focus_y)
-        else:
-            fitted = _ig_pad_to_canvas(img, tw, th, pad_style)
-        output = io.BytesIO()
-        fitted.save(output, format='JPEG', quality=90, optimize=True)
-        jpeg_bytes = output.getvalue()
-    except Exception as e:
-        app.logger.error("Media fit processing failed for %s: %s", url, e)
-        return jsonify({"error": f"Could not process image: {e}"}), 400
-
-    try:
-        new_url = _store_fitted_image(jpeg_bytes, f"igfit_{target}")
-    except OSError as e:
-        app.logger.error("Could not store fitted image: %s", e)
-        return jsonify({"error": "Could not save the adjusted image."}), 500
-
-    return jsonify({"success": True, "image_url": new_url, "width": tw, "height": th})
-
-
-# ── Text overlays on story/feed media ──────────────────────────────────────
-
-# Candidate fonts for baked-in text, best first (bold reads best on stories).
-_OVERLAY_FONT_CANDIDATES = [
-    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",   # macOS
-    "/System/Library/Fonts/Helvetica.ttc",                 # macOS
-    "/System/Library/Fonts/Supplemental/Arial.ttf",        # macOS
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Linux
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-]
-
-_OVERLAY_BG_STYLES = {
-    "none": None,
-    "dark": (0, 0, 0, 153),        # 60% black — the classic story text pill
-    "light": (255, 255, 255, 191),  # 75% white
-    "black": (0, 0, 0, 255),
-    "white": (255, 255, 255, 255),
-}
-MAX_OVERLAY_LAYERS = 10
-MAX_VIDEO_FETCH_BYTES = 100 * 1024 * 1024  # matches MAX_CONTENT_LENGTH
-
-
-def _find_overlay_font() -> str | None:
-    """Return the first available TTF/TTC font path for text overlays."""
-    for path in _OVERLAY_FONT_CANDIDATES:
-        if os.path.isfile(path):
-            return path
-    return None
-
-
-def _clean_overlay_layers(raw_layers) -> tuple[list | None, str | None]:
-    """Validate/normalize annotate layers. Returns (layers, error)."""
-    if not isinstance(raw_layers, list) or not raw_layers:
-        return None, "layers must be a non-empty list"
-    if len(raw_layers) > MAX_OVERLAY_LAYERS:
-        return None, f"At most {MAX_OVERLAY_LAYERS} text layers are supported."
-    clean = []
-    for layer in raw_layers:
-        if not isinstance(layer, dict):
-            return None, "each layer must be an object"
-        text = (layer.get("text") or "").replace("\r\n", "\n").strip("\n").rstrip()
-        if not text or len(text) > 300:
-            return None, "layer text must be 1-300 characters"
-        color = (layer.get("color") or "#ffffff").strip()
-        if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
-            return None, f"invalid color: {color!r}"
-        bg = (layer.get("bg") or "none").strip()
-        if bg not in _OVERLAY_BG_STYLES:
-            return None, f"invalid bg style: {bg!r}"
-        try:
-            x = min(max(float(layer.get("x", 0.5)), 0.0), 1.0)
-            y = min(max(float(layer.get("y", 0.5)), 0.0), 1.0)
-            size = min(max(float(layer.get("size", 0.06)), 0.02), 0.3)
-        except (TypeError, ValueError):
-            return None, "layer x/y/size must be numbers"
-        clean.append({"text": text, "x": x, "y": y, "size": size, "color": color, "bg": bg})
-    return clean, None
-
-
-def _annotate_image(img: Image.Image, layers: list, font_path: str | None) -> Image.Image:
-    """Bake text layers onto an image (centered at x/y, IG-style pill option)."""
-    img = img.convert("RGB")
-    W, H = img.size
-    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    for layer in layers:
-        font_px = max(12, round(layer["size"] * W))
-        try:
-            font = ImageFont.truetype(font_path, font_px) if font_path else ImageFont.load_default()
-        except OSError:
-            font = ImageFont.load_default()
-        cx, cy = layer["x"] * W, layer["y"] * H
-        spacing = round(font_px * 0.25)
-        stroke_w = 0 if layer["bg"] != "none" else max(2, font_px // 22)
-        kwargs = dict(font=font, anchor="mm", align="center", spacing=spacing)
-        bbox = draw.multiline_textbbox((cx, cy), layer["text"], stroke_width=stroke_w, **kwargs)
-        bg_fill = _OVERLAY_BG_STYLES[layer["bg"]]
-        if bg_fill:
-            pad_x, pad_y = round(font_px * 0.45), round(font_px * 0.28)
-            draw.rounded_rectangle(
-                [bbox[0] - pad_x, bbox[1] - pad_y, bbox[2] + pad_x, bbox[3] + pad_y],
-                radius=round(font_px * 0.35),
-                fill=bg_fill,
-            )
-        draw.multiline_text(
-            (cx, cy), layer["text"], fill=layer["color"],
-            stroke_width=stroke_w, stroke_fill=(0, 0, 0, 210) if stroke_w else None,
-            **kwargs,
-        )
-    return Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
-
-
-def _load_video_for_annotate(url: str, workdir: str) -> str:
-    """Materialize the source video as a local file path inside workdir.
-
-    Local /static/uploads URLs are used directly; remote URLs go through the
-    SSRF-hardened fetcher. Raises ValueError/UnsafeURLError/RuntimeError.
-    """
-    parsed = urlparse(url)
-    path = parsed.path or ""
-    if path.startswith("/static/uploads/"):
-        filename = os.path.basename(path)
-        if not allowed_video_file(filename):
-            raise ValueError("unsupported local video type")
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        if not os.path.isfile(filepath):
-            raise ValueError("local video not found")
-        return filepath
-    data, _content_type, _final = _fetch_safely(
-        url,
-        max_bytes=MAX_VIDEO_FETCH_BYTES,
-        timeout=60,
-        allowed_content_types=("video/", "application/octet-stream", "binary/"),
-    )
-    ext = ".mov" if path.lower().endswith(".mov") else ".mp4"
-    local = os.path.join(workdir, f"src{ext}")
-    with open(local, "wb") as f:
-        f.write(data)
-    return local
-
-
-def _annotate_video(src_path: str, layers: list, font_path: str, workdir: str) -> str:
-    """Burn text layers into a video with ffmpeg drawtext. Returns output path."""
-    ffprobe = shutil.which("ffprobe")
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg or not ffprobe:
-        raise RuntimeError("ffmpeg is not installed on the server")
-
-    probe = subprocess.run(
-        [ffprobe, "-v", "error", "-select_streams", "v:0",
-         "-show_entries", "stream=width,height", "-of", "csv=p=0", src_path],
-        capture_output=True, text=True, timeout=60,
-    )
-    try:
-        w, _h = (int(v) for v in probe.stdout.strip().split(",")[:2])
-    except (ValueError, IndexError):
-        raise RuntimeError(f"could not read video dimensions: {probe.stderr.strip()[:200]}")
-
-    filters = []
-    for i, layer in enumerate(layers):
-        font_px = max(12, round(layer["size"] * w))
-        # textfile= sidesteps drawtext's escaping rules entirely
-        textfile = os.path.join(workdir, f"layer{i}.txt")
-        with open(textfile, "w", encoding="utf-8") as f:
-            f.write(layer["text"])
-        parts = [
-            f"fontfile='{font_path}'",
-            f"textfile='{textfile}'",
-            f"fontsize={font_px}",
-            f"fontcolor=0x{layer['color'].lstrip('#')}",
-            f"x=w*{layer['x']:.4f}-text_w/2",
-            f"y=h*{layer['y']:.4f}-text_h/2",
-            f"line_spacing={round(font_px * 0.25)}",
-        ]
-        bg = layer["bg"]
-        if bg != "none":
-            boxcolor = {
-                "dark": "black@0.6", "light": "white@0.75",
-                "black": "black", "white": "white",
-            }[bg]
-            parts += ["box=1", f"boxcolor={boxcolor}", f"boxborderw={round(font_px * 0.35)}"]
-        else:
-            shadow = max(1, font_px // 22)
-            parts += ["shadowcolor=black@0.7", f"shadowx={shadow}", f"shadowy={shadow}"]
-        filters.append("drawtext=" + ":".join(parts))
-
-    out_path = os.path.join(workdir, "annotated.mp4")
-    result = subprocess.run(
-        [ffmpeg, "-y", "-i", src_path, "-vf", ",".join(filters),
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-         "-c:a", "copy", "-movflags", "+faststart", "-pix_fmt", "yuv420p",
-         out_path],
-        capture_output=True, text=True, timeout=300,
-    )
-    if result.returncode != 0 or not os.path.isfile(out_path):
-        app.logger.error("ffmpeg drawtext failed: %s", result.stderr[-800:])
-        raise RuntimeError("video text rendering failed (see server log)")
-    return out_path
-
-
-def _store_annotated_video(video_path: str) -> str:
-    """Persist an annotated video like an upload; returns its serving URL."""
-    size = os.path.getsize(video_path)
-    if cloudinary_ready():
-        result = cloudinary.uploader.upload(
-            video_path, folder="insights", resource_type="video",
-        )
-        video_url = result["secure_url"]
-        add_uploaded_image(
-            filename=result["public_id"].split("/")[-1],
-            url=video_url,
-            storage="cloudinary",
-            size=result.get("bytes", size),
-            media_type="video",
-        )
-        return video_url
-    unique_filename = f"igtext_{uuid.uuid4().hex}.mp4"
-    dest = os.path.join(UPLOAD_FOLDER, unique_filename)
-    shutil.copyfile(video_path, dest)
-    add_uploaded_image(
-        filename=unique_filename,
-        url=f"/static/uploads/{unique_filename}",
-        storage="local",
-        size=size,
-        media_type="video",
-    )
-    return f"{request.host_url}static/uploads/{unique_filename}"
-
 
 @app.route('/compose/media/annotate', methods=['POST'])
 def compose_annotate_media():
@@ -9843,7 +5523,6 @@ def compose_annotate_media():
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
-
 @app.route('/compose/list-images', methods=['GET'])
 def compose_list_images():
     """List uploaded media from the database and local folder.
@@ -9907,7 +5586,6 @@ def compose_list_images():
     
     return jsonify({'success': True, 'images': images})
 
-
 @app.route('/compose/post/<int:post_id>/delete', methods=['POST'])
 def compose_delete_post(post_id: int):
     """Delete a standalone post — the whole card when the page sends its rows."""
@@ -9919,7 +5597,6 @@ def compose_delete_post(post_id: int):
     for row in rows:
         delete_standalone_post(row['id'])
     return jsonify({"success": True, "deleted_ids": [row['id'] for row in rows]})
-
 
 @app.route('/compose/posts/delete-bulk', methods=['POST'])
 def compose_delete_bulk():
@@ -9940,7 +5617,6 @@ def compose_delete_bulk():
         "success": True,
         "deleted_count": deleted,
     })
-
 
 @app.route('/compose/posts/bulk-image', methods=['POST'])
 def compose_bulk_update_images():
@@ -9992,7 +5668,6 @@ def compose_bulk_update_images():
         "image_url": image_url
     })
 
-
 @app.route('/compose/post/<int:post_id>/toggle-used', methods=['POST'])
 def compose_toggle_used(post_id: int):
     """Toggle a standalone post's used status, card-wide.
@@ -10013,7 +5688,6 @@ def compose_toggle_used(post_id: int):
         "used": new_status,
         "updated_ids": [row['id'] for row in rows],
     })
-
 
 @app.route('/compose/posts/bulk-toggle-used', methods=['POST'])
 def compose_bulk_toggle_used():
@@ -10040,7 +5714,6 @@ def compose_bulk_toggle_used():
         "used": used,
     })
 
-
 # ---------------------------------------------------------------------------
 # Publishing a saved post
 #
@@ -10050,112 +5723,6 @@ def compose_bulk_toggle_used():
 # sent to one account and the same post sent to six take exactly the same route
 # through token refresh, character limits and error reporting.
 # ---------------------------------------------------------------------------
-
-
-def _publish_standalone_row(post, account_id=None):
-    """Publish one saved post row and record that it went out.
-
-    The row already knows its target account, so the usual call passes no
-    ``account_id``; a caller that names one is overriding the row, which is what
-    the composer does when the user picks a different account for a one-off.
-    """
-    row = dict(post)
-    platform = row.get('platform')
-    if account_id is None:
-        account_id = row.get('account_id')
-
-    result = social_publisher.publish(
-        platform,
-        account_id,
-        content=row.get('content') or '',
-        image_url=row.get('image_url'),
-        video_url=row.get('video_url'),
-        standalone_post_id=row.get('id'),
-    )
-
-    if result['success']:
-        mark_standalone_post_used(row['id'], True)
-        # The queue table doubles as the posting history, which is how the card
-        # knows to show a link to what went out and to which account.
-        add_scheduled_post(
-            social_post_id=None,
-            article_id=None,
-            standalone_post_id=row['id'],
-            post_type='standalone',
-            platform=platform,
-            scheduled_for=datetime.now().isoformat(timespec='seconds'),
-            status='posted',
-            linkedin_post_urn=result.get('permalink'),
-            account_id=result.get('account_id'),
-        )
-    return result
-
-
-def _publish_response(result):
-    """One publish result as the composer's JS reads it.
-
-    ``post_urn`` is kept alongside ``permalink`` because the LinkedIn chip
-    builds its link from the URN, while every other platform hands back a URL.
-    """
-    if result['success']:
-        return jsonify({
-            "success": True,
-            "platform": result['platform'],
-            "account_id": result['account_id'],
-            "account_label": result['account_label'],
-            "permalink": result['permalink'],
-            "post_urn": result['permalink'],
-            "message": f"Posted to {result['account_label']}!",
-        })
-    status = 401 if result['needs_reconnect'] else 400
-    return jsonify({
-        "success": False,
-        "platform": result['platform'],
-        "account_id": result['account_id'],
-        "account_label": result['account_label'],
-        "needs_reconnect": result['needs_reconnect'],
-        "error": result['error'],
-    }), status
-
-
-def _compose_publish_one(post_id, platform):
-    """Publish one card row to one platform, on the account the row names."""
-    post = get_standalone_post(post_id)
-    if not post:
-        return jsonify({"error": "Post not found"}), 404
-
-    row = dict(post)
-    account_id = request.form.get('account_id', type=int)
-    if account_id is None and row.get('platform') == platform:
-        account_id = row.get('account_id')
-
-    result = social_publisher.publish(
-        platform,
-        account_id,
-        content=row.get('content') or '',
-        image_url=row.get('image_url'),
-        video_url=row.get('video_url'),
-        standalone_post_id=post_id,
-    )
-    if result['success']:
-        mark_standalone_post_used(post_id, True)
-        add_scheduled_post(
-            social_post_id=None,
-            article_id=None,
-            standalone_post_id=post_id,
-            post_type='standalone',
-            platform=platform,
-            scheduled_for=datetime.now().isoformat(timespec='seconds'),
-            status='posted',
-            linkedin_post_urn=result.get('permalink'),
-            account_id=result.get('account_id'),
-        )
-    else:
-        app.logger.warning(
-            "Publish to %s failed for post %s: %s", platform, post_id, result['error'],
-        )
-    return _publish_response(result)
-
 
 @app.route('/compose/post/<int:post_id>/push', methods=['POST'])
 def compose_push_post(post_id: int):
@@ -10197,7 +5764,6 @@ def compose_push_post(post_id: int):
     return jsonify({"job_id": outcome["job_id"], "already": outcome["already"],
                     "platform": target})
 
-
 @app.route('/agent-jobs/<int:job_id>.json')
 def agent_job_json(job_id: int):
     job = database.get_agent_job(job_id)
@@ -10205,12 +5771,10 @@ def agent_job_json(job_id: int):
         return jsonify({"error": "not found"}), 404
     return jsonify(job)
 
-
 @app.route('/agent/login-states.json')
 def agent_login_states_json():
     """The compose strip's data: one merged per-platform login view."""
     return jsonify(agent_hub.login_states_view())
-
 
 @app.route('/agent/status.json')
 def agent_status_json():
@@ -10223,7 +5787,6 @@ def agent_status_json():
     return jsonify({"online": agent_hub.agent_online(),
                     "age": None if snap is None else snap.get("age")})
 
-
 @app.route("/agent-jobs/pair-code", methods=["POST"])
 def agent_pair_code():
     """Mint a pairing code for the queue page's「配对浏览器扩展」button.
@@ -10234,7 +5797,6 @@ def agent_pair_code():
     """
     code = agent_hub.create_pairing_code()
     return jsonify({"code": code, "expires_in": 300})
-
 
 @app.route("/agent/pair", methods=["POST"])
 def agent_pair():
@@ -10251,7 +5813,6 @@ def agent_pair():
     if not token:
         return jsonify({"error": "配对码无效或已过期"}), 403
     return jsonify({"token": token})
-
 
 @app.route('/agent-jobs')
 def agent_jobs_page():
@@ -10272,146 +5833,12 @@ def agent_jobs_page():
     return render_template('agent_jobs.html', jobs=jobs,
                            agent_online=agent_hub.agent_online())
 
-
-def _publish_social_post(post_id, platform):
-    """Publish an article's social post to one account of one platform.
-
-    Article posts go out through the same path as everything else, so they get
-    per-account routing, token refresh and error reporting without a fourth
-    copy of the publish logic living here.
-    """
-    post = get_social_post(post_id)
-    if not post:
-        return jsonify({"error": "Post not found"}), 404
-
-    row = dict(post)
-    account_id = request.form.get('account_id', type=int)
-    if account_id is None:
-        account_id = row.get('account_id')
-
-    result = social_publisher.publish(
-        platform,
-        account_id,
-        content=row.get('content') or '',
-        image_url=row.get('image_url'),
-        social_post_id=post_id,
-        # The article's topic becomes the link-preview title on LinkedIn.
-        article_title=row.get('article_topic'),
-    )
-
-    if result['success']:
-        mark_social_post_used(post_id, True)
-        add_scheduled_post(
-            social_post_id=post_id,
-            article_id=row.get('article_id'),
-            post_type='social',
-            platform=platform,
-            scheduled_for=datetime.now().isoformat(timespec='seconds'),
-            status='posted',
-            linkedin_post_urn=result.get('permalink'),
-            account_id=result.get('account_id'),
-        )
-    else:
-        app.logger.warning(
-            "Publishing social post %s to %s failed: %s",
-            post_id, platform, result['error'],
-        )
-    return _publish_response(result)
-
-
-
-@app.route('/compose/post/<int:post_id>/publish', methods=['POST'])
-def compose_publish_card(post_id: int):
-    """Publish one piece of copy to every target on its card, in one request.
-
-    This is the cross-platform, cross-account post: the card's rows already say
-    which platforms and which accounts the copy is aimed at, so publishing it is
-    walking them. Nothing short-circuits, so one target being disconnected or
-    rejecting the post does not stop the others, and the reply names exactly
-    which targets landed and which did not.
-    """
-    post = get_standalone_post(post_id)
-    if not post:
-        return jsonify({"error": "Post not found"}), 404
-
-    rows = _card_rows(post, _requested_post_ids(post_id))
-
-    # A caller can narrow the fan-out to a subset of the card's rows, which is
-    # how "retry the two that failed" avoids re-posting the ones that worked.
-    only = {pid for pid in _requested_post_ids(post_id, field='target_ids')}
-    if only:
-        rows = [row for row in rows if row['id'] in only]
-    if not rows:
-        return jsonify({"error": "This post has no targets to publish to"}), 400
-
-    results = [_publish_standalone_row(row) for row in rows]
-    published = [r for r in results if r['success']]
-    failed = [r for r in results if not r['success']]
-
-    if not failed:
-        message = f"Posted to {len(published)} target{'s' if len(published) != 1 else ''}"
-    elif published:
-        message = f"Posted to {len(published)} of {len(results)} targets"
-    else:
-        message = "Could not post to any target"
-
-    return jsonify({
-        "success": not failed,
-        "partial": bool(published and failed),
-        "message": message,
-        "published": len(published),
-        "attempted": len(results),
-        "results": [
-            {
-                "post_id": row['id'],
-                "platform": result['platform'],
-                "platform_name": result['platform_name'],
-                "account_id": result['account_id'],
-                "account_label": result['account_label'],
-                "success": result['success'],
-                "permalink": result['permalink'],
-                "post_urn": result['permalink'],
-                "error": result['error'],
-                "needs_reconnect": result['needs_reconnect'],
-            }
-            for row, result in zip(rows, results)
-        ],
-    })
-
-
-
-@app.route('/compose/post/<int:post_id>/linkedin', methods=['POST'])
-def compose_post_to_linkedin(post_id: int):
-    """Post a standalone post to LinkedIn immediately."""
-    return _compose_publish_one(post_id, 'linkedin')
-
-
-@app.route('/compose/post/<int:post_id>/threads', methods=['POST'])
-def compose_post_to_threads(post_id: int):
-    """Post a standalone post to Threads immediately."""
-    return _compose_publish_one(post_id, 'threads')
-
-
-@app.route('/compose/post/<int:post_id>/instagram', methods=['POST'])
-def compose_post_to_instagram(post_id: int):
-    """Post a standalone post to Instagram immediately."""
-    return _compose_publish_one(post_id, 'instagram')
-
-
-# ---------------------------------------------------------------------------
-# The local publishing agent's door. Token-authed, session-free; see
-# agent_hub. Every handler is a thin shell: the body is one agent_hub or
-# database call plus a status code.
-# ---------------------------------------------------------------------------
-
-
 @app.route("/agent/heartbeat", methods=["POST"])
 def agent_heartbeat():
     if not agent_hub.check_agent_auth():
         return jsonify({"error": "unauthorized"}), 401
     agent_hub.record_heartbeat(request.get_json(silent=True) or {})
     return jsonify({"ok": True})
-
 
 @app.route("/agent/jobs/claim", methods=["POST"])
 def agent_claim():
@@ -10440,7 +5867,6 @@ def agent_claim():
         return "", 204
     return jsonify(job)
 
-
 @app.route("/agent/jobs/<int:job_id>/events", methods=["POST"])
 def agent_job_events(job_id: int):
     if not agent_hub.check_agent_auth():
@@ -10453,242 +5879,6 @@ def agent_job_events(job_id: int):
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     return jsonify(job)
-
-
-def _queue_row(row, already, card_rows=None, no_slots=None):
-    """Queue one saved post row into its platform's next free slot.
-
-    Returns ``(entry, skip)`` with exactly one set. ``already`` maps row id to
-    its pending schedule, read once by the caller so a batch does not pay a
-    lookup per row. A skip carries the reason in ``error`` instead of raising,
-    so one target that cannot be queued (no free slot, Instagram with no usable
-    media) never stops the rest of a batch.
-
-    ``card_rows`` are the row's card. Instagram may auto-attach a stock image,
-    which is written to the Instagram row alone; copying it to the rest of the
-    card keeps (copy, image) matching, or the card would split in two.
-
-    ``no_slots`` is a set the caller can share across a batch: a platform with no
-    free slot is remembered there so the rest of the batch skips it at once.
-    """
-    if no_slots is None:
-        no_slots = set()
-    platform = row['platform']
-    target_name = _row_account_label(row) or platform_name(platform)
-
-    def skip(error):
-        return None, {"post_id": row['id'], "platform": platform,
-                      "target": target_name, "error": error}
-
-    if platform in DRAFT_ONLY_PLATFORMS:
-        # No posting API: a queued entry could never go out. Same refusal the
-        # queue and bulk-add routes give, with the way out named.
-        return skip(f"{platform} is draft-only: copy the post and publish it manually.")
-    if platform not in SCHEDULABLE_PLATFORMS:
-        return skip(f"{target_name} does not support scheduling yet")
-    if already.get(row['id']):
-        return skip(f"Already queued for {target_name}")
-
-    if platform == 'instagram':
-        image_url = row['image_url'] if 'image_url' in row.keys() else None
-        _, media_err = _ensure_instagram_media(
-            row['content'],
-            image_url,
-            row['ig_post_type'] if 'ig_post_type' in row.keys() else None,
-            _json_list_column(row, 'media_items'),
-            standalone_post_id=row['id'],
-            video_url=_row_video(row) or None,
-        )
-        if media_err:
-            return skip(media_err)
-        attached = get_standalone_post(row['id'])['image_url']
-        if attached and attached != image_url:
-            for sibling in card_rows or []:
-                if sibling['id'] != row['id']:
-                    update_standalone_post_image(sibling['id'], attached)
-
-    slot = None if platform in no_slots else get_next_available_slot(platform)
-    if not slot:
-        no_slots.add(platform)
-        return skip(f"No available time slots for {target_name}")
-
-    scheduled_id = add_scheduled_post(
-        social_post_id=None,
-        article_id=None,
-        standalone_post_id=row['id'],
-        post_type='standalone',
-        platform=platform,
-        scheduled_for=slot,
-        status='pending',
-        account_id=row['account_id'] if 'account_id' in row.keys() else None,
-    )
-    try:
-        display = datetime.fromisoformat(slot).strftime("%A, %b %d at %I:%M %p")
-    except (ValueError, TypeError):
-        display = slot
-    return {
-        "post_id": row['id'],
-        "scheduled_id": scheduled_id,
-        "platform": platform,
-        "target": target_name,
-        "account_id": row['account_id'] if 'account_id' in row.keys() else None,
-        "scheduled_for": slot,
-        "scheduled_for_display": display,
-    }, None
-
-
-def _queue_whole_card(post):
-    """Queue every target on a card, one slot each.
-
-    Each target gets its own next free slot on its own platform, so a card aimed
-    at two LinkedIn accounts and Threads takes three slots rather than three
-    posts landing at the same minute. A target that cannot be queued is reported
-    instead of stopping the rest, so the caller knows exactly what is queued and
-    what is not.
-    """
-    rows = _card_rows(post, _requested_post_ids(post['id']))
-    already = get_pending_schedules_for_standalone_posts([row['id'] for row in rows])
-
-    queued, skipped = [], []
-    no_slots = set()
-    for row in rows:
-        entry, skip = _queue_row(row, already, rows, no_slots)
-        (queued if entry else skipped).append(entry or skip)
-
-    if not queued:
-        return jsonify({
-            "success": False,
-            "queued": [],
-            "skipped": skipped,
-            "error": skipped[0]['error'] if skipped else "Nothing to queue",
-        }), 400
-
-    if skipped:
-        message = f"Queued {len(queued)} of {len(queued) + len(skipped)} targets"
-    else:
-        message = f"Queued for {len(queued)} target{'s' if len(queued) != 1 else ''}"
-
-    return jsonify({
-        "success": True,
-        "partial": bool(skipped),
-        "message": message,
-        "queued": queued,
-        "skipped": skipped,
-    })
-
-
-
-@app.route('/compose/post/<int:post_id>/queue', methods=['POST'])
-def compose_add_to_queue(post_id: int):
-    """Add a standalone post to the schedule queue.
-
-    With ``all=1`` this queues every target on the card instead of one row, so
-    the same copy takes a slot on each platform and each account it is aimed at
-    in a single action rather than one click per chip.
-    """
-    post = get_standalone_post(post_id)
-    if not post:
-        return jsonify({"error": "Post not found"}), 404
-
-    if str(request.form.get('all') or '').strip().lower() in ('1', 'true', 'yes', 'on'):
-        return _queue_whole_card(post)
-
-    platform = request.form.get('platform', post['platform'])
-    scheduled_for = request.form.get('scheduled_for', '').strip()
-    
-    # Validate platform
-    if platform in DRAFT_ONLY_PLATFORMS:
-        return jsonify({
-            "error": f"{platform} is draft-only: copy the post and publish it manually."
-        }), 400
-    if platform not in SCHEDULABLE_PLATFORMS:
-        return jsonify({"error": f"Platform {platform} does not support scheduling yet"}), 400
-
-    # Instagram posts require media; validate by format (and auto-attach a stock
-    # image for feed) now so the user can review or fix it before the scheduled time.
-    if platform == 'instagram':
-        existing_image = post['image_url'] if 'image_url' in post.keys() else None
-        ig_post_type = post['ig_post_type'] if 'ig_post_type' in post.keys() else None
-        raw_items = post['media_items'] if 'media_items' in post.keys() else None
-        try:
-            media_items = json.loads(raw_items) if raw_items else []
-        except (ValueError, TypeError):
-            media_items = []
-        _, media_err = _ensure_instagram_media(
-            post['content'],
-            existing_image,
-            ig_post_type,
-            media_items,
-            standalone_post_id=post_id,
-            video_url=_row_video(post) or None,
-        )
-        if media_err:
-            return jsonify({"error": media_err}), 400
-
-    # Use provided scheduled_for or get next available slot
-    if scheduled_for:
-        # Use custom datetime provided by user
-        schedule_time = scheduled_for
-    else:
-        # Get next available slot from queue
-        next_slot = get_next_available_slot(platform)
-        if not next_slot:
-            return jsonify({"error": f"No available time slots for {platform}. Please add time slots first."}), 400
-        schedule_time = next_slot
-    
-    # Create scheduled post entry with standalone_post_id
-    scheduled_id = add_scheduled_post(
-        social_post_id=None,
-        article_id=None,
-        standalone_post_id=post_id,
-        post_type='standalone',
-        platform=platform,
-        scheduled_for=schedule_time,
-        status='pending',
-        account_id=post['account_id'] if 'account_id' in post.keys() else None,
-    )
-    
-    # Format the display time
-    try:
-        dt = datetime.fromisoformat(schedule_time)
-        display = dt.strftime("%A, %b %d at %I:%M %p")
-    except:
-        display = schedule_time
-    
-    return jsonify({
-        "success": True,
-        "scheduled_id": scheduled_id,
-        "scheduled_for": schedule_time,
-        "scheduled_for_display": display,
-        "message": f"Scheduled for {display}",
-    })
-
-
-@app.route('/compose/post/<int:post_id>/unqueue', methods=['POST'])
-def compose_remove_from_queue(post_id: int):
-    """Remove a standalone post from the schedule queue."""
-    post = get_standalone_post(post_id)
-    if not post:
-        return jsonify({"error": "Post not found"}), 404
-    
-    # Find and delete any scheduled posts for this standalone post
-    scheduled_posts = list_scheduled_posts(status='pending')
-    removed = 0
-    for sp in scheduled_posts:
-        # list_scheduled_posts hands back sqlite3.Row, which has no .get()
-        if sp['standalone_post_id'] == post_id:
-            delete_scheduled_post(sp['id'])
-            removed += 1
-    
-    if removed == 0:
-        return jsonify({"error": "Post not found in queue"}), 404
-    
-    return jsonify({
-        "success": True,
-        "removed_count": removed,
-        "message": f"Removed from queue",
-    })
-
 
 @app.route('/compose/clear-all', methods=['POST'])
 def compose_clear_all():
@@ -10706,11 +5896,9 @@ def compose_clear_all():
         "message": f"Cleared {deleted} posts",
     })
 
-
 # ============================================================================
 # URL Sources Management
 # ============================================================================
-
 
 @app.route('/sources')
 def sources_page():
@@ -10723,7 +5911,6 @@ def sources_page():
     for s in sources:
         s_dict = dict(s)
         s_dict['is_youtube'] = is_youtube_url(s_dict.get('url', ''))
-        s_dict['is_github'] = is_github_repo_url(s_dict.get('url', ''))
         s_dict['post_count'] = post_counts.get(s_dict.get('url', ''), 0)
         if s_dict['is_youtube']:
             ep = get_episode(s_dict['url'])
@@ -10735,7 +5922,6 @@ def sources_page():
                 s_dict['episode_id'] = None
         sources_with_status.append(s_dict)
     return render_template('sources.html', sources=sources_with_status)
-
 
 @app.route('/sources/<int:source_id>/posts')
 def source_posts(source_id: int):
@@ -10773,7 +5959,6 @@ def source_posts(source_id: int):
         'source': {'id': source['id'], 'url': source['url'], 'title': source['title']},
         'posts': result,
     })
-
 
 @app.route('/sources', methods=['POST'])
 def add_source():
@@ -10830,29 +6015,6 @@ def add_source():
                     "description": description,
                     "content": "",
                     "og_image": og_image,
-                }
-            })
-
-        if is_github_repo_url(url):
-            owner, repo_name = parse_github_repo_url(url)
-            repo_data = fetch_github_repo(owner, repo_name)
-            source_id = add_url_source(
-                url=url,
-                title=repo_data['title'],
-                description=repo_data['description'],
-                content=repo_data['content'],
-                og_image=repo_data['og_image'],
-            )
-            return jsonify({
-                "success": True,
-                "is_github": True,
-                "source": {
-                    "id": source_id,
-                    "url": url,
-                    "title": repo_data['title'],
-                    "description": repo_data['description'],
-                    "content": repo_data['content'],
-                    "og_image": repo_data['og_image'],
                 }
             })
 
@@ -10952,7 +6114,6 @@ def add_source():
         app.logger.exception("Failed to add URL source %s: %s", url, str(e))
         return jsonify({"error": f"Failed to extract content: {str(e)}"}), 500
 
-
 @app.route('/sources/<int:source_id>')
 def get_source(source_id: int):
     """Get a single URL source by ID."""
@@ -10960,7 +6121,6 @@ def get_source(source_id: int):
     if not source:
         return jsonify({"error": "Source not found"}), 404
     return jsonify(dict(source))
-
 
 @app.route('/sources/<int:source_id>', methods=['DELETE'])
 def delete_source(source_id: int):
@@ -10971,7 +6131,6 @@ def delete_source(source_id: int):
     
     deleted = delete_url_source(source_id)
     return jsonify({"success": deleted})
-
 
 @app.route('/sources/<int:source_id>/transcribe', methods=['POST'])
 def transcribe_source(source_id: int):
@@ -10992,7 +6151,6 @@ def transcribe_source(source_id: int):
         "published": None,
     })
     return redirect(url_for('status_page'))
-
 
 @app.route('/sources/<int:source_id>/reextract', methods=['POST'])
 def reextract_source(source_id: int):
@@ -11038,30 +6196,6 @@ def reextract_source(source_id: int):
                     "description": description,
                     "content": "",
                     "og_image": og_image,
-                }
-            })
-
-        if is_github_repo_url(url):
-            owner, repo_name = parse_github_repo_url(url)
-            repo_data = fetch_github_repo(owner, repo_name)
-            updated = update_url_source_content(
-                source_id=source_id,
-                title=repo_data['title'],
-                description=repo_data['description'],
-                content=repo_data['content'],
-                og_image=repo_data['og_image'],
-            )
-            if not updated:
-                return jsonify({"error": "Failed to update source"}), 500
-            return jsonify({
-                "success": True,
-                "source": {
-                    "id": source_id,
-                    "url": url,
-                    "title": repo_data['title'],
-                    "description": repo_data['description'],
-                    "content": repo_data['content'],
-                    "og_image": repo_data['og_image'],
                 }
             })
 
@@ -11152,7 +6286,6 @@ def reextract_source(source_id: int):
         app.logger.exception("Failed to re-extract source %d: %s", source_id, str(e))
         return jsonify({"error": f"Extraction failed: {str(e)}"}), 500
 
-
 @app.route('/compose/generate-from-source', methods=['POST'])
 def compose_generate_from_source():
     """Generate posts from a saved URL source."""
@@ -11171,23 +6304,19 @@ def compose_generate_from_source():
     if not source:
         return jsonify({"error": "Source not found"}), 404
     
-    if not image_url and source['og_image'] and not is_github_repo_url(source['url']):
+    if not image_url and source['og_image']:
         image_url = source['og_image']
 
     if is_youtube_url(source['url']):
         credit = f"IMPORTANT: Include this YouTube video URL as a reference/credit in every post: {source['url']}"
         extra_context = f"{credit}\n{extra_context}" if extra_context else credit
-    elif is_github_repo_url(source['url']):
-        credit = f"This content is from the GitHub repository {source['title']}. Include the repo URL ({source['url']}) as credit."
-        extra_context = f"{credit}\n{extra_context}" if extra_context else credit
-
     if not platforms:
-        platforms = ['linkedin', 'threads', 'twitter']
+        platforms = ['xiaohongshu', 'douyin', 'wechat']
     
 
     # Copy is generated once per platform; the accounts decide how many rows
-    # that copy is saved into, so picking two LinkedIn accounts costs no extra
-    # generation and produces one card aimed at both.
+    # that copy is saved into, so picking two accounts for the same platform
+    # costs no extra generation and produces one card aimed at both.
     accounts_by_platform = _requested_accounts_by_platform(set(platforms))
 
     posts_per_platform = max(1, min(posts_per_platform, 10))
@@ -11218,14 +6347,12 @@ def compose_generate_from_source():
         
         # Normalize platform names and filter hallucinated platforms
         requested_platforms = {p.lower() for p in platforms}
-        platform_aliases = {"x": "twitter"}
         saved_posts = {}
         for platform, post_data in generated.items():
             if platform == 'raw':
                 continue
             
             norm_platform = platform.lower().strip()
-            norm_platform = platform_aliases.get(norm_platform, norm_platform)
 
             if norm_platform not in requested_platforms:
                 continue
@@ -11263,21 +6390,17 @@ def compose_generate_from_source():
         app.logger.exception("Failed to generate posts from source")
         return jsonify({"error": str(e)}), 500
 
-
 # ============================================================================
 # YouTube Thumbnail Generator
 # ============================================================================
 
-
 THUMBNAIL_UPLOAD_DIR = os.path.join(UPLOAD_FOLDER, 'youtube_thumbnails')
 os.makedirs(THUMBNAIL_UPLOAD_DIR, exist_ok=True)
-
 
 @app.route('/thumbnails')
 def thumbnails_page():
     """YouTube Thumbnail Generator page."""
     return render_template('thumbnails.html')
-
 
 @app.route('/thumbnails/metadata', methods=['POST'])
 def thumbnails_fetch_metadata():
@@ -11298,7 +6421,6 @@ def thumbnails_fetch_metadata():
     except Exception as e:
         app.logger.exception("Failed to fetch YouTube metadata")
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/thumbnails/suggest-prompt', methods=['POST'])
 def thumbnails_suggest_prompt():
@@ -11323,7 +6445,6 @@ def thumbnails_suggest_prompt():
     except Exception as e:
         app.logger.exception("Failed to build suggested prompt")
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/thumbnails/generate', methods=['POST'])
 def thumbnails_generate():
@@ -11386,7 +6507,6 @@ def thumbnails_generate():
         app.logger.exception("Failed to generate thumbnail")
         return jsonify({"error": str(e)}), 500
 
-
 @app.route('/thumbnails/saved')
 def thumbnails_saved_list():
     """Return all saved thumbnails as JSON."""
@@ -11407,7 +6527,6 @@ def thumbnails_saved_list():
         })
     return jsonify({"success": True, "thumbnails": items})
 
-
 @app.route('/thumbnails/saved/<int:thumb_id>', methods=['DELETE'])
 def thumbnails_saved_delete(thumb_id: int):
     """Delete a saved thumbnail (DB row + file on disk)."""
@@ -11426,137 +6545,6 @@ def thumbnails_saved_delete(thumb_id: int):
     delete_generated_thumbnail(thumb_id)
     return jsonify({"success": True})
 
-
-# ============================================================================
-# Background Scheduler Worker
-# ============================================================================
-
-
-def scheduled_post_worker() -> None:
-    """Background thread that processes scheduled posts.
-
-    Every queue entry names the account it publishes as, so the worker never has
-    to decide which login a platform means: it hands the entry to the shared
-    publish path, which is the same one the composer and the schedule page use.
-    Two accounts on one platform therefore go out independently, each with its
-    own token and its own failure.
-    """
-    import time as time_module
-    from datetime import datetime as dt_class
-
-    MISSED_WINDOW_MINUTES = 10  # Posts overdue by more than this are rescheduled
-    MAX_RETRIES = 5             # Max retry attempts before permanent failure
-
-    while True:
-        try:
-            # Check for pending posts every 60 seconds
-            time_module.sleep(60)
-
-            # Get pending posts that are due
-            pending = get_pending_scheduled_posts()
-
-            if not pending:
-                continue
-
-            redistributed_platforms = set()  # Track platforms we've redistributed
-
-            for post in pending:
-                try:
-                    platform = post['platform'] if 'platform' in post.keys() else 'linkedin'
-
-                    # Skip if we already redistributed this platform's posts in this cycle
-                    if platform in redistributed_platforms:
-                        continue
-
-                    # --- Missed window detection ---
-                    # If the post is overdue by more than MISSED_WINDOW_MINUTES,
-                    # the app likely wasn't running. Reschedule instead of posting.
-                    try:
-                        scheduled_dt = dt_class.fromisoformat(post['scheduled_for'])
-                        now = dt_class.now()
-                        overdue_minutes = (now - scheduled_dt).total_seconds() / 60
-                    except (ValueError, TypeError):
-                        overdue_minutes = 0
-
-                    if overdue_minutes > MISSED_WINDOW_MINUTES:
-                        retry_count = post['retry_count'] if 'retry_count' in post.keys() and post['retry_count'] else 0
-                        if retry_count >= MAX_RETRIES:
-                            update_scheduled_post_status(
-                                post['id'],
-                                status='failed',
-                                error_message=f'Missed window - max retries ({MAX_RETRIES}) exhausted',
-                            )
-                            app.logger.warning(
-                                "Post %d missed window and exhausted retries (%d/%d), marked failed",
-                                post['id'], retry_count, MAX_RETRIES,
-                            )
-                            continue
-                        increment_retry_count(post['id'])
-                        redistributed = redistribute_scheduled_posts(platform)
-                        redistributed_platforms.add(platform)
-                        app.logger.info(
-                            "Post %d missed window by %.0f min, rescheduled (retry %d/%d, %d posts redistributed)",
-                            post['id'], overdue_minutes, retry_count + 1, MAX_RETRIES, redistributed,
-                        )
-                        continue
-
-                    result = _publish_scheduled_entry(post)
-
-                    if result['success']:
-                        app.logger.info(
-                            "Published scheduled post %d to %s",
-                            post['id'], result['account_label'],
-                        )
-                        continue
-
-                    error_msg = str(result['error'] or 'Unknown error')[:500]
-
-                    # A target that is disconnected, unconfigured or carrying
-                    # media the platform will never take fails now: retrying it
-                    # only burns the platform's remaining slots.
-                    if result['permanent']:
-                        update_scheduled_post_status(
-                            post['id'], status='failed', error_message=error_msg,
-                        )
-                        app.logger.error(
-                            "Scheduled post %d to %s failed permanently: %s",
-                            post['id'], result['account_label'], error_msg,
-                        )
-                        continue
-
-                    retry_count = post['retry_count'] if 'retry_count' in post.keys() and post['retry_count'] else 0
-                    if retry_count < MAX_RETRIES:
-                        increment_retry_count(post['id'])
-                        redistribute_scheduled_posts(platform)
-                        redistributed_platforms.add(platform)
-                        app.logger.warning(
-                            "Scheduled post %d to %s failed (%s), rescheduled to next slot (retry %d/%d)",
-                            post['id'], result['account_label'], error_msg,
-                            retry_count + 1, MAX_RETRIES,
-                        )
-                        # The whole platform's queue just moved, so the rest of
-                        # this batch is looking at stale slot times.
-                        break
-
-                    update_scheduled_post_status(
-                        post['id'], status='failed',
-                        error_message=f'{error_msg} (max retries exhausted)',
-                    )
-                    app.logger.error(
-                        "Scheduled post %d to %s failed permanently: %s",
-                        post['id'], result['account_label'], error_msg,
-                    )
-
-                except Exception as e:
-                    app.logger.exception("Error publishing scheduled post %s", post['id'])
-                    update_scheduled_post_status(
-                        post['id'], status='failed', error_message=str(e),
-                    )
-
-        except Exception:
-            app.logger.exception("Error in scheduled post worker")
-
-
 def _backfill_youtube_channels_bg():
     """One-time background task to populate channel for existing YouTube episodes."""
     episodes = get_youtube_episodes_missing_channel()
@@ -11572,7 +6560,6 @@ def _backfill_youtube_channels_bg():
         except Exception:
             continue
     app.logger.info("YouTube channel backfill complete")
-
 
 # ── Content Agent (agentic content preparation) ──────────────────────────────
 
@@ -11609,7 +6596,6 @@ def _parse_brief_form(form) -> dict:
         'max_drafts_per_run': max(1, form.get('max_drafts_per_run', 30, type=int) or 30),
     }
 
-
 @app.route('/briefs')
 def briefs_page():
     """List content briefs with their latest run status."""
@@ -11637,7 +6623,6 @@ def briefs_page():
         briefs.append(d)
     return render_template('briefs.html', briefs=briefs)
 
-
 @app.route('/briefs/create', methods=['POST'])
 def brief_create():
     data = _parse_brief_form(request.form)
@@ -11649,7 +6634,6 @@ def brief_create():
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return jsonify({"success": True, "id": brief_id})
     return redirect(url_for('briefs_page'))
-
 
 @app.route('/briefs/<int:brief_id>/edit', methods=['POST'])
 def brief_edit(brief_id):
@@ -11663,12 +6647,10 @@ def brief_edit(brief_id):
         return jsonify({"success": True, "id": brief_id})
     return redirect(url_for('briefs_page'))
 
-
 @app.route('/briefs/<int:brief_id>/delete', methods=['POST'])
 def brief_delete(brief_id):
     delete_content_brief(brief_id)
     return jsonify({"success": True})
-
 
 @app.route('/briefs/<int:brief_id>/toggle', methods=['POST'])
 def brief_toggle(brief_id):
@@ -11680,7 +6662,6 @@ def brief_toggle(brief_id):
     if enabled and (dict(brief).get('cadence') or 'manual') != 'manual':
         set_content_brief_schedule(brief_id, next_run_at=_compute_next_run_at(brief))
     return jsonify({"success": True, "enabled": enabled})
-
 
 @app.route('/briefs/<int:brief_id>/run', methods=['POST'])
 def brief_run_now(brief_id):
@@ -11707,11 +6688,9 @@ def brief_run_now(brief_id):
     threading.Thread(target=_bg, daemon=True).start()
     return jsonify({"success": True, "run_id": run_id, "status": "running"})
 
-
 @app.route('/briefs/<int:brief_id>/runs')
 def brief_runs(brief_id):
     return jsonify({"runs": [dict(r) for r in list_brief_runs(brief_id, limit=20)]})
-
 
 @app.route('/briefs/runs/<int:run_id>')
 def brief_run_status(run_id):
@@ -11719,7 +6698,6 @@ def brief_run_status(run_id):
     if not run:
         return jsonify({"error": "Run not found"}), 404
     return jsonify(dict(run))
-
 
 def _compute_next_run_at(brief) -> "str | None":
     """Next local ISO run time for a recurring brief, or None for manual/paused.
@@ -11757,11 +6735,10 @@ def _compute_next_run_at(brief) -> "str | None":
         ).isoformat(timespec="seconds")
     return None
 
-
 def content_agent_worker() -> None:
     """Poll for due content briefs and run them; usage metered as proactive.
 
-    Mirrors scheduled_post_worker: a resilient sleep loop that never dies on a
+    A resilient sleep loop that never dies on a
     single brief's failure. A per-brief active-run guard prevents a scheduled run
     from overlapping an in-flight manual run.
     """
@@ -11790,7 +6767,6 @@ def content_agent_worker() -> None:
             except Exception:
                 app.logger.exception("content_agent_worker loop error")
 
-
 # ── Content Library ─────────────────────────────────────────────────────────
 #
 # Catalogues a large on-disk media archive and sorts it by year and category.
@@ -11805,17 +6781,14 @@ def content_agent_worker() -> None:
 _library_jobs: dict[int, dict] = {}
 _library_jobs_lock = threading.Lock()
 
-
 def _library_job(scan_id: int) -> dict:
     with _library_jobs_lock:
         return _library_jobs.setdefault(scan_id, {"stop": False, "running": False})
-
 
 def _library_job_running(scan_id: int) -> bool:
     with _library_jobs_lock:
         job = _library_jobs.get(scan_id)
         return bool(job and job.get("running"))
-
 
 def _library_job_claim(scan_id: int) -> bool:
     """Take the scan's job slot, or return False if a job already holds it.
@@ -11840,14 +6813,12 @@ def _library_job_claim(scan_id: int) -> bool:
         job["stop"] = False
         return True
 
-
 def _library_job_release(scan_id: int) -> None:
     """Give back the scan's job slot when its worker finishes."""
     with _library_jobs_lock:
         job = _library_jobs.get(scan_id)
         if job:
             job["running"] = False
-
 
 def _active_taxonomy() -> list:
     """Load the saved taxonomy as engine ``Category`` objects."""
@@ -11860,7 +6831,6 @@ def _active_taxonomy() -> list:
         )
         for row in database.list_library_categories(active_only=True)
     ]
-
 
 def _refresh_residency(files: list) -> int:
     """Re-check which files are actually on local disk, in place.
@@ -11885,7 +6855,6 @@ def _refresh_residency(files: list) -> int:
             refreshed += 1
     return refreshed
 
-
 def _scanned_from_row(row) -> content_library.ScannedFile:
     """Rebuild an engine object from a catalogue row."""
     return content_library.ScannedFile(
@@ -11899,7 +6868,6 @@ def _scanned_from_row(row) -> content_library.ScannedFile:
         confidence=row["confidence"] or 0.0, classified_by=row["classified_by"] or "",
         caption=row["caption"] or "", notes=row["notes"] or "",
     )
-
 
 def _library_scan_thread(scan_id: int, root_path: str) -> None:
     """Walk the archive and persist the catalogue. Downloads nothing.
@@ -11935,7 +6903,6 @@ def _library_scan_thread(scan_id: int, root_path: str) -> None:
         database.update_library_scan(scan_id, status="failed", error_message=str(exc)[:500])
     finally:
         _library_job_release(scan_id)
-
 
 def _library_classify_thread(scan_id: int, opts: dict) -> None:
     """Run the AI classification ladder over a scanned archive."""
@@ -12075,7 +7042,6 @@ def _library_classify_thread(scan_id: int, opts: dict) -> None:
     finally:
         _library_job_release(scan_id)
 
-
 def _library_apply_thread(scan_id: int, dest_root: str, manifest: str,
                           mode: str = "copy") -> None:
     """Copy every approved plan item into the destination tree."""
@@ -12110,7 +7076,6 @@ def _library_apply_thread(scan_id: int, dest_root: str, manifest: str,
     finally:
         _library_job_release(scan_id)
 
-
 def _copy_to_exfat(src: str, dest: str) -> None:
     """Copy file bytes and mtime without the metadata ExFAT cannot hold.
 
@@ -12124,7 +7089,6 @@ def _copy_to_exfat(src: str, dest: str) -> None:
         os.utime(dest, (st.st_atime, st.st_mtime))
     except OSError:
         pass
-
 
 def _vision_model_answers() -> bool:
     """One tiny real inference, so 'installed' is not mistaken for 'working'."""
@@ -12140,7 +7104,6 @@ def _vision_model_answers() -> bool:
         return True
     except Exception:
         return False
-
 
 def _library_sync_thread(scan_id: int, opts: dict) -> None:
     """Bring the catalogue, previews, link tree and drive up to date.
@@ -12314,7 +7277,6 @@ def _library_sync_thread(scan_id: int, opts: dict) -> None:
     finally:
         job["running"] = False
 
-
 @app.route('/library/scan/<int:scan_id>/sync', methods=['POST'])
 def library_sync(scan_id: int):
     """Run the whole pipeline for anything new in the archive."""
@@ -12332,7 +7294,6 @@ def library_sync(scan_id: int):
         return jsonify({"error": "A job is already running for this scan"}), 409
     threading.Thread(target=_library_sync_thread, args=(scan_id, opts), daemon=True).start()
     return jsonify({"ok": True, "options": opts})
-
 
 @app.route('/library')
 def library_page():
@@ -12364,7 +7325,6 @@ def library_page():
         free_gb=media_probe.free_bytes("/") / 1024 ** 3,
     )
 
-
 @app.route('/library/roots', methods=['POST'])
 def library_add_root():
     """Register a folder as a source archive or a taxonomy example folder."""
@@ -12375,12 +7335,10 @@ def library_add_root():
     root_id = database.add_library_root(path, request.form.get("label", ""), role)
     return redirect(url_for("library_page", root=root_id))
 
-
 @app.route('/library/roots/<int:root_id>/delete', methods=['POST'])
 def library_delete_root(root_id: int):
     database.delete_library_root(root_id)
     return redirect(url_for("library_page"))
-
 
 @app.route('/library/taxonomy/learn', methods=['POST'])
 def library_learn_taxonomy():
@@ -12396,7 +7354,6 @@ def library_learn_taxonomy():
     database.save_library_categories([c.as_dict() for c in categories])
     log_activity("library_taxonomy", details=f"Learned {len(categories)} categories from {root['label']}")
     return redirect(url_for("library_page"))
-
 
 @app.route('/library/scan/<int:scan_id>/regroup', methods=['POST'])
 def library_regroup(scan_id: int):
@@ -12441,7 +7398,6 @@ def library_regroup(scan_id: int):
                  details=f"Split {moved_events} mixed events, {moved_files} video files reopened")
     return jsonify({"ok": True, "events_split": moved_events, "files_moved": moved_files})
 
-
 @app.route('/library/scan/<int:scan_id>/categories/merge', methods=['POST'])
 def library_merge_categories(scan_id: int):
     """Consolidate the taxonomy, rewriting existing labels to match.
@@ -12484,7 +7440,6 @@ def library_merge_categories(scan_id: int):
         "active_categories": len(active),
     })
 
-
 @app.route('/library/scan/<int:scan_id>/categories/undo-merge', methods=['POST'])
 def library_undo_merge(scan_id: int):
     """Restore the labels files carried before a taxonomy merge.
@@ -12506,14 +7461,12 @@ def library_undo_merge(scan_id: int):
     return jsonify({"ok": True, **result,
                     "active_categories": len(database.list_library_categories(active_only=True))})
 
-
 @app.route('/library/categories/toggle', methods=['POST'])
 def library_toggle_category():
     data = request.get_json(silent=True) or request.form
     database.set_library_category_active(
         data.get("name", ""), str(data.get("active", "1")) in ("1", "true", "True"))
     return jsonify({"ok": True})
-
 
 @app.route('/library/scan', methods=['POST'])
 def library_start_scan():
@@ -12530,7 +7483,6 @@ def library_start_scan():
     threading.Thread(target=_library_scan_thread, args=(scan_id, root["path"]),
                      daemon=True).start()
     return redirect(url_for("library_page", scan=scan_id))
-
 
 @app.route('/library/scan/<int:scan_id>/status')
 def library_scan_status(scan_id: int):
@@ -12557,7 +7509,6 @@ def library_scan_status(scan_id: int):
         "stats": stats,
         "free_gb": round(media_probe.free_bytes("/") / 1024 ** 3, 1),
     })
-
 
 @app.route('/library/scan/<int:scan_id>/estimate')
 def library_estimate(scan_id: int):
@@ -12615,7 +7566,6 @@ def library_estimate(scan_id: int):
     estimate["fits"] = estimate["download_bytes"] < estimate["free_bytes"] - 5 * 1024 ** 3
     return jsonify(estimate)
 
-
 @app.route('/library/scan/<int:scan_id>/classify', methods=['POST'])
 def library_classify(scan_id: int):
     """Start the AI pass. Vision runs locally; only mapping can go to the cloud."""
@@ -12658,13 +7608,11 @@ def library_classify(scan_id: int):
                      daemon=True).start()
     return jsonify({"ok": True, "scan_id": scan_id, "options": opts})
 
-
 @app.route('/library/scan/<int:scan_id>/stop', methods=['POST'])
 def library_stop(scan_id: int):
     """Ask a running job to stop after the current event; work so far is kept."""
     _library_job(scan_id)["stop"] = True
     return jsonify({"ok": True})
-
 
 @app.route('/library/scan/<int:scan_id>/files')
 def library_files(scan_id: int):
@@ -12712,7 +7660,6 @@ def library_files(scan_id: int):
         })
     return jsonify({"total": total, "files": files})
 
-
 @app.route('/library/scan/<int:scan_id>/events')
 def library_events(scan_id: int):
     """Events with their labels and the captions that produced them."""
@@ -12728,7 +7675,6 @@ def library_events(scan_id: int):
         "reason": r["reason"],
         "captions": json.loads(r["captions"] or "[]"),
     } for r in rows]})
-
 
 @app.route('/library/scan/<int:scan_id>/review')
 def library_review(scan_id: int):
@@ -12784,7 +7730,6 @@ def library_review(scan_id: int):
     return jsonify({"events": out[:200], "total_flagged": len(out),
                     "pinned_total": database.pinned_count(scan_id)})
 
-
 @app.route('/library/scan/<int:scan_id>/relabel', methods=['POST'])
 def library_relabel(scan_id: int):
     """Override an event's category by hand and propagate it to its files."""
@@ -12804,7 +7749,6 @@ def library_relabel(scan_id: int):
     database.recount_library_categories(scan_id)
     return jsonify({"ok": True, "files_updated": updated, "pinned": True})
 
-
 @app.route('/library/scan/<int:scan_id>/duplicates')
 def library_duplicates(scan_id: int):
     """Duplicate groups, largest reclaimable space first."""
@@ -12816,7 +7760,6 @@ def library_duplicates(scan_id: int):
         "total_groups": len(report),
         "reclaimable_bytes": sum(r["reclaimable_bytes"] for r in report),
     })
-
 
 @app.route('/library/scan/<int:scan_id>/plan', methods=['GET', 'POST'])
 def library_plan(scan_id: int):
@@ -12859,7 +7802,6 @@ def library_plan(scan_id: int):
     return jsonify({"ok": True, "items": count,
                     "summary": database.library_plan_summary(scan_id)})
 
-
 @app.route('/library/scan/<int:scan_id>/plan/items')
 def library_plan_items(scan_id: int):
     rows = database.list_plan_items(
@@ -12872,7 +7814,6 @@ def library_plan_items(scan_id: int):
         "confidence": r["confidence"], "state": r["state"],
         "collision": bool(r["collision"]), "kind": r["kind"],
     } for r in rows]})
-
 
 @app.route('/library/scan/<int:scan_id>/plan/approve', methods=['POST'])
 def library_plan_approve(scan_id: int):
@@ -12887,7 +7828,6 @@ def library_plan_approve(scan_id: int):
         item_ids=data.get("item_ids") or None)
     return jsonify({"ok": True, "changed": changed,
                     "summary": database.library_plan_summary(scan_id)})
-
 
 @app.route('/library/scan/<int:scan_id>/apply', methods=['POST'])
 def library_apply(scan_id: int):
@@ -12935,7 +7875,6 @@ def library_apply(scan_id: int):
                     "items": approved["items"],
                     "bytes": 0 if mode == "link" else need, "manifest": manifest})
 
-
 @app.route('/library/scan/<int:scan_id>/undo', methods=['POST'])
 def library_undo(scan_id: int):
     """Remove copies made by a previous apply, using its manifest."""
@@ -12947,12 +7886,10 @@ def library_undo(scan_id: int):
     log_activity("library_undo", details=f"Removed {result['removed']} copied files")
     return jsonify({"ok": True, **result})
 
-
 # Bounds concurrent preview rendering. Each render is a subprocess doing a full
 # source decode, and the machine is also running the local vision model and the
 # archive prefetcher, so this leaves headroom rather than saturating the CPU.
 _thumb_slots = threading.BoundedSemaphore(4)
-
 
 @app.route('/library/thumb/<int:file_id>')
 def library_thumb(file_id: int):
@@ -12998,7 +7935,6 @@ def library_thumb(file_id: int):
         "Cache-Control": "private, max-age=31536000, immutable",
     })
 
-
 @app.route('/library/file/<int:file_id>/reveal', methods=['POST'])
 def library_reveal(file_id: int):
     """Show a catalogued file in Finder.
@@ -13017,7 +7953,6 @@ def library_reveal(file_id: int):
     except (OSError, subprocess.SubprocessError) as exc:
         return jsonify({"error": str(exc)}), 500
     return jsonify({"ok": True, "path": row["path"]})
-
 
 @app.route('/library/file/<int:file_id>/open', methods=['POST'])
 def library_open_file(file_id: int):
@@ -13051,7 +7986,6 @@ def library_open_file(file_id: int):
     except (OSError, subprocess.SubprocessError) as exc:
         return jsonify({"error": str(exc)}), 500
     return jsonify({"ok": True, "downloaded": not local, "size": row["size"]})
-
 
 def _thumb_backfill_thread(scan_id: int, fetch_gb: float = 0.0,
                            max_file_mb: int = 24,
@@ -13145,7 +8079,6 @@ def _thumb_backfill_thread(scan_id: int, fetch_gb: float = 0.0,
     finally:
         _library_job_release(scan_id)
 
-
 @app.route('/library/scan/<int:scan_id>/thumbnails', methods=['POST'])
 def library_build_thumbnails(scan_id: int):
     """Kick off preview rendering.
@@ -13184,7 +8117,6 @@ def library_build_thumbnails(scan_id: int):
     return jsonify({"ok": True, "fetch_gb": fetch_gb,
                     "max_file_mb": max_file_mb, "kinds": list(kinds)})
 
-
 @app.route('/library/thumbnails/stats')
 def library_thumb_stats():
     """Cache size, for the dashboard."""
@@ -13192,18 +8124,12 @@ def library_thumb_stats():
     stats["mb"] = round(stats["bytes"] / 1024 ** 2, 1)
     return jsonify(stats)
 
-
 def start_workers():
     """Start all background worker threads."""
     # Episode processing worker (usage metered as proactive/background)
     episode_worker = threading.Thread(target=_proactive_worker, daemon=True)
     episode_worker.start()
     app.logger.info("Episode processing worker started")
-
-    # Scheduled post worker
-    scheduled_worker = threading.Thread(target=scheduled_post_worker, daemon=True)
-    scheduled_worker.start()
-    app.logger.info("Scheduled post worker started")
 
     # Content agent worker (recurring briefs). On-demand runs work even if disabled.
     if os.getenv("CONTENT_AGENT_ENABLED", "true").lower() in ("1", "true", "yes"):
@@ -13214,7 +8140,6 @@ def start_workers():
     # One-time backfill for YouTube channel names
     backfill_thread = threading.Thread(target=_backfill_youtube_channels_bg, daemon=True)
     backfill_thread.start()
-
 
 if __name__ == '__main__':
     # In debug mode with reloader, Flask spawns two processes:

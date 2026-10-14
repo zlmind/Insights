@@ -187,7 +187,7 @@ function updateSelectedCount() {
 function confirmBulkDelete() {
     const count = document.querySelectorAll('.episode-checkbox:checked').length;
     if (count === 0) return;
-    if (confirm(`Delete ${count} episode${count > 1 ? 's' : ''} and ALL their associated articles and tickets? This cannot be undone!`)) {
+    if (confirm(`Delete ${count} episode${count > 1 ? 's' : ''} and ALL their associated articles? This cannot be undone!`)) {
         document.getElementById('bulk-delete-form').submit();
     }
 }

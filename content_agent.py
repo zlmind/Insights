@@ -34,7 +34,7 @@ import research_engine
 logger = logging.getLogger(__name__)
 
 DEFAULT_PLATFORMS = ["xiaohongshu", "douyin", "wechat"]
-_PLATFORM_ALIASES = {"x": "twitter", "公众号": "wechat", "微信": "wechat"}
+_PLATFORM_ALIASES = {"公众号": "wechat", "微信": "wechat"}
 # Platforms the scheduler can auto-queue. None for now: the domestic platforms
 # have no posting API yet, so their drafts stay reviewable in Compose and
 # publishing waits for the open-source publisher. The Western platforms keep
@@ -139,7 +139,7 @@ def _persist_posts(generated, platforms, *, source_label, image_url,
                    brief_id, run_id, remaining) -> list:
     """Normalize generator output and save each post as an unused agent draft.
 
-    Mirrors the platform normalization in ``compose_generate`` (lowercase, x->twitter,
+    Mirrors the platform normalization in ``compose_generate`` (lowercase,
     drop unrequested platforms, coerce str->list). Returns the new post ids.
     """
     requested = {p.lower() for p in platforms}
@@ -174,8 +174,7 @@ def _persist_posts(generated, platforms, *, source_label, image_url,
 def _auto_queue(brief: dict, post_ids: list) -> int:
     """Schedule schedulable drafts into future slots >= review_window_hours out.
 
-    Drafts stay used=0 (still reviewable/editable/unqueue-able in Compose); only
-    the scheduled_post_worker will post them at slot time.
+    Drafts stay used=0 (still reviewable/editable in Compose).
     """
     window_hours = int(brief.get("review_window_hours") or 24)
     now = datetime.now()  # local, to match get_next_available_slot
@@ -187,24 +186,6 @@ def _auto_queue(brief: dict, post_ids: list) -> int:
         platform = dict(row).get("platform")
         if platform not in SCHEDULABLE:
             continue
-        if platform == "instagram":
-            # Instagram posts cannot publish without an image; attach a stock
-            # image now or leave the draft unqueued for manual review.
-            if not dict(row).get("image_url"):
-                try:
-                    from insights_web import _ensure_instagram_image  # late import: avoid cycle
-                    _, image_err = _ensure_instagram_image(
-                        dict(row).get("content"), None, standalone_post_id=pid,
-                    )
-                except Exception:
-                    logger.debug("instagram image attach unavailable", exc_info=True)
-                    image_err = "image attach unavailable"
-                if image_err:
-                    logger.warning(
-                        "Skipping auto-queue for instagram draft %s (no image: %s); "
-                        "draft remains reviewable in Compose", pid, image_err,
-                    )
-                    continue
         slot = database.get_next_available_slot(platform)
         if not slot:
             continue

@@ -37,7 +37,7 @@
             <td><span class="badge bg-secondary text-capitalize">{{ b.content_type }}</span></td>
             <td>
                 {% for p in b.platforms_list %}
-                    <span title="{{ p }}">{% if p == 'xiaohongshu' %}📕{% elif p == 'douyin' %}🎵{% elif p == 'wechat' %}💬{% elif p == 'linkedin' %}💼{% elif p == 'threads' %}🧵{% elif p == 'facebook' %}📘{% elif p == 'twitter' %}𝕏{% else %}📱{% endif %}</span>
+                    <span title="{{ p }}">{% if p == 'xiaohongshu' %}📕{% elif p == 'douyin' %}🎵{% elif p == 'wechat' %}💬{% elif p == 'zhihu' %}📘{% elif p == 'toutiao' %}📰{% else %}📱{% endif %}</span>
                 {% endfor %}
             </td>
             <td>

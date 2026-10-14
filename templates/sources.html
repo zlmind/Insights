@@ -119,8 +119,6 @@
             <div class="source-thumbnail">
                 {% if source.og_image %}
                 <img src="{{ source.og_image }}" alt="Preview" onerror="this.style.display='none'; this.parentElement.innerHTML='🔗';">
-                {% elif source.is_github %}
-                🐙
                 {% else %}
                 🔗
                 {% endif %}
@@ -134,9 +132,7 @@
                 <p class="source-description">{{ source.description }}</p>
                 {% endif %}
                 <div class="source-meta">
-                    {% if source.is_github %}
-                    <span class="badge" style="background-color: #24292f; color: #fff;">🐙 GitHub</span>
-                    {% elif source.is_youtube %}
+                    {% if source.is_youtube %}
                     <span class="badge" style="background-color: #ff0000; color: #fff;">▶ YouTube</span>
                     {% endif %}
                     {% if source.is_youtube and source.episode_status == 'complete' %}
@@ -155,16 +151,7 @@
                 </div>
             </div>
             <div class="source-actions align-self-center">
-                {% if source.is_github %}
-                <a href="{{ url_for('compose_page') }}?source_id={{ source.id }}" 
-                   class="btn btn-sm btn-primary" title="Generate posts from this source">
-                    ✨ Generate Posts
-                </a>
-                <button type="button" class="btn btn-sm btn-outline-secondary"
-                        onclick="refreshSource({{ source.id }})" title="Refresh repo data from GitHub">
-                    🔄 Refresh
-                </button>
-                {% elif source.is_youtube %}
+                {% if source.is_youtube %}
                     {% if source.episode_status == 'complete' %}
                 <a href="{{ url_for('process_episode', url=source.url, title=source.title) }}"
                    class="btn btn-sm btn-success" title="View transcription results">
@@ -219,7 +206,7 @@
 {% else %}
 <div class="empty-state">
     <h3>📭 No Saved Sources Yet</h3>
-    <p>Add article URLs, YouTube videos, or GitHub repos to extract and save content, or use the Command Center.</p>
+    <p>Add article URLs or YouTube videos to extract and save content, or use the Command Center.</p>
     <div class="d-flex gap-2 justify-content-center">
         <button type="button" class="btn btn-primary" onclick="showAddUrlModal()">
             ➕ Add URL
@@ -274,8 +261,8 @@
                     <div class="mb-3">
                         <label for="urlInput" class="form-label">URL</label>
                         <input type="url" class="form-control" id="urlInput" 
-                               placeholder="https://example.com/article, YouTube URL, or GitHub repo" required>
-                        <div class="form-text">Enter the URL of an article, webpage, YouTube video, or GitHub repository to extract content from.</div>
+                               placeholder="https://example.com/article or YouTube URL" required>
+                        <div class="form-text">Enter the URL of an article, webpage, or YouTube video to extract content from.</div>
                     </div>
                 </form>
             </div>
@@ -344,10 +331,11 @@ let currentSourceId = null;
 let addUrlModal = null;
 
 const PLATFORM_META = {
-    linkedin: { label: 'LinkedIn', icon: '💼', badge: 'bg-primary' },
-    threads: { label: 'Threads', icon: '🧵', badge: 'bg-dark' },
-    facebook: { label: 'Facebook', icon: '📘', badge: 'bg-info' },
-    twitter: { label: 'X', icon: '𝕏', badge: 'bg-secondary' },
+    xiaohongshu: { label: '小红书', icon: '📕', badge: 'bg-danger' },
+    douyin: { label: '抖音', icon: '🎵', badge: 'bg-dark' },
+    wechat: { label: '公众号', icon: '💬', badge: 'bg-success' },
+    zhihu: { label: '知乎', icon: '📘', badge: 'bg-primary' },
+    toutiao: { label: '头条', icon: '📰', badge: 'bg-warning' },
 };
 
 function viewSourcePosts(sourceId) {
@@ -547,14 +535,6 @@ function submitAddUrl(event) {
         if (data.is_youtube) {
             successDiv.innerHTML += ' <br><small>YouTube video ready for transcription.</small>';
             setTimeout(() => location.reload(), 1200);
-        } else if (data.is_github) {
-            successDiv.innerHTML += ' <br><small>GitHub repository data extracted.</small>';
-            addSourceCardToPage(data.source, {isGithub: true});
-            setTimeout(() => {
-                if (addUrlModal) {
-                    addUrlModal.hide();
-                }
-            }, 1500);
         } else {
             addSourceCardToPage(data.source);
             setTimeout(() => {
@@ -606,8 +586,6 @@ function addSourceCardToPage(source, opts) {
         let thumbnailContent;
         if (source.og_image) {
             thumbnailContent = `<img src="${source.og_image}" alt="Preview" onerror="this.style.display='none'; this.parentElement.innerHTML='🔗';">`;
-        } else if (opts.isGithub) {
-            thumbnailContent = '🐙';
         } else {
             thumbnailContent = '🔗';
         }
@@ -619,9 +597,6 @@ function addSourceCardToPage(source, opts) {
         const today = new Date().toISOString().slice(0, 10);
 
         let badgeHtml = '';
-        if (opts.isGithub) {
-            badgeHtml = '<span class="badge" style="background-color: #24292f; color: #fff;">🐙 GitHub</span>';
-        }
 
         let actionsHtml = `
             <a href="{{ url_for('compose_page') }}?source_id=${source.id}" 
@@ -630,7 +605,7 @@ function addSourceCardToPage(source, opts) {
             </a>`;
         actionsHtml += `
             <button type="button" class="btn btn-sm btn-outline-secondary"
-                    onclick="refreshSource(${source.id})" title="${opts.isGithub ? 'Refresh repo data from GitHub' : 'Refresh metadata from source'}">
+                    onclick="refreshSource(${source.id})" title="Refresh metadata from source">
                 🔄 Refresh
             </button>`;
         actionsHtml += `

@@ -127,17 +127,6 @@ TONE_GUIDES = {
 }
 
 PLATFORM_GUIDELINES = {
-    "twitter": "280 characters max, punchy and engaging, 3-5 relevant hashtags",
-    "linkedin": "Professional tone, 1-3 paragraphs, thought leadership angle, 3-5 professional hashtags",
-    "facebook": "Conversational, can be longer, engaging question or hook, 2-3 hashtags",
-    "threads": "Casual and authentic, similar to Twitter but can be slightly longer, 3-5 hashtags",
-    "instagram": (
-        "Caption up to 2200 characters. The first line is the hook and must be "
-        "under 125 characters (Instagram truncates the preview). Short paragraphs "
-        "separated by line breaks, emojis welcome. End with 8-15 relevant hashtags "
-        "on their own lines. Links in captions are not clickable, so keep at most "
-        "one short URL and lead with the message, not the link"
-    ),
     # Domestic platforms: generated in Chinese. These English fallbacks only
     # show if something ever renders the guidelines outside the zh prompt set.
     "xiaohongshu": (
@@ -1011,161 +1000,6 @@ def generate_article(
         raise RuntimeError("Failed to generate article") from exc
 
 
-def generate_social_copy(
-    article_content: str,
-    article_topic: str,
-    platforms: List[str] | None = None,
-    posts_per_platform: int = 10,
-    extra_context: str | None = None,
-) -> dict:
-    """Generate social media promotional copy with hashtags for different platforms.
-
-    Platforms are generated per language group (``PLATFORM_LANGS``).
-
-    Parameters
-    ----------
-    article_content: str
-        The article content to promote.
-    article_topic: str
-        The main topic/title of the article.
-    platforms: List[str] | None
-        List of platforms to generate copy for. Defaults to all major platforms.
-    posts_per_platform: int
-        Number of unique posts to generate per platform. Defaults to 1.
-    extra_context: str | None
-        Optional additional context or instructions for generating posts.
-
-    Returns
-    -------
-    dict
-        Dictionary with platform names as keys. Values are lists of posts if
-        posts_per_platform > 1, otherwise single strings for backward compatibility.
-    """
-    if platforms is None:
-        platforms = ["twitter", "linkedin", "facebook", "threads"]
-
-    # Clamp posts_per_platform to reasonable range
-    posts_per_platform = max(1, min(posts_per_platform, 21))
-
-    merged: dict = {}
-    for lang, group in _group_platforms_by_lang(platforms).items():
-        result = _generate_social_copy(
-            article_content, article_topic, group, posts_per_platform,
-            extra_context, lang)
-        if result:
-            merged.update(result)
-    return {p: merged.get(p, "") for p in platforms}
-
-
-def _generate_social_copy(article_content, article_topic, platforms,
-                          posts_per_platform, extra_context, lang: str) -> dict:
-    """One language group of :func:`generate_social_copy`."""
-    try:
-        client, model, provider = _get_llm_client()
-
-        platform_guidelines = {
-            "twitter": "280 characters max, punchy and engaging, 3-5 relevant hashtags",
-            "linkedin": "Professional tone, 1-3 paragraphs, thought leadership angle, 3-5 professional hashtags",
-            "facebook": "Conversational, can be longer, engaging question or hook, 2-3 hashtags",
-            "threads": "Casual and authentic, similar to Twitter but can be slightly longer, 3-5 hashtags",
-            "instagram": (
-        "Caption up to 2200 characters. The first line is the hook and must be "
-        "under 125 characters (Instagram truncates the preview). Short paragraphs "
-        "separated by line breaks, emojis welcome. End with 8-15 relevant hashtags "
-        "on their own lines. Links in captions are not clickable, so keep at most "
-        "one short URL and lead with the message, not the link"
-    ),
-        }
-
-        platform_list = "\n".join([
-            f"- {p.upper()}: {platform_guidelines.get(p, 'Standard social media post with hashtags')}"
-            for p in platforms
-        ])
-
-        # Build the multi-post instruction
-        if posts_per_platform > 1:
-            multi_post_instruction = (
-                f"\nIMPORTANT: Generate {posts_per_platform} UNIQUE and DIFFERENT posts for EACH platform. "
-                "Each post should have a distinct angle, hook, or approach - suitable for posting on different days. "
-                "Vary the tone, focus, and call-to-action between posts. "
-                f"Return an array of {posts_per_platform} posts for each platform.\n\n"
-                "Format your response as JSON with platform names as keys and ARRAYS of posts as values. Example:\n"
-                '{"twitter": ["First tweet here #hashtag", "Second tweet here #tech"], '
-                '"linkedin": ["First LinkedIn post...", "Second LinkedIn post..."]}'
-            )
-        else:
-            multi_post_instruction = (
-                "\n\nFormat your response as JSON with platform names as keys. Example:\n"
-                '{"twitter": "Your tweet here #hashtag", "linkedin": "Your LinkedIn post here"}'
-            )
-
-        if lang == "zh":
-            messages = prompts_zh.social_copy_messages(
-                topic=article_topic, excerpt=article_content,
-                extra_context=extra_context,
-                platform_list=prompts_zh.platform_list(platforms),
-                posts_per_platform=posts_per_platform)
-        else:
-            messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a social media marketing expert specializing in tech and cybersecurity content. "
-                        "You create engaging, platform-optimized promotional copy that drives engagement and clicks. "
-                        "You understand each platform's unique culture and best practices. "
-                        "When asked to create multiple posts, you ensure each one is genuinely unique with different "
-                        "angles, hooks, questions, or perspectives - not just rewording the same message. "
-                        + NO_EM_DASH_RULE
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Generate promotional social media copy for the following article:\n\n"
-                        f"TOPIC: {article_topic}\n\n"
-                        f"ARTICLE EXCERPT:\n{article_content[:3000]}\n\n"
-                        + (f"ADDITIONAL CONTEXT/INSTRUCTIONS:\n{extra_context}\n\n" if extra_context else "")
-                        + f"Create platform-specific promotional posts for each of these platforms:\n{platform_list}\n\n"
-                        "For each post:\n"
-                        "1. Write copy optimized for that platform's audience and format\n"
-                        "2. Include relevant hashtags (tech, cybersecurity, privacy focused)\n"
-                        "3. Include a call-to-action or hook\n"
-                        "4. Make it shareable and engaging\n"
-                        f"{multi_post_instruction}"
-                    ),
-                },
-            ]
-
-        logger.debug("Generating %d social media post(s) per platform for: %s", posts_per_platform, article_topic)
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.8,  # Slightly higher for more variety in multiple posts
-            max_tokens=3000 if posts_per_platform > 1 else 2000,
-        )
-        _meter("record_chat", response, category="social_posts",
-               provider=provider, model=model)
-
-        # Parse the JSON response
-        content = response.choices[0].message.content.strip()
-        # Handle markdown code blocks if present
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
-            content = content.strip()
-
-        result = json.loads(content)
-        logger.debug("Social media copy generated for %d platforms", len(result))
-        return result
-    except json.JSONDecodeError as exc:
-        logger.warning("Failed to parse JSON response, returning raw content")
-        return {"raw": response.choices[0].message.content.strip()}
-    except Exception as exc:
-        logger.exception("Social media copy generation failed")
-        raise RuntimeError("Failed to generate social media copy") from exc
-
-
 def refine_article(
     current_content: str,
     user_feedback: str,
@@ -1254,7 +1088,7 @@ def generate_posts_from_prompt(
     and the results merge back into one ``{platform: posts}`` dict.
     """
     if platforms is None:
-        platforms = ["linkedin", "threads", "twitter"]
+        platforms = ["xiaohongshu", "douyin", "wechat"]
 
     posts_per_platform = max(1, min(posts_per_platform, 10))
 
@@ -1333,64 +1167,10 @@ def _generate_posts_from_prompt(prompt, platforms, tone, posts_per_platform,
         raise RuntimeError("Failed to generate posts from prompt") from exc
 
 
-_TWEET_URL_RE = re.compile(
-    r"^https?://(?:www\.|mobile\.)?(?:twitter\.com|x\.com)/"
-    r"([A-Za-z0-9_]{1,20})/status/(\d+)"
-)
-
-
-def _tweet_fetch_json(endpoint: str) -> dict:
-    """GET one fxtwitter endpoint and return its parsed JSON.
-
-    A seam, not indirection: the gate swaps this out so URL handling is
-    tested without touching the network.
-    """
-    import requests
-
-    resp = requests.get(endpoint, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
-    resp.raise_for_status()
-    return resp.json()
-
-
-def _fetch_tweet_source(url: str) -> dict | None:
-    """X/Twitter URLs extract through fxtwitter's open API; other URLs get None.
-
-    x.com sits behind a login wall — and on a China-network host behind the
-    GFW besides — so the generic trafilatura path can never see a tweet.
-    api.fxtwitter.com serves the same public tweet as JSON without auth,
-    and is reachable where x.com itself is not.
-    """
-    match = _TWEET_URL_RE.match(url.strip())
-    if not match:
-        return None
-    handle, status_id = match.groups()
-    try:
-        payload = _tweet_fetch_json(
-            f"https://api.fxtwitter.com/{handle}/status/{status_id}")
-    except Exception as e:
-        raise RuntimeError(f"X/Twitter fetch failed via fxtwitter API: {e}") from e
-    tweet = (payload or {}).get("tweet") or {}
-    if payload.get("code") != 200 or not tweet:
-        raise RuntimeError(
-            f"X/Twitter fetch failed: fxtwitter returned "
-            f"{payload.get('code', 'no code')}")
-    text = (tweet.get("text") or "").strip()
-    author = (tweet.get("author") or {}).get("name") or handle
-    photos = ((tweet.get("media") or {}).get("photos") or [])
-    og_image = (photos[0].get("url") if photos else None)
-    return {
-        "url": url,
-        "title": f"{author} on X: {text[:100]}" + ("…" if len(text) > 100 else ""),
-        "description": text[:300],
-        "content": text,
-        "og_image": og_image,
-    }
-
-
 def _fetch_article_source(url: str) -> dict:
     """Generic trafilatura extraction: fetch, extract, backfill metadata.
 
-    Raises with exactly one message prefix; the tweet path has its own.
+    Raises with exactly one message prefix.
     """
     import trafilatura
 
@@ -1487,15 +1267,10 @@ def generate_posts_from_url(
     import trafilatura
 
     if platforms is None:
-        platforms = ["linkedin", "threads", "twitter"]
+        platforms = ["xiaohongshu", "douyin", "wechat"]
 
     # ── Fetch the URL content ──────────────────────────────────────────
-    # X/Twitter URLs take the dedicated path (the generic one can never
-    # see through the login wall); everything else is trafilatura's job.
-    # Each path raises with exactly one message prefix.
-    source_data = _fetch_tweet_source(url)
-    if source_data is None:
-        source_data = _fetch_article_source(url)
+    source_data = _fetch_article_source(url)
 
     # ── Generate posts ─────────────────────────────────────────────────
     posts_per_platform = max(1, min(posts_per_platform, 10))
@@ -1789,7 +1564,7 @@ def generate_posts_from_text(
     language group (``PLATFORM_LANGS``).
     """
     if platforms is None:
-        platforms = ["linkedin", "threads", "twitter"]
+        platforms = ["xiaohongshu", "douyin", "wechat"]
 
     posts_per_platform = max(1, min(posts_per_platform, 10))
 
@@ -2005,7 +1780,7 @@ def generate_posts_from_images(
     per language group (``PLATFORM_LANGS``).
     """
     if platforms is None:
-        platforms = ["linkedin", "threads", "twitter"]
+        platforms = ["xiaohongshu", "douyin", "wechat"]
 
     posts_per_platform = max(1, min(posts_per_platform, 10))
 

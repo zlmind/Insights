@@ -180,13 +180,13 @@ function updateSelectedCount() {
 function confirmBulkDelete() {
     const count = document.querySelectorAll('.feed-checkbox:checked').length;
     if (count === 0) return;
-    if (confirm(`Delete ${count} feed${count > 1 ? 's' : ''} and ALL their episodes, articles, and tickets? This cannot be undone!`)) {
+    if (confirm(`Delete ${count} feed${count > 1 ? 's' : ''} and ALL their episodes and articles? This cannot be undone!`)) {
         document.getElementById('bulk-delete-form').submit();
     }
 }
 
 function deleteSingleFeed(feedId) {
-    if (confirm('Delete this feed and all its episodes, articles, and tickets?')) {
+    if (confirm('Delete this feed and all its episodes and articles?')) {
         const form = document.getElementById('single-delete-form');
         form.action = '{{ url_for("remove_feed", feed_id=0) }}'.replace('/0/', '/' + feedId + '/');
         form.submit();

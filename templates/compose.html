@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Command Center | Insights{% endblock %}
 {% block header %}Command Center{% endblock %}
-{% block subtitle %}<p class="page-subtitle">Generate AI-powered social posts from prompts, URLs, text, images or files, then queue them.</p>{% endblock %}
+{% block subtitle %}<p class="page-subtitle">Generate AI-powered social posts from prompts, URLs, text, images or files.</p>{% endblock %}
 {% block content %}
 {# with context: the card macro reads PUBLISH_TARGETS, which the app injects
    per request, and an import without context would not see it. #}
@@ -81,11 +81,6 @@
     .platform-checkbox-box[data-platform="wechat"] { --platform-color: #07C160; --platform-bg: #07C160; }
     .platform-checkbox-box[data-platform="zhihu"] { --platform-color: #0084FF; --platform-bg: #0084FF; }
     .platform-checkbox-box[data-platform="toutiao"] { --platform-color: #ED1C24; --platform-bg: #ED1C24; }
-    .platform-checkbox-box[data-platform="linkedin"] { --platform-color: #0077B5; --platform-bg: #0077B5; }
-    .platform-checkbox-box[data-platform="threads"] { --platform-color: #000; --platform-bg: #000; }
-    .platform-checkbox-box[data-platform="twitter"] { --platform-color: #1DA1F2; --platform-bg: #1DA1F2; }
-    .platform-checkbox-box[data-platform="facebook"] { --platform-color: #1877F2; --platform-bg: #1877F2; }
-    .platform-checkbox-box[data-platform="instagram"] { --platform-color: #E4405F; --platform-bg: #E4405F; }
     
     /* The generator card serves two jobs. The manual tab hides what only a model
        needs (provider, count, tone, instructions, Generate) and shows Save. */
@@ -198,7 +193,7 @@
         border-top: 1px solid #e9ecef;
     }
 
-    /* Platform chips: the tick says where a post goes, the ➕/✅ is its queue. */
+    /* Platform chips: the tick says where a post goes. */
     .platform-chips {
         display: flex;
         flex-wrap: wrap;
@@ -216,7 +211,6 @@
         transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
     }
     .platform-chip .chip-toggle,
-    .platform-chip .chip-queue,
     .platform-chip .chip-posted {
         border: 0;
         background: transparent;
@@ -257,17 +251,14 @@
         background: var(--chip-color, #6c757d);
         border-color: var(--chip-color, #6c757d);
     }
-    /* The queue control only makes sense once the platform is ticked. */
-    .platform-chip .chip-queue,
+    /* The posted link on a ticked platform's chip. */
     .platform-chip .chip-posted {
         border-left: 1px solid #dee2e6;
         padding-inline: 0.45rem;
     }
-    .platform-chip.is-on .chip-queue,
     .platform-chip.is-on .chip-posted {
         border-left-color: var(--chip-color, #dee2e6);
     }
-    .platform-chip .chip-queue:hover,
     .platform-chip .chip-posted:hover {
         background: rgba(0, 0, 0, 0.06);
     }
@@ -298,160 +289,6 @@
         display: none !important;
     }
 
-    /* Instagram preview phone frame */
-    .ig-phone-frame {
-        position: relative;
-        width: 250px;
-        max-width: 100%;
-        background: #000;
-        border-radius: 18px;
-        overflow: hidden;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
-        user-select: none;
-        touch-action: none;
-    }
-    .ig-phone-frame img.ig-preview-media,
-    .ig-phone-frame video.ig-preview-media {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        object-position: 50% 50%;
-    }
-    .ig-phone-frame img.ig-preview-bg {
-        position: absolute;
-        inset: -10%;
-        width: 120%;
-        height: 120%;
-        object-fit: cover;
-        filter: blur(18px) brightness(0.65);
-    }
-    .ig-phone-frame.ig-dragging img.ig-preview-media { cursor: grabbing; }
-    .ig-phone-frame.ig-draggable img.ig-preview-media { cursor: grab; }
-    .ig-overlay {
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-        color: #fff;
-        font-size: 0.7rem;
-    }
-    .ig-overlay .ig-ui-top {
-        position: absolute;
-        top: 0; left: 0; right: 0;
-        height: 13%;
-        background: linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0));
-        display: flex;
-        align-items: flex-start;
-        padding: 8px 10px;
-        gap: 6px;
-    }
-    .ig-overlay .ig-ui-bottom {
-        position: absolute;
-        bottom: 0; left: 0; right: 0;
-        height: 13%;
-        background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.45));
-        display: flex;
-        align-items: flex-end;
-        padding: 10px;
-    }
-    .ig-overlay .ig-avatar {
-        width: 22px; height: 22px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045);
-        border: 1px solid rgba(255,255,255,0.8);
-        flex-shrink: 0;
-    }
-    .ig-overlay .ig-reply-pill {
-        border: 1px solid rgba(255,255,255,0.75);
-        border-radius: 999px;
-        padding: 4px 12px;
-        opacity: 0.9;
-        flex-grow: 1;
-        margin-right: 8px;
-        white-space: nowrap;
-        overflow: hidden;
-    }
-    .ig-overlay .ig-reel-rail {
-        position: absolute;
-        right: 8px;
-        bottom: 12%;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        font-size: 1rem;
-        text-align: center;
-        text-shadow: 0 1px 3px rgba(0,0,0,0.6);
-    }
-    .ig-overlay .ig-caption-ghost {
-        position: absolute;
-        left: 10px;
-        right: 56px;
-        bottom: 4%;
-        text-shadow: 0 1px 3px rgba(0,0,0,0.7);
-        overflow: hidden;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        opacity: 0.95;
-    }
-    /* Text layers & tag pins in the IG editor */
-    .ig-layer-host {
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-    }
-    .ig-text-layer {
-        position: absolute;
-        transform: translate(-50%, -50%);
-        pointer-events: auto;
-        cursor: grab;
-        user-select: none;
-        white-space: pre;
-        text-align: center;
-        font-family: "Arial Black", "Arial Bold", Arial, "Helvetica Neue", sans-serif;
-        font-weight: 700;
-        line-height: 1.25;
-        padding: 0.28em 0.45em;
-        border-radius: 0.35em;
-        max-width: 96%;
-    }
-    .ig-text-layer.bg-none { text-shadow: 0 1px 2px rgba(0,0,0,0.75), 0 0 4px rgba(0,0,0,0.5); }
-    .ig-text-layer.selected { outline: 2px dashed #0d6efd; outline-offset: 2px; }
-    .ig-text-layer.dragging { cursor: grabbing; }
-    .ig-tag-pin {
-        position: absolute;
-        transform: translate(-50%, -50%);
-        pointer-events: auto;
-        cursor: pointer;
-        background: rgba(38, 38, 38, 0.92);
-        color: #fff;
-        padding: 2px 8px;
-        border-radius: 5px;
-        font-size: 0.65rem;
-        white-space: nowrap;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.4);
-    }
-    .ig-tag-pin::after {
-        content: "";
-        position: absolute;
-        top: -5px;
-        left: 50%;
-        transform: translateX(-50%);
-        border: 5px solid transparent;
-        border-bottom-color: rgba(38, 38, 38, 0.92);
-        border-top: none;
-    }
-    .ig-phone-frame.ig-tag-arming { cursor: crosshair; }
-    .ig-color-swatch {
-        width: 22px;
-        height: 22px;
-        border-radius: 50%;
-        border: 2px solid #dee2e6;
-        cursor: pointer;
-        display: inline-block;
-    }
-    .ig-color-swatch.selected { border-color: #0d6efd; box-shadow: 0 0 0 2px rgba(13,110,253,0.35); }
 
     /* ---- Flat pass: toolbar discipline & layout rhythm ---- */
     .btn-agent-push { white-space: nowrap; }
@@ -593,24 +430,6 @@
                     </div>
                     <div class="small text-muted mt-1 d-none" id="manual-video-note">
                         🎬 The video posts instead of any image.
-                    </div>
-                </div>
-                {# Instagram only: shown while an Instagram account is ticked below. #}
-                <div class="mb-2 d-none" id="manual-ig-people">
-                    <div class="row g-2">
-                        <div class="col-md-6">
-                            <label class="form-label small mb-1" for="manual-ig-collaborators">🤝 Instagram collaborators <span class="text-muted">(optional, up to {{ IG_MAX_COLLABORATORS }})</span></label>
-                            <input type="text" class="form-control form-control-sm" id="manual-ig-collaborators"
-                                   placeholder="@username, @username" autocomplete="off" spellcheck="false">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label small mb-1" for="manual-ig-reel-tags">🏷️ Tag people in a Reel <span class="text-muted">(optional)</span></label>
-                            <input type="text" class="form-control form-control-sm" id="manual-ig-reel-tags"
-                                   placeholder="@username, @username" autocomplete="off" spellcheck="false">
-                        </div>
-                    </div>
-                    <div class="small text-muted mt-1">
-                        Collaborators receive an invite and only appear on the post once they accept. They must be public accounts. Tags are used when the post goes out as a Reel.
                     </div>
                 </div>
             </div>
@@ -1089,14 +908,14 @@
             {% set platform = target.platform %}
             {% set meta = PLATFORM_META[platform] %}
             {% set name = target.label if target.show_label else meta.label %}
-            {% set on = platform != 'instagram' and target.is_default %}
+            {% set on = target.is_default %}
             <span class="platform-chip {% if on %}is-on{% endif %}"
                   data-platform="{{ platform }}" data-account-id="{{ target.account_id or '' }}">
                 <button type="button" class="chip-toggle" onclick="toggleNewPostPlatform(this)"
-                        title="{{ name }}{% if platform == 'instagram' %}, needs an image or video before it can publish{% endif %}">
+                        title="{{ name }}">
                     <span class="chip-box">{% if on %}✓{% endif %}</span>
                     <span class="chip-icon">{{ meta.icon }}</span>
-                    {% if platform != 'twitter' or target.show_label %}<span class="chip-name">{{ name }}</span>{% endif %}
+                    <span class="chip-name">{{ name }}</span>
                 </button>
             </span>
             {% endfor %}
@@ -1121,7 +940,7 @@
                         onclick="clearNewPostVideo()" title="Remove the video">✕</button>
             </div>
             <div class="small text-muted mt-1 d-none" id="new-post-video-note">
-                🎬 The video posts instead of an image; Instagram sends it as a Reel.
+                🎬 The video posts instead of an image.
             </div>
         </div>
         <div class="d-flex justify-content-between align-items-center">
@@ -1156,7 +975,7 @@
                     ☑️ Select All
                 </button>
                 <button type="button" class="btn btn-sm btn-primary d-none" id="add-platform-selected-btn" onclick="showBulkPlatformModal('add')"
-                        title="Also post the selected posts to more platforms, and queue them">
+                        title="Also post the selected posts to more platforms">
                     🌐 Add Platform (<span id="add-platform-count">0</span>)
                 </button>
                 <button type="button" class="btn btn-sm btn-outline-primary d-none" id="remove-platform-selected-btn" onclick="showBulkPlatformModal('remove')"
@@ -1285,35 +1104,6 @@
 </div>
 {% endif %}
 
-<!-- Schedule Modal -->
-<div class="modal fade" id="scheduleModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header" style="background: var(--brand-500, #1447e6); color: white;">
-                <h5 class="modal-title">📅 Schedule Post</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="schedule-post-id">
-                <input type="hidden" id="schedule-post-type">
-                <input type="hidden" id="schedule-platform">
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Select Date and Time</label>
-                    <input type="datetime-local" class="form-control" id="schedule-datetime">
-                </div>
-                <div class="alert alert-info small">
-                    <strong>Tip:</strong> Posts will be published automatically at the scheduled time. 
-                    Make sure your platform connection is active.
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="schedulePost()">📅 Schedule</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Image Lightbox Modal -->
 <div class="modal fade" id="imageLightboxModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -1321,131 +1111,6 @@
             <div class="modal-body p-0 text-center">
                 <img id="lightbox-image" src="" alt="Image preview" class="img-fluid" style="max-height: 80vh; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
                 <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 m-2" data-bs-dismiss="modal" aria-label="Close" style="background-color: rgba(0,0,0,0.5); padding: 10px; border-radius: 50%;"></button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Instagram Preview & Fit Modal -->
-<div class="modal fade" id="igPreviewModal" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header" style="background: linear-gradient(135deg, #833ab4 0%, #fd1d1d 55%, #fcb045 100%); color: white;">
-                <h5 class="modal-title">📱 Instagram Preview <span class="badge bg-dark bg-opacity-25" id="ig-preview-format-label"></span></h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="row g-3">
-                    <div class="col-md-6 d-flex flex-column align-items-center">
-                        <div class="align-items-center gap-2 mb-2 d-none" id="ig-preview-nav">
-                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="igPreviewNav(-1)">‹</button>
-                            <span class="small text-muted" id="ig-preview-counter">1 / 1</span>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="igPreviewNav(1)">›</button>
-                        </div>
-                        <div class="ig-phone-frame" id="ig-preview-frame">
-                            <img class="ig-preview-bg d-none" id="ig-preview-bg" src="" alt="">
-                            <img class="ig-preview-media d-none" id="ig-preview-img" src="" alt="Instagram media preview">
-                            <video class="ig-preview-media d-none" id="ig-preview-video" muted loop playsinline></video>
-                            <div class="ig-overlay d-none" id="ig-overlay-story">
-                                <div class="ig-ui-top">
-                                    <div class="ig-avatar"></div>
-                                    <span style="opacity:0.95;">yourname <span style="opacity:0.7;">· 2h</span></span>
-                                </div>
-                                <div class="ig-ui-bottom">
-                                    <span class="ig-reply-pill">Send message</span>
-                                    <span style="opacity:0.9;">♡&nbsp;&nbsp;➤</span>
-                                </div>
-                            </div>
-                            <div class="ig-overlay d-none" id="ig-overlay-reel">
-                                <div class="ig-reel-rail">
-                                    <span>♡</span><span>💬</span><span>➤</span><span>⋯</span>
-                                </div>
-                                <div class="ig-caption-ghost" id="ig-reel-caption">Caption preview…</div>
-                            </div>
-                            <div class="ig-layer-host" id="ig-text-layer-host"></div>
-                            <div class="ig-layer-host" id="ig-tag-pin-host"></div>
-                        </div>
-                        <div class="small text-muted mt-2 text-center" id="ig-preview-dims">Loading media…</div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="btn-group btn-group-sm w-100 mb-3" role="group" id="ig-editor-mode-row">
-                            <button type="button" class="btn btn-outline-dark" id="ig-emode-preview" onclick="igSetEditorMode('preview')">📱 Preview</button>
-                            <button type="button" class="btn btn-outline-dark" id="ig-emode-text" onclick="igSetEditorMode('text')">📝 Text</button>
-                            <button type="button" class="btn btn-outline-dark" id="ig-emode-tag" onclick="igSetEditorMode('tag')">🏷️ Tag people</button>
-                        </div>
-                        <div class="alert alert-secondary py-2 small mb-3" id="ig-fit-status">Checking dimensions…</div>
-                        <div class="mb-3 d-none" id="ig-ratio-row">
-                            <label class="form-label small fw-bold mb-1">Target shape</label>
-                            <div class="btn-group btn-group-sm w-100" role="group" id="ig-ratio-buttons">
-                                <button type="button" class="btn btn-outline-secondary" data-target="feed_portrait" onclick="igSetFeedTarget('feed_portrait')">4:5 Portrait</button>
-                                <button type="button" class="btn btn-outline-secondary" data-target="feed_square" onclick="igSetFeedTarget('feed_square')">1:1 Square</button>
-                                <button type="button" class="btn btn-outline-secondary" data-target="feed_landscape" onclick="igSetFeedTarget('feed_landscape')">1.91:1 Wide</button>
-                            </div>
-                        </div>
-                        <div id="ig-fix-controls">
-                            <label class="form-label small fw-bold mb-1">Make it fit</label>
-                            <div class="btn-group btn-group-sm w-100 mb-2" role="group">
-                                <button type="button" class="btn btn-outline-primary" id="ig-mode-crop" onclick="igSetFixMode('crop')">✂️ Crop to fill</button>
-                                <button type="button" class="btn btn-outline-primary" id="ig-mode-pad" onclick="igSetFixMode('pad')">🔳 Fit with background</button>
-                            </div>
-                            <div class="mb-2 d-none" id="ig-pad-style-row">
-                                <div class="btn-group btn-group-sm w-100" role="group">
-                                    <button type="button" class="btn btn-outline-secondary" data-pad="blur" onclick="igSetPadStyle('blur')">🌫️ Blurred</button>
-                                    <button type="button" class="btn btn-outline-secondary" data-pad="black" onclick="igSetPadStyle('black')">⬛ Black</button>
-                                    <button type="button" class="btn btn-outline-secondary" data-pad="white" onclick="igSetPadStyle('white')">⬜ White</button>
-                                </div>
-                            </div>
-                            <div class="small text-muted mb-2" id="ig-fix-hint"></div>
-                            <button type="button" class="btn btn-success btn-sm w-100" id="ig-apply-fix-btn" onclick="igApplyFix(this)">✅ Apply &amp; save adjusted image</button>
-                        </div>
-                        <!-- Text overlay editor (images and videos) -->
-                        <div class="d-none" id="ig-text-controls">
-                            <div class="d-flex gap-2 mb-2">
-                                <button type="button" class="btn btn-sm btn-outline-primary flex-grow-1" onclick="igAddTextLayer('')">＋ Add text</button>
-                                <button type="button" class="btn btn-sm btn-outline-primary flex-grow-1" onclick="igAddTextLayer('@username')" title="Adds an @name as text. Note: API-published stories can't have tappable mentions.">@ Mention</button>
-                            </div>
-                            <div class="border rounded p-2 mb-2 d-none" id="ig-text-edit-form">
-                                <textarea class="form-control form-control-sm mb-2" id="ig-text-input" rows="2"
-                                          placeholder="Your text…" oninput="igUpdateSelectedText(this.value)"></textarea>
-                                <div class="d-flex align-items-center gap-2 mb-2">
-                                    <label class="small text-muted mb-0">Size</label>
-                                    <input type="range" class="form-range" id="ig-text-size" min="0.03" max="0.18" step="0.005"
-                                           oninput="igUpdateSelectedProp('size', parseFloat(this.value))">
-                                </div>
-                                <div class="d-flex align-items-center gap-1 mb-2 flex-wrap" id="ig-text-colors">
-                                    <label class="small text-muted mb-0 me-1">Color</label>
-                                </div>
-                                <div class="d-flex align-items-center gap-2 mb-2">
-                                    <label class="small text-muted mb-0">Style</label>
-                                    <div class="btn-group btn-group-sm" role="group" id="ig-text-bgs">
-                                        <button type="button" class="btn btn-outline-secondary" data-bg="none" onclick="igUpdateSelectedProp('bg', 'none')">Aa</button>
-                                        <button type="button" class="btn btn-outline-secondary" data-bg="dark" onclick="igUpdateSelectedProp('bg', 'dark')" style="background:rgba(0,0,0,0.6);color:#fff;">Aa</button>
-                                        <button type="button" class="btn btn-outline-secondary" data-bg="light" onclick="igUpdateSelectedProp('bg', 'light')" style="background:rgba(255,255,255,0.85);">Aa</button>
-                                        <button type="button" class="btn btn-outline-secondary" data-bg="black" onclick="igUpdateSelectedProp('bg', 'black')" style="background:#000;color:#fff;">Aa</button>
-                                        <button type="button" class="btn btn-outline-secondary" data-bg="white" onclick="igUpdateSelectedProp('bg', 'white')" style="background:#fff;">Aa</button>
-                                    </div>
-                                    <button type="button" class="btn btn-sm btn-outline-danger ms-auto" onclick="igDeleteSelectedLayer()" title="Delete this text">🗑️</button>
-                                </div>
-                            </div>
-                            <button type="button" class="btn btn-success btn-sm w-100 mb-2" id="ig-bake-text-btn" onclick="igBakeText(this)">🔥 Bake text into media &amp; save</button>
-                            <div class="small text-muted" id="ig-text-note">Drag text to position it. Text is baked into the pixels — for tappable mentions use feed tags or the Instagram app.</div>
-                        </div>
-                        <!-- People tags (real Instagram feed tags) -->
-                        <div class="d-none" id="ig-tag-controls">
-                            <div class="input-group input-group-sm mb-2">
-                                <span class="input-group-text">@</span>
-                                <input type="text" class="form-control" id="ig-tag-username" placeholder="username"
-                                       onkeydown="if(event.key === 'Enter') { event.preventDefault(); igArmTagPlacement(); }">
-                                <button type="button" class="btn btn-outline-primary" id="ig-tag-place-btn" onclick="igArmTagPlacement()">📍 Place on photo</button>
-                            </div>
-                            <div class="d-flex flex-wrap gap-1 mb-2" id="ig-tag-list"></div>
-                            <div class="small text-muted" id="ig-tag-note">Type a username, then tap the photo where they are. Tags are saved with the post and applied when it publishes (feed photos only — click a pin to remove it).</div>
-                        </div>
-                        <div class="alert alert-warning py-2 small d-none mb-2" id="ig-video-note"></div>
-                        <hr class="my-3">
-                        <ul class="small text-muted ps-3 mb-0" id="ig-preview-tips"></ul>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -1560,13 +1225,6 @@
                             </button>
                         </span>
                         {% endfor %}
-                    </div>
-                    <div class="form-check mb-2 bulk-only-add">
-                        <input class="form-check-input" type="checkbox" id="bulk-platform-queue" checked onchange="updateBulkPlatformSummary()">
-                        <label class="form-check-label" for="bulk-platform-queue">
-                            Also add them to the posting queue
-                            <span class="text-muted small d-block">Each one takes the next free time slot for its platform.</span>
-                        </label>
                     </div>
                     <div class="form-check mb-2 bulk-only-remove">
                         <input class="form-check-input" type="checkbox" id="bulk-platform-force" onchange="updateBulkPlatformSummary()">
@@ -1814,7 +1472,7 @@ function handleImageFileSelect(input) {
             
             showToast('Image uploaded successfully!', 'success');
             
-            // Show warning if image stored locally (won't work with Threads)
+            // Show warning if image stored locally
             if (data.warning) {
                 showToast(data.warning, 'warning');
             }
@@ -1943,15 +1601,8 @@ function clearManualVideo() {
     refreshManualVideoUI();
 }
 
-// The collaborators and tag fields belong to Instagram, so they show while an
-// Instagram account is ticked.
-function refreshManualIgPeople() {
-    const box = document.getElementById('manual-ig-people');
-    if (box) box.classList.toggle('d-none', !tickedPlatforms().includes('instagram'));
-}
 
 function updateManualComposerCount() {
-    refreshManualIgPeople();
     const input = document.getElementById('manual-input');
     const out = document.getElementById('manual-charcount');
     if (!input || !out) return;
@@ -1978,9 +1629,6 @@ function updateManualComposerCount() {
             over ? 'badge bg-danger' : 'badge bg-light text-dark border'));
     });
     const { file: videoFile, url: videoUrl } = manualVideoChoice();
-    if (platforms.includes('instagram') && !videoFile && !videoUrl) {
-        out.appendChild(chip('Instagram needs an image or video to publish', 'text-muted'));
-    }
 }
 
 function saveManualPost() {
@@ -2011,16 +1659,6 @@ function saveManualPost() {
     if (videoFile) formData.append('video', videoFile);
     else if (videoUrl) formData.append('video_url', videoUrl);
     else if (imageUrl) formData.append('image_url', imageUrl);
-    // Instagram's people, sent only while Instagram is ticked (the server refuses
-    // them otherwise). A bad handle or too many collaborators comes back as the
-    // error below and nothing is saved.
-    if (tickedPlatforms().includes('instagram')) {
-        const collaborators = document.getElementById('manual-ig-collaborators').value.trim();
-        const reelTags = document.getElementById('manual-ig-reel-tags').value.trim();
-        if (collaborators) formData.append('ig_collaborators', collaborators);
-        if (reelTags) formData.append('ig_reel_tags', reelTags);
-    }
-
     const btn = document.getElementById('manual-save-btn');
     const original = btn.innerHTML;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> ' +
@@ -2779,10 +2417,6 @@ function savePostImage(postId) {
             
             editForm.classList.add('d-none');
             showToast(imageUrl ? 'Image saved!' : 'Image removed!', 'success');
-            // Refresh the Instagram aspect-ratio hint if this is an IG card
-            if (document.getElementById(`ig-type-${postId}`) && igCurrentType(postId) === 'feed') {
-                igCheckFeedImage(postId);
-            }
         } else {
             showToast('Error: ' + (data.error || 'Failed to save image'), 'error');
         }
@@ -3062,7 +2696,7 @@ function handlePostImageFileSelect(postId, input) {
             
             showToast('Image uploaded and saved!', 'success');
             
-            // Show warning if image stored locally (won't work with Threads)
+            // Show warning if image stored locally
             if (data.warning) {
                 showToast(data.warning, 'warning');
             }
@@ -3114,7 +2748,7 @@ function savePostImageWithUrl(postId, imageUrl) {
 
 // Video attachment. A card has at most one video, stored on every row of the
 // card (the server applies it card-wide, like the image), and it is what gets
-// posted: Instagram sends it as a Reel and the image is not sent.
+// posted: a video replaces the image.
 let cachedVideos = null;
 
 function postVideoEls(postId) {
@@ -3149,7 +2783,6 @@ function renderPostVideo(postId, videoUrl, warnings) {
     const els = postVideoEls(postId);
     if (!els.section) return;
     els.section.dataset.videoUrl = videoUrl || '';
-    igRefreshPeople(postId);
     const player = els.preview.querySelector('video');
     if (videoUrl) {
         player.src = videoUrl;
@@ -3384,1205 +3017,6 @@ Object.entries(PLATFORM_META).forEach(([platform, meta]) => {
     PLATFORM_CHIP_COLORS[platform] = meta.color;
 });
 
-function postedUrlFrom(platform, data) {
-    if (platform !== 'linkedin') return data.permalink || '';
-    const urn = data.post_urn;
-    if (!urn) return '';
-    return urn.startsWith('http') ? urn : `https://www.linkedin.com/feed/update/${urn}`;
-}
-
-// Show a published platform as a 🔗 on its own chip, next to its queue control.
-function markChipPosted(postItem, platform, url, accountId) {
-    if (!postItem || !url) return;
-    // With two accounts on a platform there are two chips, so the account
-    // decides which one gets the link; without one, the platform's chip does.
-    const selector = accountId
-        ? `.platform-chip[data-platform="${platform}"][data-account-id="${accountId}"]`
-        : `.platform-chip[data-platform="${platform}"]`;
-    const chip = postItem.querySelector(selector)
-        || postItem.querySelector(`.platform-chip[data-platform="${platform}"]`);
-    if (!chip || chip.querySelector('.chip-posted')) return;
-    const link = document.createElement('a');
-    link.href = url;
-    link.target = '_blank';
-    link.rel = 'noopener';
-    link.className = 'chip-posted';
-    link.title = 'Posted just now — click to view';
-    link.textContent = '🔗';
-    chip.appendChild(link);
-}
-
-// Platform connectedness lives on the bulk picker's chips now: one chip per
-// account target, data-connected="false" when the platform has no live
-// account. Publishing must refuse before it fetches — the restyle dropped
-// this guard and a disconnected platform went straight to the server.
-function platformConnected(platform) {
-    const chip = document.querySelector(
-        `#bulk-platform-targets .platform-chip[data-platform="${platform}"]`);
-    return chip ? chip.dataset.connected !== 'false' : true;
-}
-
-// Publish one platform of a card. Resolves to true when it went out, so
-// "post to all" can report a tally.
-async function publishCardPlatform(postItem, postId, platform, accountId) {
-    const label = PLATFORM_LABELS[platform] || platform;
-    if (!platformConnected(platform)) {
-        alert(`Please connect ${label} first`);
-        return false;
-    }
-    try {
-        const body = new FormData();
-        if (accountId) body.append('account_id', accountId);
-        const res = await fetch(`/compose/post/${postId}/${platform}`, { method: 'POST', body: body });
-        const data = await res.json();
-        if (!data.success) {
-            alert(`${data.account_label || label}: ${data.error || 'Failed to post'}`);
-            return false;
-        }
-        markChipPosted(postItem, platform, postedUrlFrom(platform, data), accountId);
-        return true;
-    } catch (e) {
-        alert(`${label}: ${e.message}`);
-        return false;
-    }
-}
-
-// A card counts as used once every platform it targets has gone out, which is
-// what the server records too — so re-read it rather than guessing.
-async function refreshCardUsedState(postItem) {
-    if (!postItem) return;
-    const ids = cardPostIds(postItem, false);
-    if (!ids.length) return;
-    const states = await Promise.all(ids.map(id =>
-        fetch(`/compose/post/${id}`)
-            .then(res => res.ok ? res.json() : null)
-            .then(post => !!(post && post.used))
-            .catch(() => false)));
-    setCardUsedUI(postItem, states.every(Boolean));
-}
-
-async function postNowFromCard(btn, postId, platform, accountId) {
-    const label = PLATFORM_LABELS[platform] || platform;
-    const extra = platform === 'instagram'
-        ? ' An image is required and will be auto-attached if the post has none.'
-        : '';
-    if (!confirm(`Post to ${label} now?${extra}`)) return;
-
-    const postItem = btn.closest('.post-item');
-    const original = btn.innerHTML;
-    btn.innerHTML = '⏳ Posting...';
-    btn.disabled = true;
-    const posted = await publishCardPlatform(postItem, postId, platform, accountId);
-    btn.innerHTML = original;
-    btn.disabled = false;
-    if (posted) {
-        showToast(`Posted to ${label}!`, 'success');
-        refreshCardUsedState(postItem);
-    }
-}
-
-// Publish the same copy to every account on the card. The fan-out happens on
-// the server in one request, so a target failing does not abandon the ones
-// after it and the reply says exactly which landed.
-async function postNowAllFromCard(btn) {
-    const postItem = btn.closest('.post-item');
-    const targets = cardTargets(postItem);
-    if (!targets.length) return;
-    const labels = targets.map(t => t.account_label || PLATFORM_LABELS[t.platform] || t.platform).join(', ');
-    if (!confirm(`Publish this post to ${labels} now? This cannot be undone.`)) return;
-
-    const original = btn.innerHTML;
-    btn.innerHTML = '⏳ Posting...';
-    btn.disabled = true;
-    try {
-        const body = new FormData();
-        body.append('post_ids', cardPostIds(postItem, false).join(','));
-        const res = await fetch(`/compose/post/${postItem.dataset.postId}/publish`, {
-            method: 'POST', body: body,
-        });
-        const data = await res.json();
-        if (!res.ok && !data.results) throw new Error(data.error || 'Could not publish');
-
-        (data.results || []).forEach(r => {
-            if (r.success) markChipPosted(postItem, r.platform, postedUrlFrom(r.platform, r), r.account_id);
-        });
-        const failed = (data.results || []).filter(r => !r.success);
-        if (failed.length) {
-            alert(failed.map(r => `${r.account_label}: ${r.error}`).join('\n'));
-        }
-        showToast(data.message, data.success ? 'success' : (data.published ? 'warning' : 'error'));
-    } catch (e) {
-        showToast('Could not publish: ' + e.message, 'error');
-    }
-    btn.innerHTML = original;
-    btn.disabled = false;
-    refreshCardUsedState(postItem);
-}
-
-// Queue the same copy for every account on the card, each in its own next slot.
-async function queueAllFromCard(btn) {
-    const postItem = btn.closest('.post-item');
-    const targets = cardTargets(postItem);
-    if (!targets.length) return;
-
-    const original = btn.innerHTML;
-    btn.innerHTML = '⏳ Queueing...';
-    btn.disabled = true;
-    try {
-        const body = new FormData();
-        body.append('all', '1');
-        body.append('post_ids', cardPostIds(postItem, false).join(','));
-        const res = await fetch(`/compose/post/${postItem.dataset.postId}/queue`, {
-            method: 'POST', body: body,
-        });
-        const data = await res.json();
-        // A reply carrying a `queued` list is the queue answering, even when the
-        // list is empty. Anything else is the request itself failing.
-        if (!res.ok && !Array.isArray(data.queued)) throw new Error(data.error || 'Could not queue');
-        if ((data.skipped || []).length) {
-            alert(data.skipped.map(s => `${s.target}: ${s.error}`).join('\n'));
-        }
-        if (!(data.queued || []).length) {
-            // Nothing went in. Saying "Queued" here, as this once did, is the one
-            // thing this button must never do: the user would stop looking.
-            showToast(data.error || 'Nothing was queued', 'error');
-        } else {
-            showToast(data.message || 'Queued', data.success && !data.partial ? 'success' : 'warning');
-        }
-        await refreshCard(postItem);
-    } catch (e) {
-        showToast('Could not queue: ' + e.message, 'error');
-    }
-    btn.innerHTML = original;
-    btn.disabled = false;
-}
-
-// ============ Instagram media builder (carousel / reel / story) ============
-// Per-post media lists: postId -> [{url, kind}]
-window._igMedia = window._igMedia || {};
-const IG_VIDEO_EXT = /\.(mp4|mov|m4v)(\?.*)?$/i;
-
-function igGuessKind(url) {
-    return IG_VIDEO_EXT.test(url || '') ? 'video' : 'image';
-}
-
-function igLimits(type) {
-    if (type === 'carousel') return { min: 2, max: 10, label: '2–10 images/videos' };
-    if (type === 'reel') return { min: 1, max: 1, label: 'one video' };
-    if (type === 'story') return { min: 1, max: 1, label: 'one image or video' };
-    return { min: 1, max: 1, label: '' };
-}
-
-function igCurrentType(postId) {
-    const sel = document.getElementById('ig-type-' + postId);
-    return sel ? sel.value : 'feed';
-}
-
-function renderIgStrip(postId) {
-    const strip = document.getElementById('ig-media-strip-' + postId);
-    if (!strip) return;
-    const items = window._igMedia[postId] || [];
-    const type = igCurrentType(postId);
-    const lim = igLimits(type);
-    if (!items.length) {
-        strip.innerHTML = '<span class="text-muted small">No media added yet.</span>';
-    } else {
-        strip.innerHTML = items.map((it, i) => {
-            const thumb = it.kind === 'video'
-                ? `<div class="d-flex align-items-center justify-content-center bg-dark text-white" style="width:64px;height:64px;border-radius:6px;font-size:1.4rem;" title="${it.url}">🎬</div>`
-                : `<img src="${it.url}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;" title="${it.url}">`;
-            return `<div class="position-relative" style="width:64px;">
-                ${thumb}
-                <button type="button" class="btn btn-sm btn-danger position-absolute top-0 end-0 p-0 lh-1"
-                        style="width:18px;height:18px;font-size:0.7rem;" title="Remove"
-                        onclick="igRemoveMedia(${postId}, ${i})">✕</button>
-                <div class="small text-center text-muted" id="ig-chip-ratio-${postId}-${i}">${i + 1}</div>
-            </div>`;
-        }).join('');
-        items.forEach((it, i) => igCheckChipRatio(postId, it, i, type));
-    }
-    const hint = document.getElementById('ig-media-hint-' + postId);
-    if (hint) {
-        if (type === 'feed') {
-            // Feed uses the single post image; show its aspect-ratio fit instead
-            igCheckFeedImage(postId);
-        } else {
-            let msg = `${lim.label} — ${items.length} added`;
-            if (items.length < lim.min) msg += ` (need ${lim.min})`;
-            if (items.length > lim.max) msg += ` (max ${lim.max})`;
-            hint.textContent = msg;
-            hint.className = 'small ' + ((items.length < lim.min || items.length > lim.max) ? 'text-danger' : 'text-success');
-        }
-    }
-}
-
-function igSaveMedia(postId) {
-    const type = igCurrentType(postId);
-    const items = window._igMedia[postId] || [];
-    const fd = new FormData();
-    fd.append('ig_post_type', type);
-    fd.append('media_items', JSON.stringify(items));
-    return fetch(`/compose/post/${postId}/media`, { method: 'POST', body: fd })
-        .then(r => r.json())
-        .then(d => {
-            if (!d.success) showToast(d.error || 'Could not save media', 'warning');
-            return d;
-        })
-        .catch(() => showToast('Could not save media', 'error'));
-}
-
-// What the card's Instagram post goes out as: a video makes the default format a
-// Reel, which is the only format that takes people tags.
-function igEffectiveFormat(postId) {
-    const type = igCurrentType(postId);
-    const section = document.getElementById('video-section-' + postId);
-    const hasVideo = !!(section && section.dataset.videoUrl);
-    return (type === 'feed' && hasVideo) ? 'reel' : type;
-}
-
-// Show the Reel tag field only where it applies. Called when the format or the
-// card's video changes.
-function igRefreshPeople(postId) {
-    const col = document.querySelector(`#ig-people-${postId} .ig-reel-tags-col`);
-    if (col) col.classList.toggle('d-none', igEffectiveFormat(postId) !== 'reel');
-}
-
-function igHandleList(value) {
-    return value.split(/[,\n]/).map(h => h.trim()).filter(Boolean);
-}
-
-// Save the card's collaborators and Reel tags. The server applies them to every
-// Instagram account on the card and answers with the cleaned lists, which replace
-// what was typed (so "@Jane, jane" reads back as "@jane"). A refusal (a handle with
-// a space, a fourth collaborator) is shown under the fields and nothing changes.
-function saveIgPeople(postId) {
-    const collaborators = document.getElementById('ig-collaborators-' + postId);
-    const reelTags = document.getElementById('ig-reel-tags-' + postId);
-    const error = document.getElementById('ig-people-error-' + postId);
-    const body = new FormData();
-    body.append('ig_collaborators', collaborators ? collaborators.value : '');
-    if (reelTags) body.append('ig_reel_tags', reelTags.value);
-    body.append('post_ids', cardIdsParam(postId));
-    const showError = (message) => {
-        if (!error) return;
-        error.textContent = message;
-        error.classList.toggle('d-none', !message);
-    };
-    return fetch(`/compose/post/${postId}/ig-people`, { method: 'POST', body: body })
-        .then(r => r.json().then(d => ({ ok: r.ok, d: d })))
-        .then(({ ok, d }) => {
-            if (!ok || !d.success) {
-                showError(d.error || 'Could not save collaborators');
-                return false;
-            }
-            showError('');
-            const show = (list) => list.map(h => '@' + h).join(', ');
-            if (collaborators) collaborators.value = show(d.ig_collaborators || []);
-            if (reelTags) reelTags.value = show(d.ig_reel_tags || []);
-            showToast(d.ig_collaborators.length
-                ? 'Collaborators saved. They are invited when the post goes out.'
-                : 'Saved', 'success');
-            return true;
-        })
-        .catch(() => { showError('Could not save collaborators'); return false; });
-}
-
-function igAddItem(postId, url, kind) {
-    if (!url) return;
-    const type = igCurrentType(postId);
-    const lim = igLimits(type);
-    window._igMedia[postId] = window._igMedia[postId] || [];
-    if (window._igMedia[postId].length >= lim.max) {
-        showToast(`This format allows ${lim.label}.`, 'warning');
-        return;
-    }
-    if (type === 'reel' && kind !== 'video') {
-        showToast('Reels need a video.', 'warning');
-        return;
-    }
-    window._igMedia[postId].push({ url: url, kind: kind });
-    renderIgStrip(postId);
-    igSaveMedia(postId);
-}
-
-function igRemoveMedia(postId, idx) {
-    (window._igMedia[postId] || []).splice(idx, 1);
-    renderIgStrip(postId);
-    igSaveMedia(postId);
-}
-
-function igAddMediaUrl(postId) {
-    const input = document.getElementById('ig-media-url-' + postId);
-    const url = (input.value || '').trim();
-    if (!url) return;
-    igAddItem(postId, url, igGuessKind(url));
-    input.value = '';
-}
-
-function igUploadMedia(postId, input, kind) {
-    const file = input.files && input.files[0];
-    if (!file) return;
-    const spinner = document.getElementById('ig-media-spinner-' + postId);
-    if (spinner) spinner.classList.remove('d-none');
-    const fd = new FormData();
-    const route = kind === 'video' ? '/compose/upload-video' : '/compose/upload-image';
-    fd.append(kind === 'video' ? 'video' : 'image', file);
-    fetch(route, { method: 'POST', body: fd })
-        .then(r => r.json())
-        .then(d => {
-            const url = d.image_url || d.video_url;
-            if (d.success && url) {
-                igAddItem(postId, url, kind);
-            } else {
-                showToast(d.error || 'Upload failed', 'error');
-            }
-        })
-        .catch(() => showToast('Upload failed', 'error'))
-        .finally(() => { if (spinner) spinner.classList.add('d-none'); input.value = ''; });
-}
-
-window._igLastType = window._igLastType || {};   // postId -> format as last saved
-
-function switchIgType(postId, type) {
-    // A Story cannot carry collaborators, and silently dropping them would post
-    // without the people the user asked for, so the switch is refused until the
-    // field is cleared.
-    const held = document.getElementById('ig-collaborators-' + postId);
-    if (type === 'story' && held && igHandleList(held.value).length) {
-        showToast('Instagram Stories cannot have collaborators. Clear them first.', 'warning');
-        const select = document.getElementById('ig-type-' + postId);
-        if (select) select.value = window._igLastType[postId] || 'feed';
-        return;
-    }
-    window._igLastType[postId] = type;
-    igRefreshPeople(postId);
-    const builder = document.getElementById('ig-media-builder-' + postId);
-    const feedBlock = document.getElementById('ig-feed-block-' + postId);
-    const isFeed = (type === 'feed');
-    if (builder) builder.classList.toggle('d-none', isFeed);
-    if (feedBlock) feedBlock.classList.toggle('d-none', !isFeed);
-    if (isFeed) {
-        // Feed uses the single image_url; clear the multi-media list server-side.
-        window._igMedia[postId] = [];
-        igSaveMedia(postId);
-        igCheckFeedImage(postId);
-    } else {
-        renderIgStrip(postId);
-        igSaveMedia(postId);
-    }
-}
-
-// Initialize Instagram media builders from server-rendered data (on load and for
-// posts appended via "Load more").
-function initIgMediaBuilders(root) {
-    (root || document).querySelectorAll('[id^="ig-media-builder-"]').forEach(function(el) {
-        const postId = el.id.replace('ig-media-builder-', '');
-        let items = [];
-        try { items = JSON.parse(el.getAttribute('data-ig-media') || '[]'); } catch (e) { items = []; }
-        window._igMedia[postId] = Array.isArray(items) ? items : [];
-        let tags = [];
-        try { tags = JSON.parse(el.getAttribute('data-ig-tags') || '[]'); } catch (e) { tags = []; }
-        window._igTags[postId] = Array.isArray(tags) ? tags : [];
-        window._igLastType[postId] = el.getAttribute('data-ig-type') || 'feed';
-        renderIgStrip(postId);
-    });
-}
-document.addEventListener('DOMContentLoaded', function() { initIgMediaBuilders(document); });
-
-// ============ Instagram aspect-ratio preview & fit ============
-// Story/Reel are 9:16 full screen; feed images must sit between 4:5 and 1.91:1.
-const IG_STORY_RATIO = 9 / 16;
-const IG_FEED_MIN = 4 / 5;
-const IG_FEED_MAX = 1.91;
-const IG_RATIO_TOL = 0.015;   // 1.5% tolerance = "close enough"
-const IG_FEED_TARGETS = { feed_portrait: 4 / 5, feed_square: 1, feed_landscape: 1.91 };
-
-window._igPv = null;          // preview modal state
-window._igDims = {};          // url -> {w, h} cache
-window._igTags = window._igTags || {};   // postId -> saved people-tags
-const IG_TEXT_COLORS = ['#FFFFFF', '#262626', '#FFDC00', '#ED4956', '#3897F0', '#70C050', '#FF7BAC', '#A307BA'];
-
-function igRatioClose(a, b) { return Math.abs(a - b) <= b * IG_RATIO_TOL; }
-
-function igRatioLabel(w, h) {
-    const known = [[9,16],[16,9],[4,5],[5,4],[1,1],[1.91,1],[4,3],[3,4],[3,2],[2,3],[21,9]];
-    const r = w / h;
-    for (const [a, b] of known) {
-        if (igRatioClose(r, a / b)) return `${a}:${b}`;
-    }
-    return r >= 1 ? `${r.toFixed(2)}:1` : `1:${(1 / r).toFixed(2)}`;
-}
-
-function igGetDims(url, kind) {
-    if (window._igDims[url]) return Promise.resolve(window._igDims[url]);
-    return new Promise((resolve) => {
-        if (kind === 'video') {
-            const v = document.createElement('video');
-            v.preload = 'metadata';
-            v.onloadedmetadata = () => {
-                const d = { w: v.videoWidth, h: v.videoHeight };
-                if (d.w && d.h) { window._igDims[url] = d; resolve(d); } else resolve(null);
-            };
-            v.onerror = () => resolve(null);
-            v.src = url;
-        } else {
-            const im = new Image();
-            im.onload = () => {
-                const d = { w: im.naturalWidth, h: im.naturalHeight };
-                if (d.w && d.h) { window._igDims[url] = d; resolve(d); } else resolve(null);
-            };
-            im.onerror = () => resolve(null);
-            im.src = url;
-        }
-    });
-}
-
-// Badge a media-strip chip with a ✓/⚠️ once its real dimensions are known.
-function igCheckChipRatio(postId, item, i, type) {
-    igGetDims(item.url, item.kind).then(d => {
-        const el = document.getElementById(`ig-chip-ratio-${postId}-${i}`);
-        if (!el || !d) return;
-        const r = d.w / d.h;
-        let ok, want;
-        if (type === 'carousel') {
-            ok = r >= IG_FEED_MIN * (1 - IG_RATIO_TOL) && r <= IG_FEED_MAX * (1 + IG_RATIO_TOL);
-            want = 'between 4:5 and 1.91:1';
-        } else {
-            ok = igRatioClose(r, IG_STORY_RATIO);
-            want = '9:16 full-screen';
-        }
-        el.innerHTML = ok
-            ? `${i + 1} <span class="text-success" title="${igRatioLabel(d.w, d.h)} — fits">✓</span>`
-            : `${i + 1} <span title="${igRatioLabel(d.w, d.h)} — a ${type} wants ${want}. Click 👁️ Preview to fix.">⚠️</span>`;
-    });
-}
-
-// For feed-format Instagram posts: show whether the single image fits 4:5–1.91:1.
-function igCheckFeedImage(postId) {
-    const hint = document.getElementById('ig-media-hint-' + postId);
-    if (!hint) return;
-    const url = igFeedImageUrl(postId);
-    if (!url) { hint.textContent = ''; hint.className = 'small text-muted'; return; }
-    igGetDims(url, 'image').then(d => {
-        if (igCurrentType(postId) !== 'feed') return;
-        if (!d) { hint.textContent = ''; hint.className = 'small text-muted'; return; }
-        const r = d.w / d.h;
-        const label = igRatioLabel(d.w, d.h);
-        if (r < IG_FEED_MIN * (1 - IG_RATIO_TOL) || r > IG_FEED_MAX * (1 + IG_RATIO_TOL)) {
-            hint.textContent = `⚠️ Image is ${label} — outside Instagram's 4:5–1.91:1 range. Click 👁️ Preview to fix.`;
-            hint.className = 'small text-danger';
-        } else {
-            hint.textContent = `✅ ${label} — fits Instagram`;
-            hint.className = 'small text-success';
-        }
-    });
-}
-
-function igFeedImageUrl(postId) {
-    const preview = document.getElementById('image-preview-' + postId);
-    const img = preview ? preview.querySelector('img') : null;
-    if (preview && img && !preview.classList.contains('d-none') && img.getAttribute('src')) {
-        return img.getAttribute('src');
-    }
-    const hidden = document.getElementById('post-final-image-url-' + postId);
-    return hidden ? (hidden.value || '') : '';
-}
-
-function openIgPreview(postId) {
-    const type = igCurrentType(postId);
-    let items;
-    if (type === 'feed') {
-        const url = igFeedImageUrl(postId);
-        if (!url) { showToast('Add an image to this post first.', 'warning'); return; }
-        items = [{ url: url, kind: 'image' }];
-    } else {
-        items = (window._igMedia[postId] || []).slice();
-        if (!items.length) {
-            showToast('Add media to this post first (use the ＋ Add URL / upload buttons).', 'warning');
-            return;
-        }
-    }
-    window._igPv = {
-        postId: postId, type: type, items: items, index: 0,
-        mode: 'crop', padStyle: 'blur', focusX: 0.5, focusY: 0.5,
-        feedTarget: null, dims: null,
-        editorMode: 'preview', textLayers: [], selectedLayer: null, tagArming: null,
-        userTags: (type === 'feed' ? ((window._igTags[postId] || []).slice()) : []),
-    };
-    renderIgPreview();
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('igPreviewModal')).show();
-}
-
-function igTargetRatio(st) {
-    if (st.type === 'story' || st.type === 'reel') return IG_STORY_RATIO;
-    return IG_FEED_TARGETS[st.feedTarget || 'feed_portrait'];
-}
-
-function igAutoFeedTarget(st) {
-    if (!st.dims) return 'feed_portrait';
-    const r = st.dims.w / st.dims.h;
-    if (r <= IG_FEED_MIN) return 'feed_portrait';
-    if (r >= IG_FEED_MAX) return 'feed_landscape';
-    let best = 'feed_portrait', bestDiff = Infinity;
-    for (const [key, ratio] of Object.entries(IG_FEED_TARGETS)) {
-        const diff = Math.abs(r - ratio);
-        if (diff < bestDiff) { best = key; bestDiff = diff; }
-    }
-    return best;
-}
-
-function renderIgPreview() {
-    const st = window._igPv;
-    if (!st) return;
-    const item = st.items[st.index];
-    const isVideo = item.kind === 'video';
-    const isFeedLike = (st.type === 'feed' || st.type === 'carousel');
-
-    document.getElementById('ig-preview-format-label').textContent =
-        { feed: 'Feed post', carousel: `Carousel · item ${st.index + 1}`, reel: 'Reel', story: 'Story' }[st.type] || st.type;
-
-    // Carousel nav
-    const nav = document.getElementById('ig-preview-nav');
-    nav.classList.toggle('d-none', st.items.length <= 1);
-    nav.classList.toggle('d-flex', st.items.length > 1);
-    document.getElementById('ig-preview-counter').textContent = `${st.index + 1} / ${st.items.length}`;
-
-    // Frame shape: preview mode shows the target canvas; text/tag editing shows
-    // the media's own shape so layer coordinates map 1:1 onto the pixels.
-    const frame = document.getElementById('ig-preview-frame');
-    const editing = st.editorMode !== 'preview';
-    const mediaRatio = st.dims ? (st.dims.w / st.dims.h) : null;
-    const ratio = (editing && mediaRatio) ? mediaRatio : igTargetRatio(st);
-    frame.style.aspectRatio = `${ratio}`;
-    frame.style.width = editing
-        ? `${Math.min(340, Math.max(170, Math.round(430 * ratio)))}px`
-        : (ratio >= 1.5 ? '340px' : (ratio >= 1 ? '270px' : '250px'));
-    frame.style.background = (!editing && st.mode === 'pad' && st.padStyle === 'white') ? '#fff' : '#000';
-
-    // Media element
-    const img = document.getElementById('ig-preview-img');
-    const video = document.getElementById('ig-preview-video');
-    const bg = document.getElementById('ig-preview-bg');
-    img.classList.toggle('d-none', isVideo);
-    video.classList.toggle('d-none', !isVideo);
-    const fitCover = !editing && !isVideo && st.mode === 'crop';
-    const media = isVideo ? video : img;
-    media.style.objectFit = fitCover ? 'cover' : 'contain';
-    media.style.objectPosition = editing ? '50% 50%' : `${st.focusX * 100}% ${st.focusY * 100}%`;
-    if (isVideo) {
-        if (video.getAttribute('src') !== item.url) video.setAttribute('src', item.url);
-        video.play().catch(() => {});
-        img.removeAttribute('src');
-    } else {
-        if (img.getAttribute('src') !== item.url) img.setAttribute('src', item.url);
-        video.pause();
-        video.removeAttribute('src');
-    }
-    // Blurred backdrop when previewing "fit with background"
-    const showBlurBg = !editing && !isVideo && st.mode === 'pad' && st.padStyle === 'blur';
-    bg.classList.toggle('d-none', !showBlurBg);
-    if (showBlurBg) bg.src = item.url; else bg.removeAttribute('src');
-
-    // Overlays (while editing, only keep story guides when the media really is 9:16)
-    const storyOverlayOn = st.type === 'story' &&
-        (!editing || (mediaRatio && igRatioClose(mediaRatio, IG_STORY_RATIO)));
-    document.getElementById('ig-overlay-story').classList.toggle('d-none', !storyOverlayOn);
-    document.getElementById('ig-overlay-reel').classList.toggle('d-none', st.type !== 'reel' || editing);
-    if (st.type === 'reel') {
-        const pre = document.getElementById('saved-post-' + st.postId);
-        const text = pre ? pre.textContent.trim() : '';
-        document.getElementById('ig-reel-caption').textContent = text ? text.slice(0, 90) : 'Caption preview…';
-    }
-
-    // Ratio buttons (feed/carousel only, preview mode)
-    document.getElementById('ig-ratio-row').classList.toggle('d-none', !isFeedLike || editing);
-
-    // Fix controls: images only (videos can't be re-encoded here), preview mode
-    document.getElementById('ig-fix-controls').classList.toggle('d-none', isVideo || editing);
-    const note = document.getElementById('ig-video-note');
-    note.classList.toggle('d-none', !(isVideo && !editing));
-
-    // Editor mode switcher + text/tag panels
-    document.getElementById('ig-emode-preview').classList.toggle('active', st.editorMode === 'preview');
-    document.getElementById('ig-emode-text').classList.toggle('active', st.editorMode === 'text');
-    document.getElementById('ig-emode-tag').classList.toggle('active', st.editorMode === 'tag');
-    const tagModeBtn = document.getElementById('ig-emode-tag');
-    tagModeBtn.disabled = (st.type !== 'feed');
-    tagModeBtn.title = st.type === 'feed'
-        ? 'Tag people on this photo (real Instagram tags)'
-        : 'Instagram only supports people-tags on feed photos';
-    document.getElementById('ig-text-controls').classList.toggle('d-none', st.editorMode !== 'text');
-    document.getElementById('ig-tag-controls').classList.toggle('d-none', st.editorMode !== 'tag');
-    frame.classList.toggle('ig-tag-arming', !!st.tagArming);
-    igRenderTextLayers();
-    igRenderTagPins();
-    igRenderTagList();
-    igSyncTextEditForm();
-
-    // Mode + pad-style button highlights
-    document.getElementById('ig-mode-crop').classList.toggle('active', st.mode === 'crop');
-    document.getElementById('ig-mode-pad').classList.toggle('active', st.mode === 'pad');
-    document.getElementById('ig-pad-style-row').classList.toggle('d-none', st.mode !== 'pad');
-    document.querySelectorAll('#ig-pad-style-row [data-pad]').forEach(b =>
-        b.classList.toggle('active', b.dataset.pad === st.padStyle));
-
-    // Tips
-    const tips = {
-        story: [
-            'Ideal: 1080×1920 (9:16) — fills the whole screen.',
-            'Keep faces and text out of the shaded top/bottom zones — Instagram overlays your username and the reply box there.',
-        ],
-        reel: [
-            'Ideal: 1080×1920 (9:16), MP4 (H.264 + AAC), up to ~90 seconds.',
-            'The right edge is covered by the like/comment rail; the bottom by the caption.',
-        ],
-        feed: [
-            'Allowed: between 4:5 (portrait) and 1.91:1 (landscape) — anything else is rejected.',
-            '4:5 portrait takes up the most space in the feed.',
-        ],
-        carousel: [
-            'Each item must be between 4:5 and 1.91:1.',
-            'Instagram crops every item to the FIRST item\'s shape — keep them consistent.',
-        ],
-    };
-    document.getElementById('ig-preview-tips').innerHTML =
-        (tips[st.type] || []).map(t => `<li>${t}</li>`).join('');
-
-    // Dimensions + fit verdict (async)
-    st.dims = null;
-    document.getElementById('ig-preview-dims').textContent = 'Loading media…';
-    const statusEl = document.getElementById('ig-fit-status');
-    statusEl.className = 'alert alert-secondary py-2 small mb-3';
-    statusEl.textContent = 'Checking dimensions…';
-    const expected = { url: item.url, index: st.index };
-    igGetDims(item.url, item.kind).then(dims => {
-        const cur = window._igPv;
-        if (!cur || cur.items[cur.index].url !== expected.url) return;  // user moved on
-        cur.dims = dims;
-        if (dims && isFeedLike && !cur.feedTarget) {
-            cur.feedTarget = igAutoFeedTarget(cur);
-            const fr = document.getElementById('ig-preview-frame');
-            fr.style.aspectRatio = `${igTargetRatio(cur)}`;
-        }
-        igUpdateFitStatus();
-    });
-    igUpdateRatioButtons();
-    igUpdateFixHint();
-}
-
-function igUpdateRatioButtons() {
-    const st = window._igPv;
-    if (!st) return;
-    document.querySelectorAll('#ig-ratio-buttons [data-target]').forEach(b =>
-        b.classList.toggle('active', b.dataset.target === (st.feedTarget || '')));
-}
-
-function igUpdateFixHint() {
-    const st = window._igPv;
-    if (!st) return;
-    const hint = document.getElementById('ig-fix-hint');
-    if (st.mode === 'crop') {
-        hint.textContent = 'Drag the image in the phone frame to choose what stays in view, then apply.';
-    } else {
-        hint.textContent = 'The whole image is kept; the empty space is filled with the background you pick.';
-    }
-}
-
-function igUpdateFitStatus() {
-    const st = window._igPv;
-    if (!st) return;
-    const item = st.items[st.index];
-    const isVideo = item.kind === 'video';
-    const statusEl = document.getElementById('ig-fit-status');
-    const dimsEl = document.getElementById('ig-preview-dims');
-    const note = document.getElementById('ig-video-note');
-
-    if (!st.dims) {
-        dimsEl.textContent = 'Could not read the media dimensions (the host may block loading).';
-        statusEl.className = 'alert alert-secondary py-2 small mb-3';
-        statusEl.textContent = 'Preview shown as Instagram would frame it — dimensions unavailable, so no automatic verdict.';
-        return;
-    }
-    const { w, h } = st.dims;
-    const r = w / h;
-    const label = igRatioLabel(w, h);
-    const isStoryLike = (st.type === 'story' || st.type === 'reel');
-    dimsEl.textContent = `Your media: ${w}×${h} (${label}) · target ${isStoryLike ? '9:16' : '4:5 – 1.91:1'}`;
-
-    if (isStoryLike) {
-        if (igRatioClose(r, IG_STORY_RATIO)) {
-            statusEl.className = 'alert alert-success py-2 small mb-3';
-            statusEl.textContent = `✅ ${label} — fills the ${st.type} screen perfectly.`;
-        } else {
-            statusEl.className = 'alert alert-warning py-2 small mb-3';
-            statusEl.textContent = `⚠️ ${label} doesn't match the 9:16 full-screen ${st.type}. ` +
-                'Instagram will shrink it and pad the rest with a background, so it looks small and off. ' +
-                (isVideo ? 'Re-export the video at 1080×1920 (9:16) — videos can\'t be adjusted here.'
-                         : 'Fix it below: crop to fill, or fit it over a background.');
-        }
-    } else {
-        if (r < IG_FEED_MIN * (1 - IG_RATIO_TOL) || r > IG_FEED_MAX * (1 + IG_RATIO_TOL)) {
-            statusEl.className = 'alert alert-danger py-2 small mb-3';
-            statusEl.textContent = `❌ ${label} is outside Instagram's allowed range (4:5 to 1.91:1) — ` +
-                'the post will be REJECTED. ' +
-                (isVideo ? 'Re-export the video within that range.' : 'Crop or pad it below before posting.');
-        } else {
-            statusEl.className = 'alert alert-success py-2 small mb-3';
-            statusEl.textContent = `✅ ${label} is within Instagram's allowed range — it will post as-is. ` +
-                (isVideo ? '' : 'Use the tools below only if you want a different shape.');
-        }
-    }
-    if (isVideo) {
-        note.textContent = '🎬 Videos can\'t be adjusted here. If it doesn\'t fit, re-export it at the right size ' +
-            (isStoryLike ? '(1080×1920, 9:16 for ' + st.type + 's)' : '(within 4:5 – 1.91:1)') + ' and re-upload.';
-    }
-}
-
-function igSetFixMode(mode) {
-    const st = window._igPv;
-    if (!st) return;
-    st.mode = mode;
-    renderIgPreview();
-}
-
-function igSetPadStyle(style) {
-    const st = window._igPv;
-    if (!st) return;
-    st.padStyle = style;
-    renderIgPreview();
-}
-
-function igSetFeedTarget(target) {
-    const st = window._igPv;
-    if (!st) return;
-    st.feedTarget = target;
-    renderIgPreview();
-}
-
-function igPreviewNav(step) {
-    const st = window._igPv;
-    if (!st) return;
-    st.index = (st.index + step + st.items.length) % st.items.length;
-    st.focusX = 0.5; st.focusY = 0.5;
-    renderIgPreview();
-}
-
-// Drag-to-reposition (crop mode): translates pointer movement into the
-// object-position focus point, matching the server-side crop anchor.
-(function igInitDrag() {
-    document.addEventListener('DOMContentLoaded', function() {
-        const frame = document.getElementById('ig-preview-frame');
-        if (!frame) return;
-        let drag = null;
-        frame.addEventListener('click', function(e) {
-            // Drop a people-tag where the user clicked (tag mode, armed)
-            const st = window._igPv;
-            if (!st || st.editorMode !== 'tag' || !st.tagArming) return;
-            const r = frame.getBoundingClientRect();
-            igPlaceTag(
-                (e.clientX - r.left) / r.width,
-                (e.clientY - r.top) / r.height
-            );
-        });
-        frame.addEventListener('pointerdown', function(e) {
-            const st = window._igPv;
-            if (!st || st.editorMode !== 'preview') return;
-            if (st.mode !== 'crop' || !st.dims) return;
-            if (st.items[st.index].kind === 'video') return;
-            const fw = frame.clientWidth, fh = frame.clientHeight;
-            const scale = Math.max(fw / st.dims.w, fh / st.dims.h);
-            const overflowX = st.dims.w * scale - fw;
-            const overflowY = st.dims.h * scale - fh;
-            if (overflowX < 1 && overflowY < 1) return;
-            drag = { x: e.clientX, y: e.clientY, fx: st.focusX, fy: st.focusY, ox: overflowX, oy: overflowY };
-            frame.classList.add('ig-dragging');
-            try { frame.setPointerCapture(e.pointerId); } catch (err) { /* synthetic pointers */ }
-            e.preventDefault();
-        });
-        frame.addEventListener('pointermove', function(e) {
-            const st = window._igPv;
-            if (!drag || !st) return;
-            if (drag.ox >= 1) {
-                st.focusX = Math.min(1, Math.max(0, drag.fx - (e.clientX - drag.x) / drag.ox));
-            }
-            if (drag.oy >= 1) {
-                st.focusY = Math.min(1, Math.max(0, drag.fy - (e.clientY - drag.y) / drag.oy));
-            }
-            const media = document.getElementById('ig-preview-img');
-            media.style.objectPosition = `${st.focusX * 100}% ${st.focusY * 100}%`;
-        });
-        const end = function(e) {
-            if (!drag) return;
-            drag = null;
-            frame.classList.remove('ig-dragging');
-        };
-        frame.addEventListener('pointerup', end);
-        frame.addEventListener('pointercancel', end);
-    });
-})();
-
-function igApplyFix(btn) {
-    const st = window._igPv;
-    if (!st) return;
-    const item = st.items[st.index];
-    if (item.kind === 'video') return;
-    let target;
-    if (st.type === 'story') target = 'story';
-    else if (st.type === 'reel') target = 'reel';
-    else target = st.feedTarget || igAutoFeedTarget(st);
-
-    const original = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '⏳ Adjusting…';
-    fetch('/compose/media/fit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            url: item.url,
-            target: target,
-            mode: st.mode,
-            focus_x: st.focusX,
-            focus_y: st.focusY,
-            pad_style: st.padStyle,
-        }),
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (!data.success || !data.image_url) {
-            showToast(data.error || 'Could not adjust the image', 'error');
-            return;
-        }
-        igApplyFixedUrlToPost(st.postId, st.type, st.index, data.image_url);
-        st.items[st.index] = { url: data.image_url, kind: 'image' };
-        st.focusX = 0.5; st.focusY = 0.5;
-        st.mode = 'crop';
-        renderIgPreview();
-        showToast(`Image adjusted to ${data.width}×${data.height} and saved to the post!`, 'success');
-    })
-    .catch(err => showToast('Error: ' + err.message, 'error'))
-    .finally(() => { btn.disabled = false; btn.innerHTML = original; });
-}
-
-function igApplyFixedUrlToPost(postId, type, index, newUrl, kind) {
-    if (type === 'feed') {
-        // Persist and update the single-image UI bits
-        fetch(`/compose/post/${postId}/image`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: `image_url=${encodeURIComponent(newUrl)}`,
-        }).then(r => r.json()).then(d => {
-            if (!d.success) showToast(d.error || 'Could not save the new image URL', 'warning');
-        }).catch(() => showToast('Could not save the new image URL', 'warning'));
-        const preview = document.getElementById('image-preview-' + postId);
-        if (preview) {
-            const img = preview.querySelector('img');
-            const span = preview.querySelector('span');
-            if (img) img.src = newUrl;
-            if (span) span.textContent = newUrl;
-            preview.classList.remove('d-none');
-        }
-        const addBtn = document.getElementById('add-image-btn-' + postId);
-        if (addBtn) addBtn.classList.add('d-none');
-        const urlInput = document.getElementById('image-url-input-' + postId);
-        if (urlInput) urlInput.value = newUrl;
-        const hidden = document.getElementById('post-final-image-url-' + postId);
-        if (hidden) hidden.value = newUrl;
-        igCheckFeedImage(postId);
-    } else {
-        const items = window._igMedia[postId] || [];
-        if (items[index]) {
-            items[index] = { url: newUrl, kind: kind || 'image' };
-            renderIgStrip(postId);
-            igSaveMedia(postId);
-        }
-    }
-}
-
-// ============ Instagram text overlays & people-tags ============
-
-function igSetEditorMode(mode) {
-    const st = window._igPv;
-    if (!st) return;
-    if (mode === 'tag' && st.type !== 'feed') {
-        showToast('Instagram only supports people-tags on feed photos. For stories, add an @name as text instead.', 'warning');
-        return;
-    }
-    st.editorMode = mode;
-    st.tagArming = null;
-    if (mode !== 'text') st.selectedLayer = null;
-    renderIgPreview();
-}
-
-function igAddTextLayer(initialText) {
-    const st = window._igPv;
-    if (!st) return;
-    if (st.textLayers.length >= 10) {
-        showToast('Up to 10 text layers per media.', 'warning');
-        return;
-    }
-    const isMention = (initialText || '').startsWith('@');
-    st.textLayers.push({
-        text: initialText || 'Your text',
-        x: 0.5,
-        y: Math.min(0.85, 0.35 + st.textLayers.length * 0.12),
-        size: 0.07,
-        color: '#FFFFFF',
-        bg: isMention ? 'dark' : 'none',
-    });
-    st.selectedLayer = st.textLayers.length - 1;
-    renderIgPreview();
-    const ta = document.getElementById('ig-text-input');
-    if (ta) { ta.focus(); ta.select(); }
-}
-
-function igRenderTextLayers() {
-    const st = window._igPv;
-    const host = document.getElementById('ig-text-layer-host');
-    if (!host) return;
-    host.innerHTML = '';
-    if (!st || !st.textLayers.length) return;
-    const frame = document.getElementById('ig-preview-frame');
-    const frameW = frame.clientWidth || 250;
-    const bgCss = {
-        none: 'transparent',
-        dark: 'rgba(0,0,0,0.6)',
-        light: 'rgba(255,255,255,0.75)',
-        black: '#000',
-        white: '#fff',
-    };
-    st.textLayers.forEach((L, i) => {
-        const el = document.createElement('div');
-        el.className = 'ig-text-layer bg-' + L.bg +
-            (i === st.selectedLayer && st.editorMode === 'text' ? ' selected' : '');
-        el.style.left = (L.x * 100) + '%';
-        el.style.top = (L.y * 100) + '%';
-        el.style.fontSize = (L.size * frameW) + 'px';
-        el.style.color = L.color;
-        el.style.background = bgCss[L.bg] || 'transparent';
-        el.textContent = L.text;
-        el.addEventListener('pointerdown', function(ev) { igLayerDragStart(ev, i, el); });
-        host.appendChild(el);
-    });
-}
-
-function igLayerDragStart(ev, idx, el) {
-    const st = window._igPv;
-    if (!st || st.editorMode !== 'text') return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    const frame = document.getElementById('ig-preview-frame');
-    const L = st.textLayers[idx];
-    const start = { x: ev.clientX, y: ev.clientY, lx: L.x, ly: L.y };
-    const onMove = function(e) {
-        const fw = frame.clientWidth, fh = frame.clientHeight;
-        if (fw < 10 || fh < 10) return;
-        const dx = e.clientX - start.x, dy = e.clientY - start.y;
-        L.x = Math.min(1, Math.max(0, start.lx + dx / fw));
-        L.y = Math.min(1, Math.max(0, start.ly + dy / fh));
-        el.style.left = (L.x * 100) + '%';
-        el.style.top = (L.y * 100) + '%';
-    };
-    const onUp = function() {
-        el.classList.remove('dragging');
-        el.removeEventListener('pointermove', onMove);
-        el.removeEventListener('pointerup', onUp);
-        el.removeEventListener('pointercancel', onUp);
-        st.selectedLayer = idx;
-        renderIgPreview();
-    };
-    el.addEventListener('pointermove', onMove);
-    el.addEventListener('pointerup', onUp);
-    el.addEventListener('pointercancel', onUp);
-    el.classList.add('dragging');
-    try { el.setPointerCapture(ev.pointerId); } catch (e) { /* synthetic pointers */ }
-}
-
-function igSyncTextEditForm() {
-    const st = window._igPv;
-    const form = document.getElementById('ig-text-edit-form');
-    if (!form) return;
-    const L = st && st.selectedLayer !== null ? st.textLayers[st.selectedLayer] : null;
-    form.classList.toggle('d-none', !L || st.editorMode !== 'text');
-    // Build the color swatches once
-    const colorRow = document.getElementById('ig-text-colors');
-    if (colorRow && !colorRow.querySelector('.ig-color-swatch')) {
-        IG_TEXT_COLORS.forEach(c => {
-            const sw = document.createElement('span');
-            sw.className = 'ig-color-swatch';
-            sw.style.background = c;
-            sw.dataset.color = c;
-            sw.title = c;
-            sw.onclick = function() { igUpdateSelectedProp('color', c); };
-            colorRow.appendChild(sw);
-        });
-    }
-    if (!L) return;
-    const ta = document.getElementById('ig-text-input');
-    if (ta && ta.value !== L.text) ta.value = L.text;
-    const slider = document.getElementById('ig-text-size');
-    if (slider) slider.value = L.size;
-    document.querySelectorAll('#ig-text-colors .ig-color-swatch').forEach(sw =>
-        sw.classList.toggle('selected', sw.dataset.color.toUpperCase() === L.color.toUpperCase()));
-    document.querySelectorAll('#ig-text-bgs [data-bg]').forEach(b =>
-        b.classList.toggle('active', b.dataset.bg === L.bg));
-}
-
-function igUpdateSelectedText(value) {
-    const st = window._igPv;
-    if (!st || st.selectedLayer === null) return;
-    st.textLayers[st.selectedLayer].text = value;
-    igRenderTextLayers();
-}
-
-function igUpdateSelectedProp(prop, value) {
-    const st = window._igPv;
-    if (!st || st.selectedLayer === null) return;
-    st.textLayers[st.selectedLayer][prop] = value;
-    igRenderTextLayers();
-    igSyncTextEditForm();
-}
-
-function igDeleteSelectedLayer() {
-    const st = window._igPv;
-    if (!st || st.selectedLayer === null) return;
-    st.textLayers.splice(st.selectedLayer, 1);
-    st.selectedLayer = st.textLayers.length ? Math.min(st.selectedLayer, st.textLayers.length - 1) : null;
-    renderIgPreview();
-}
-
-function igBakeText(btn) {
-    const st = window._igPv;
-    if (!st) return;
-    const item = st.items[st.index];
-    const layers = st.textLayers
-        .map(L => ({ text: (L.text || '').trimEnd(), x: L.x, y: L.y, size: L.size, color: L.color, bg: L.bg }))
-        .filter(L => L.text.trim());
-    if (!layers.length) {
-        showToast('Add some text first (＋ Add text).', 'warning');
-        return;
-    }
-    const isVideo = item.kind === 'video';
-    const original = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = isVideo ? '⏳ Rendering video… (can take a minute)' : '⏳ Baking text…';
-    fetch('/compose/media/annotate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: item.url, kind: item.kind, layers: layers }),
-    })
-    .then(r => r.json())
-    .then(data => {
-        const newUrl = data.image_url || data.video_url;
-        if (!data.success || !newUrl) {
-            showToast(data.error || 'Could not add text', 'error');
-            return;
-        }
-        igApplyFixedUrlToPost(st.postId, st.type, st.index, newUrl, item.kind);
-        st.items[st.index] = { url: newUrl, kind: item.kind };
-        st.textLayers = [];
-        st.selectedLayer = null;
-        st.editorMode = 'preview';
-        renderIgPreview();
-        showToast('Text baked into the ' + item.kind + ' and saved to the post!', 'success');
-    })
-    .catch(err => showToast('Error: ' + err.message, 'error'))
-    .finally(() => { btn.disabled = false; btn.innerHTML = original; });
-}
-
-// ---- People-tags (real Instagram feed tags) ----
-
-function igRenderTagPins() {
-    const st = window._igPv;
-    const host = document.getElementById('ig-tag-pin-host');
-    if (!host) return;
-    host.innerHTML = '';
-    if (!st || st.type !== 'feed' || st.editorMode === 'text') return;
-    (st.userTags || []).forEach((tag, i) => {
-        const pin = document.createElement('div');
-        pin.className = 'ig-tag-pin';
-        pin.style.left = (tag.x * 100) + '%';
-        pin.style.top = (tag.y * 100) + '%';
-        pin.textContent = '@' + tag.username;
-        pin.title = 'Click to remove this tag';
-        pin.onclick = function(e) { e.stopPropagation(); igRemoveTag(i); };
-        host.appendChild(pin);
-    });
-}
-
-function igRenderTagList() {
-    const st = window._igPv;
-    const list = document.getElementById('ig-tag-list');
-    if (!list) return;
-    if (!st || st.type !== 'feed' || !(st.userTags || []).length) {
-        list.innerHTML = st && st.editorMode === 'tag'
-            ? '<span class="text-muted small">No one tagged yet.</span>' : '';
-        return;
-    }
-    list.innerHTML = st.userTags.map((tag, i) =>
-        `<span class="badge text-bg-secondary">@${tag.username}
-            <a href="#" class="text-white text-decoration-none" onclick="igRemoveTag(${i}); return false;">✕</a>
-        </span>`).join('');
-}
-
-function igArmTagPlacement() {
-    const st = window._igPv;
-    if (!st || st.type !== 'feed') return;
-    const input = document.getElementById('ig-tag-username');
-    const username = (input.value || '').trim().replace(/^@/, '');
-    if (!/^[A-Za-z0-9._]{1,30}$/.test(username)) {
-        showToast('Enter a valid Instagram username (letters, numbers, dots, underscores).', 'warning');
-        return;
-    }
-    if ((st.userTags || []).length >= 20) {
-        showToast('At most 20 people can be tagged.', 'warning');
-        return;
-    }
-    st.tagArming = username;
-    document.getElementById('ig-preview-frame').classList.add('ig-tag-arming');
-    document.getElementById('ig-tag-note').textContent =
-        `Now tap the photo where @${username} is.`;
-}
-
-function igPlaceTag(x, y) {
-    const st = window._igPv;
-    if (!st || !st.tagArming) return;
-    st.userTags = st.userTags || [];
-    st.userTags.push({
-        username: st.tagArming,
-        x: Math.min(1, Math.max(0, x)),
-        y: Math.min(1, Math.max(0, y)),
-    });
-    st.tagArming = null;
-    const input = document.getElementById('ig-tag-username');
-    if (input) input.value = '';
-    document.getElementById('ig-tag-note').textContent =
-        'Type a username, then tap the photo where they are. Tags are saved with the post and applied when it publishes (feed photos only — click a pin to remove it).';
-    igSaveUserTags();
-    renderIgPreview();
-}
-
-function igRemoveTag(idx) {
-    const st = window._igPv;
-    if (!st) return;
-    (st.userTags || []).splice(idx, 1);
-    igSaveUserTags();
-    renderIgPreview();
-}
-
-function igSaveUserTags() {
-    const st = window._igPv;
-    if (!st) return;
-    window._igTags[st.postId] = (st.userTags || []).slice();
-    fetch(`/compose/post/${st.postId}/user-tags`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_tags: st.userTags || [] }),
-    })
-    .then(r => r.json())
-    .then(d => { if (!d.success) showToast(d.error || 'Could not save tags', 'warning'); })
-    .catch(() => showToast('Could not save tags', 'warning'));
-}
-
 // ============ Reading a card off the DOM ============
 // A card renders one saved post per ticked platform. `data-post-ids` is every
 // row behind it and `data-platforms` maps platform -> that platform's row id.
@@ -4639,8 +3073,8 @@ async function refreshCard(postItem, remainingIds) {
 }
 
 // Every row behind a card. With a platform filter active the list is showing
-// that platform only, so bulk actions stay inside it — deleting from a list
-// filtered to X must not take the Threads twin with it.
+// that platform only, so bulk actions stay inside it: deleting from a list
+// filtered to one platform must not take another platform's row with it.
 function cardPostIds(postItem, respectFilter = true) {
     if (!postItem) return [];
     if (respectFilter) {
@@ -4687,8 +3121,8 @@ function setCardUsedUI(postItem, used) {
 // ============ Platform ticks ============
 // Ticking a platform creates that platform's saved post from this card's copy;
 // unticking deletes it. Both come back with the card re-rendered, because a
-// tick can bring a whole set of controls with it (Instagram's format picker and
-// media builder) that would be fiddly to graft on by hand.
+// tick can bring a whole set of controls with it that would be fiddly
+// to graft on by hand.
 async function togglePostPlatform(btn, platform) {
     const postItem = btn.closest('.post-item');
     const chip = btn.closest('.platform-chip');
@@ -4743,12 +3177,6 @@ async function togglePostPlatform(btn, platform) {
         const label = data.account_label || PLATFORM_LABELS[platform] || platform;
         replaceCard(postItem, data.html);
         showToast(adding ? `Added to ${label}` : `Removed from ${label}`, 'success');
-        if (adding && platform === 'instagram') {
-            const card = document.querySelector(`.post-item[data-post-id="${data.post_id}"]`);
-            if (card && !card.querySelector('#image-preview-' + data.post_id + ' img[src]:not([src=""])')) {
-                showToast('Instagram needs an image before it can publish', 'warning');
-            }
-        }
     } catch (e) {
         btn.disabled = false;
         showToast('Could not update platforms: ' + e.message, 'error');
@@ -4766,7 +3194,7 @@ function replaceCard(postItem, html) {
     const replacement = postItem.nextElementSibling;
     postItem.remove();
     // Scoped to the new card: re-initialising the whole list would reset any
-    // unsaved Instagram media the other cards are holding.
+    // unsaved edits the other cards are holding.
     if (replacement) initLoadedPosts(replacement);
     if (selectModeActive) updateSelectedCount();
 }
@@ -4780,15 +3208,6 @@ function adjustPostCountBadge(delta) {
     badge.textContent = `${next} saved post${next !== 1 ? 's' : ''}`;
 }
 
-// The ➕/✅ on a ticked chip is that platform's queue.
-function toggleChipQueue(btn) {
-    const chip = btn.closest('.platform-chip');
-    if (!chip) return;
-    const platform = chip.dataset.platform;
-    const postId = parseInt(chip.dataset.platformPostId, 10);
-    if (!postId) return;
-    toggleQueue(postId, 'standalone', platform, btn, btn.dataset.queued === 'true');
-}
 
 // ---------------------------------------------------------------------------
 // Loading the rest of the saved-posts list: "Load more", "Load all" and
@@ -4998,120 +3417,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.auto-load-toggle').forEach(toggle => { toggle.checked = autoLoadEnabled(); });
     watchLoadMore();
 });
-
-function setChipQueuedUI(btn, queued, scheduledFor) {
-    btn.innerHTML = queued ? '\u2705' : '\u2795';
-    btn.dataset.queued = queued ? 'true' : 'false';
-    btn.classList.toggle('is-queued', queued);
-    const chip = btn.closest('.platform-chip');
-    const label = chip ? (PLATFORM_LABELS[chip.dataset.platform] || chip.dataset.platform) : 'this platform';
-    btn.title = queued
-        ? `Queued${scheduledFor ? ' for ' + scheduledFor : ''} \u2014 click to remove`
-        : `Add to the ${label} queue`;
-}
-
-// Add or remove one platform's queue entry. `btn` is that platform's chip
-// control, so the card can be queued for X while Threads waits.
-function toggleQueue(postId, postType, platform, btn, isQueued) {
-
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '\u23f3';
-    btn.disabled = true;
-
-    const request = isQueued
-        ? (() => {
-            const formData = new FormData();
-            formData.append('post_type', postType);
-            formData.append('post_id', postId);
-            formData.append('platform', platform);
-            return fetch('/schedule/remove-from-queue', { method: 'POST', body: formData });
-        })()
-        : (() => {
-            const formData = new FormData();
-            formData.append('platform', platform);
-            formData.append('post_type', postType);
-            return fetch(`/compose/post/${postId}/queue`, { method: 'POST', body: formData });
-        })();
-
-    request
-        .then(response => response.json())
-        .then(data => {
-            btn.disabled = false;
-            if (data.success) {
-                setChipQueuedUI(btn, !isQueued, data.scheduled_for);
-                showToast(data.message, 'success');
-            } else {
-                btn.innerHTML = originalText;
-                alert('Error: ' + (data.error || (isQueued ? 'Failed to remove from queue' : 'Failed to add to queue')));
-            }
-        })
-        .catch(error => {
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-            alert('Error: ' + error.message);
-        });
-}
-
-// Legacy function for backwards compatibility
-function addToQueue(postId, postType, platform, btn) {
-    toggleQueue(postId, postType, platform, btn, false);
-}
-
-function openScheduleModal(postId, postType, platform) {
-    document.getElementById('schedule-post-id').value = postId;
-    document.getElementById('schedule-post-type').value = postType;
-    document.getElementById('schedule-platform').value = platform;
-    
-    // Set default datetime to next hour
-    const now = new Date();
-    now.setHours(now.getHours() + 1);
-    now.setMinutes(0);
-    now.setSeconds(0);
-    const dateStr = now.toISOString().slice(0, 16);
-    document.getElementById('schedule-datetime').value = dateStr;
-    
-    new bootstrap.Modal(document.getElementById('scheduleModal')).show();
-}
-
-function schedulePost() {
-    const postId = document.getElementById('schedule-post-id').value;
-    const postType = document.getElementById('schedule-post-type').value;
-    const platform = document.getElementById('schedule-platform').value;
-    const datetime = document.getElementById('schedule-datetime').value;
-    
-    if (!datetime) {
-        alert('Please select a date and time');
-        return;
-    }
-    
-    const formData = new FormData();
-    formData.append('platform', platform);
-    formData.append('post_type', postType);
-    formData.append('scheduled_for', datetime);
-    
-    fetch(`/compose/post/${postId}/queue`, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            bootstrap.Modal.getInstance(document.getElementById('scheduleModal')).hide();
-            showToast(`Scheduled for ${data.scheduled_for_display}`, 'success');
-            // Show the platform's chip as queued
-            const card = cardForPostId(postId);
-            const queueBtn = card
-                ? card.querySelector(`.platform-chip[data-platform="${platform}"] .chip-queue`)
-                : null;
-            if (queueBtn) setChipQueuedUI(queueBtn, true, data.scheduled_for_display);
-        } else {
-            alert('Error: ' + (data.error || 'Failed to schedule'));
-        }
-    })
-    .catch(error => {
-        alert('Error: ' + error.message);
-    });
-}
 
 // Select mode functions
 
@@ -5674,7 +3979,6 @@ function showBulkPlatformModal(mode) {
     const apply = document.getElementById('bulk-platform-apply-btn');
     apply.classList.toggle('btn-danger', removing);
     apply.classList.toggle('btn-primary', !removing);
-    document.getElementById('bulk-platform-queue').checked = true;
     document.getElementById('bulk-platform-force').checked = false;
     document.getElementById('bulk-platform-form').classList.remove('d-none');
     document.getElementById('bulk-platform-result').classList.add('d-none');
@@ -5700,7 +4004,6 @@ function toggleBulkPlatformTarget(btn) {
 function updateBulkPlatformSummary() {
     const removing = bulkPlatformMode === 'remove';
     const chips = bulkPlatformChips();
-    const queue = document.getElementById('bulk-platform-queue').checked;
     const force = document.getElementById('bulk-platform-force').checked;
     const count = bulkPlatformCount();
     const noun = count === 1 ? 'post' : 'posts';
@@ -5708,7 +4011,7 @@ function updateBulkPlatformSummary() {
     const warning = document.getElementById('bulk-platform-warning');
     const apply = document.getElementById('bulk-platform-apply-btn');
 
-    apply.textContent = removing ? 'Remove' : (queue ? 'Add & Queue' : 'Add');
+    apply.textContent = removing ? 'Remove' : 'Add';
     apply.disabled = bulkPlatformBusy || chips.length === 0;
 
     if (chips.length === 0) {
@@ -5720,21 +4023,11 @@ function updateBulkPlatformSummary() {
             summary.textContent = `Remove ${names} from ${scope}.` +
                 (force ? ' Queued ones are taken out of the queue.' : ' Queued and published ones are kept.');
         } else {
-            summary.textContent = `${names} → ${scope}` + (queue ? ', each queued for its next free slot.' : '.');
+            summary.textContent = `${names} → ${scope}.`;
         }
     }
 
-    // Adding a post to a platform needs no login; posting it does, so say so
-    // before the queue step has to skip them.
-    const unconnected = chips.filter(chip => chip.dataset.connected === 'false');
-    if (!removing && queue && unconnected.length) {
-        warning.textContent = `${unconnected.map(chip => chip.dataset.label).join(', ')} ` +
-            `${unconnected.length === 1 ? 'is' : 'are'} not connected, so ` +
-            `${unconnected.length === 1 ? 'it' : 'they'} will be added but not queued.`;
-        warning.classList.remove('d-none');
-    } else {
-        warning.classList.add('d-none');
-    }
+    warning.classList.add('d-none');
 }
 
 // While a request is out the selection and the modal are frozen, so nothing the
@@ -5744,7 +4037,6 @@ function setBulkPlatformBusy(busy, progress) {
     const apply = document.getElementById('bulk-platform-apply-btn');
     document.getElementById('bulk-platform-cancel').disabled = busy;
     document.getElementById('bulk-platform-close').disabled = busy;
-    document.getElementById('bulk-platform-queue').disabled = busy;
     document.getElementById('bulk-platform-force').disabled = busy;
     if (busy) {
         const verb = bulkPlatformMode === 'remove' ? 'Removing' : 'Adding';
@@ -5797,7 +4089,7 @@ function mergeBulkPlatformTotals(totals, data) {
 }
 
 // Swap in the redrawn cards. A card is found from any of the rows it had, since
-// adding Instagram changes which row the card is keyed by. A card that was ticked
+// adding or removing a platform changes which row the card is keyed by. A card that was ticked
 // stays ticked, so a run that has to be repeated (a queued post kept until the
 // user opts in, say) is repeated on the same selection.
 function applyBulkPlatformCards(results) {
@@ -5828,7 +4120,6 @@ async function applyBulkPlatform() {
     if (targets.length === 0) return;
 
     const removing = bulkPlatformMode === 'remove';
-    const queue = document.getElementById('bulk-platform-queue').checked;
     const force = document.getElementById('bulk-platform-force').checked;
     const scoped = !!selectAllScope;
     const anchors = scoped ? [] : selectedCards()
@@ -5841,13 +4132,13 @@ async function applyBulkPlatform() {
         const what = `all ${total} ${scopeLabel(selectAllScope.filters, total)} across every page`;
         const question = removing
             ? `Remove ${names} from ${what}${force ? ', including queued and published ones' : ''}? This cannot be undone.`
-            : `Add ${names} to ${what}${queue ? ' and queue them' : ''}?`;
+            : `Add ${names} to ${what}?`;
         if (!confirm(question)) return;
     }
 
-    // Adding says whether to queue; removing says whether queued and published
+    // Adding says where the rows go; removing says whether queued and published
     // rows may go too.
-    const options = removing ? { targets: targets, force: force } : { targets: targets, queue: queue };
+    const options = removing ? { targets: targets, force: force } : { targets: targets };
     const totals = newBulkPlatformTotals();
     let failure = null;
     setBulkPlatformBusy(true, scoped ? '' : `0 / ${total}`);
@@ -5889,7 +4180,7 @@ async function applyBulkPlatform() {
     const changed = removing ? (totals.removed || 0) : (totals.added || 0) + (totals.queued || 0);
     const summary = `${cards} post${cards !== 1 ? 's' : ''} updated · ` + (removing
         ? `${totals.removed || 0} removed`
-        : `${totals.added || 0} added` + (queue ? ` · ${totals.queued || 0} queued` : ''));
+        : `${totals.added || 0} added`);
     if (failure) {
         showToast('Stopped early. See the details.', 'error');
     } else if (totals.skipped_count || totals.needs_image) {
@@ -5991,7 +4282,7 @@ function renderBulkPlatformResult(totals, failure) {
         box.appendChild(warn);
     }
     if (!removing && totals.needs_image) {
-        add(`${plural(totals.needs_image, 'Instagram post has', 'Instagram posts have')} no image yet. ` +
+        add(`${plural(totals.needs_image, 'Post has', 'Posts have')} no image yet. ` +
             'Add one before they can publish.', 'alert alert-info py-2 small mt-3 mb-0');
     }
 
@@ -6459,7 +4750,6 @@ let renderedFilterSignature = JSON.stringify(
 
 // Put freshly rendered posts into the same state as the ones they replaced.
 function initLoadedPosts(container) {
-    initIgMediaBuilders(container);
     if (selectModeActive) {
         container.querySelectorAll('.post-select-checkbox').forEach(cb => cb.classList.remove('d-none'));
     }
@@ -7248,11 +5538,6 @@ const platformCharLimits = {
     wechat: 20000,
     zhihu: 20000,
     toutiao: 20000,
-    twitter: 280,
-    threads: 500,
-    linkedin: 3000,
-    facebook: 5000,
-    instagram: 2200,
 };
 
 // ============ Writing a new post ============
@@ -7481,9 +5766,8 @@ function importFile() {
 
         if (data.by_platform && Object.keys(data.by_platform).length > 0) {
             html += '<div class="mt-2">';
-            const icons = {threads: '🧵', linkedin: '💼', facebook: '📘'};
             for (const [plat, count] of Object.entries(data.by_platform)) {
-                html += '<span class="badge bg-primary me-1">' + (icons[plat] || '') + ' ' + plat + ': ' + count + '</span>';
+                html += '<span class="badge bg-primary me-1">' + plat + ': ' + count + '</span>';
             }
             html += '</div>';
         }

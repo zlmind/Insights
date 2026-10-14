@@ -1,24 +1,21 @@
-"""Video handling shared by every platform client and the Compose routes.
+"""Video handling shared by the Compose routes.
 
-Threads, Facebook and Instagram fetch a video themselves from a public URL, so
-for them a video is only a URL. LinkedIn and X do not: they want the bytes
-pushed through their own upload protocol, which means the server has to pull the
-file down first. This module is that one download, plus the two other things
-every platform needs to know about a video before it is worth sending:
+The domestic platforms have no posting API: a draft carries the video as a
+reviewable attachment and publishes by copy-paste. This module is the shared
+download and probe every card needs before a video is worth attaching:
 
 * what each platform will accept (``PLATFORM_LIMITS``, ``check_compat``), so the
-  composer can say "too long for X" when the video is attached rather than when
-  the post fails at 3am, and
+  composer can warn about the target platform's limits when the video is
+  attached rather than much later, and
 * how big and how long a given file actually is (``probe_file``).
 
 Videos are big, so the download streams to a temp file instead of holding the
 file in memory the way the image path can afford to, and it is capped: a pasted
 URL is user input, and an unbounded ``requests.get`` of it is a disk-fill.
 
-The app registers its SSRF guard with ``set_url_guard`` (see insights_web), the
-same way it registers the Instagram publisher with the shared publisher. Left
-unregistered the guard only insists on http(s), which keeps this module usable
-and testable on its own.
+The app registers its SSRF guard with ``set_url_guard`` (see insights_web).
+Left unregistered the guard only insists on http(s), which keeps this module
+usable and testable on its own.
 """
 
 from __future__ import annotations
@@ -47,28 +44,19 @@ USER_AGENT = "InsightsBot/1.0 (+https://insights.local)"
 # What each platform accepts for a video post through its API. ``max_bytes`` and
 # ``min_seconds`` are the limits the platform documents as hard, and a file over
 # them is an ``error`` (it will be refused). ``max_seconds`` is reported as a
-# ``warn``: some are entitlement-dependent (X allows longer for Premium) or have
-# moved between API versions, so the platform, not this table, has the last word.
+# ``warn``: upload limits are app guidance rather than API enforcement, so the
+# app, not the platform, has the last word.
 PLATFORM_LIMITS = {
     # The domestic platforms have no posting API: their drafts publish by
     # copy-paste, so these are the app-upload limits worth warning about, not
     # API enforcement.
     "xiaohongshu": {"max_bytes": 500 * MB, "min_seconds": 1, "max_seconds": 60 * 60},
     "douyin": {"max_bytes": 500 * MB, "min_seconds": 1, "max_seconds": 15 * 60},
-    "wechat": {"max_bytes": 500 * MB, "min_seconds": 1, "max_seconds": 60 * 60},
-    # Legacy: the hidden Western platforms keep their entries so old rows
-    # attached to a video still get honest warnings.
-    "linkedin": {"max_bytes": 500 * MB, "min_seconds": 3, "max_seconds": 30 * 60},
-    "twitter": {"max_bytes": MAX_DOWNLOAD_BYTES, "min_seconds": None, "max_seconds": 140},
-    "threads": {"max_bytes": 1 * GB, "min_seconds": None, "max_seconds": 5 * 60},
-    "facebook": {"max_bytes": 1 * GB, "min_seconds": None, "max_seconds": 20 * 60},
-    "instagram": {"max_bytes": 300 * MB, "min_seconds": 3, "max_seconds": 15 * 60},
 }
 
 _PLATFORM_LABELS = {
     "xiaohongshu": "小红书", "douyin": "抖音", "wechat": "公众号",
-    "linkedin": "LinkedIn", "twitter": "X", "threads": "Threads",
-    "facebook": "Facebook", "instagram": "Instagram",
+    "zhihu": "知乎", "toutiao": "头条号",
 }
 
 
@@ -159,7 +147,7 @@ def downloaded(url: str, *, max_bytes: int = MAX_DOWNLOAD_BYTES, timeout: float 
     """Stream ``url`` to a temp file and yield ``(path, size_bytes)``.
 
     The file is removed when the block exits, on success or on error, so a
-    failed LinkedIn upload does not leave a gigabyte behind. Raises
+    a failed upload does not leave a gigabyte behind. Raises
     ``VideoError`` for anything that makes the file unusable: an unsafe URL, an
     HTTP error, a page that is not a video, or more bytes than ``max_bytes``.
     """

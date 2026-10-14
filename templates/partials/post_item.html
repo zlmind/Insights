@@ -1,26 +1,19 @@
 {# One saved post: the copy once, plus a tick for every platform it goes to.
 
    `group` is a card dict from _enrich_post_group(): `platforms` lists the rows
-   that exist (platform, row id, queue + posted state) and `post_ids` is all of
+   that exist (platform, row id, posted state) and `post_ids` is all of
    them, which is what the page sends back so a card-wide edit reaches every
    row. Every element id keys off `group.id` — the card's primary row — so the
-   per-post JS (image editor, Instagram builder, inline edit) needs no notion of
-   groups at all. #}
+   per-post JS (image editor, inline edit) needs no notion of groups at all. #}
 {# The one platform table: the per-card chips, the chip CSS and the JS tables
    in compose.html, and the Find & Replace badges all read from it. Only the
-   domestic platforms are offered; the Western ones stay in the table only so
-   posts saved against them keep rendering. #}
+   domestic platforms are offered. #}
 {% set PLATFORM_META = {
     'xiaohongshu': {'label': '小红书', 'icon': '📕', 'color': '#FF2442', 'tint': 'rgba(255, 36, 66, 0.08)'},
     'douyin':      {'label': '抖音',   'icon': '🎵', 'color': '#FE2C55', 'tint': 'rgba(254, 44, 85, 0.08)'},
     'wechat':      {'label': '公众号', 'icon': '💬', 'color': '#07C160', 'tint': 'rgba(7, 193, 96, 0.08)'},
     'zhihu':       {'label': '知乎',   'icon': '📖', 'color': '#0084FF', 'tint': 'rgba(0, 132, 255, 0.08)'},
     'toutiao':     {'label': '头条号', 'icon': '📰', 'color': '#ED1C24', 'tint': 'rgba(237, 28, 36, 0.08)'},
-    'linkedin':  {'label': 'LinkedIn',  'icon': '💼', 'color': '#0077B5', 'tint': 'rgba(0, 119, 181, 0.08)'},
-    'threads':   {'label': 'Threads',   'icon': '🧵', 'color': '#000000', 'tint': 'rgba(0, 0, 0, 0.06)'},
-    'twitter':   {'label': 'X',         'icon': '𝕏', 'color': '#1DA1F2', 'tint': 'rgba(29, 161, 242, 0.08)'},
-    'facebook':  {'label': 'Facebook',  'icon': '📘', 'color': '#1877F2', 'tint': 'rgba(24, 119, 242, 0.08)'},
-    'instagram': {'label': 'Instagram', 'icon': '📷', 'color': '#E4405F', 'tint': 'rgba(228, 64, 95, 0.08)'},
 } %}
 
 {% macro render_post_item(group) %}
@@ -66,52 +59,11 @@
                                     🖼️
                                 </button>
                                 {% endif %}
-                                {# Publishing and scheduling are per platform, so they hang off a
-                                   menu of the ticked platforms rather than a button each.
-                                   Draft-only platforms (no posting API) and the domestic
-                                   article platforms are left out of both menus and of the
-                                   all-accounts counts — the article ones publish by push
-                                   below, not through the social queue. A card aimed only at
-                                   platforms with neither path keeps a publish button as a
-                                   reserved placeholder: the copy button is the way out until
-                                   those are wired too. #}
-                                {% set publishable = group.platforms
-                                    | rejectattr('platform', 'in', DRAFT_ONLY_PLATFORMS)
-                                    | rejectattr('platform', 'in', push_platforms) | list %}
-                                {% if publishable %}
-                                <button type="button" class="btn btn-outline-info dropdown-toggle" data-bs-toggle="dropdown" data-bs-boundary="viewport" aria-expanded="false" title="Post now">
-                                    🚀
-                                </button>
-                                <ul class="dropdown-menu dropdown-menu-end">
-                                    {% for entry in publishable %}
-                                    <li><button class="dropdown-item" type="button" onclick="postNowFromCard(this, {{ entry.id }}, '{{ entry.platform }}', {{ entry.account_id or 'null' }})">
-                                        {{ PLATFORM_META.get(entry.platform, {}).get('icon', '📱') }} Post to {{ entry.account_label or PLATFORM_META.get(entry.platform, {}).get('label', entry.platform|capitalize) }} now
-                                    </button></li>
-                                    {% endfor %}
-                                    {% if publishable | length > 1 %}
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><button class="dropdown-item fw-semibold" type="button" onclick="postNowAllFromCard(this)">
-                                        🚀 Post to all {{ publishable | length }} accounts
-                                    </button></li>
-                                    {% endif %}
-                                </ul>
-                                <button type="button" class="btn btn-outline-warning dropdown-toggle" data-bs-toggle="dropdown" data-bs-boundary="viewport" aria-expanded="false" title="Schedule for a specific time">
-                                    📅
-                                </button>
-                                <ul class="dropdown-menu dropdown-menu-end">
-                                    {% for entry in publishable %}
-                                    <li><button class="dropdown-item" type="button" onclick="openScheduleModal({{ entry.id }}, 'standalone', '{{ entry.platform }}')">
-                                        {{ PLATFORM_META.get(entry.platform, {}).get('icon', '📱') }} Schedule for {{ entry.account_label or PLATFORM_META.get(entry.platform, {}).get('label', entry.platform|capitalize) }}
-                                    </button></li>
-                                    {% endfor %}
-                                    {% if publishable | length > 1 %}
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><button class="dropdown-item fw-semibold" type="button" onclick="queueAllFromCard(this)">
-                                        📅 Queue all {{ publishable | length }} accounts
-                                    </button></li>
-                                    {% endif %}
-                                </ul>
-                                {% elif not (group.platforms | selectattr('platform', 'in', push_platforms) | list) %}
+                                {# Draft-only platforms (no posting API yet) keep a publish
+                                   button as a reserved placeholder: the copy button is the
+                                   way out until those are wired too. Domestic article
+                                   platforms publish by push below. #}
+                                {% if not (group.platforms | selectattr('platform', 'in', push_platforms) | list) %}
                                 <button type="button" class="btn btn-outline-info" disabled
                                         title="一键发布即将支持：将接入开源发布工具，当前请用复制按钮手动发布">
                                     🚀
@@ -124,7 +76,7 @@
                         </div>
 
                         {# Destinations. Ticking a platform creates that platform's saved post,
-                           unticking deletes it; the ➕/✅ next to a ticked platform is its queue. #}
+                           unticking deletes it. #}
                         <div class="platform-chips mb-2" role="group" aria-label="Accounts this post goes to">
                             {% for target in PUBLISH_TARGETS %}
                             {% set platform = target.platform %}
@@ -141,20 +93,9 @@
                                         title="{% if entry %}Remove this post from {{ name }}{% else %}Also post this to {{ name }}{% endif %}">
                                     <span class="chip-box">{% if entry %}✓{% endif %}</span>
                                     <span class="chip-icon">{{ meta.icon }}</span>
-                                    {# X's wordmark is its name, so printing both reads as "𝕏 X". #}
-                                    {% if platform != 'twitter' or target.show_label %}<span class="chip-name">{{ name }}</span>{% endif %}
+                                    <span class="chip-name">{{ name }}</span>
                                 </button>
                                 {% if entry %}
-                                {# Draft-only platforms have no posting API, so there is no
-                                   queue to join — the copy button is the way out for now.
-                                   The domestic article platforms do publish on their own,
-                                   but by push (the card's 📤 button), not the social queue. #}
-                                {% if platform not in DRAFT_ONLY_PLATFORMS and platform not in push_platforms %}
-                                <button type="button" class="chip-queue {% if entry.queued %}is-queued{% endif %}"
-                                        data-queued="{{ 'true' if entry.queued else 'false' }}"
-                                        onclick="toggleChipQueue(this)"
-                                        title="{% if entry.queued %}Queued for {{ entry.queued }}, click to remove{% else %}Add to the {{ name }} queue{% endif %}">{% if entry.queued %}✅{% else %}➕{% endif %}</button>
-                                {% endif %}
                                 {% if entry.posted and entry.posted.url %}
                                 <a class="chip-posted" href="{{ entry.posted.url }}" target="_blank" rel="noopener"
                                    title="Posted {{ entry.posted.posted_at[:16] if entry.posted.posted_at else '' }}, click to view">🔗</a>
@@ -213,75 +154,7 @@
                             <pre class="social-copy-text" id="saved-post-{{ group.id }}" contenteditable="true" onfocus="enablePostEdit(this)" onblur="autoSavePost({{ group.id }}, this, 'standalone')">{{ group.content }}</pre>
                             <!-- Image attachment section -->
                             <div class="post-image-section mt-2" id="image-section-{{ group.id }}">
-                                {% if group.ig %}
-                                <!-- Instagram format selector (feed / carousel / reel / story) -->
-                                <div class="d-flex align-items-center gap-2 mb-2 flex-wrap ig-format-bar">
-                                    <label class="small text-muted mb-0">📷 Instagram format:</label>
-                                    <select class="form-select form-select-sm" style="width:auto;"
-                                            id="ig-type-{{ group.id }}" onchange="switchIgType({{ group.id }}, this.value)">
-                                        <option value="feed" {% if group.ig.ig_post_type == 'feed' %}selected{% endif %}>🖼️ Feed (1 image)</option>
-                                        <option value="carousel" {% if group.ig.ig_post_type == 'carousel' %}selected{% endif %}>🎠 Carousel (2–10)</option>
-                                        <option value="reel" {% if group.ig.ig_post_type == 'reel' %}selected{% endif %}>🎬 Reel (video)</option>
-                                        <option value="story" {% if group.ig.ig_post_type == 'story' %}selected{% endif %}>⚡ Story</option>
-                                    </select>
-                                    <button class="btn btn-sm btn-outline-secondary" type="button" onclick="openIgPreview({{ group.id }})"
-                                            title="Preview how this will look on Instagram and fix the aspect ratio">
-                                        👁️ Preview
-                                    </button>
-                                    <span class="small text-muted" id="ig-media-hint-{{ group.id }}"></span>
-                                </div>
-                                {# Who else is on the Instagram post. Collaborators are invited and show
-                                   on the post only once they accept; tags are for Reels (a photo is
-                                   tagged in the 👁️ Preview, where its position matters). Both save
-                                   on change and apply to every Instagram account on this card. #}
-                                <div class="ig-people border rounded p-2 mb-2" id="ig-people-{{ group.id }}">
-                                    <div class="d-flex flex-wrap gap-2 align-items-start">
-                                        <div style="flex: 1 1 240px;">
-                                            <label class="small text-muted mb-1" for="ig-collaborators-{{ group.id }}">🤝 Collaborators <span>(up to {{ IG_MAX_COLLABORATORS }})</span></label>
-                                            <input type="text" class="form-control form-control-sm" id="ig-collaborators-{{ group.id }}"
-                                                   value="{% for h in group.ig.ig_collaborators %}@{{ h }}{% if not loop.last %}, {% endif %}{% endfor %}"
-                                                   placeholder="@username, @username" autocomplete="off" spellcheck="false"
-                                                   onchange="saveIgPeople({{ group.id }})">
-                                        </div>
-                                        <div class="ig-reel-tags-col{% if group.ig.ig_effective_format != 'reel' %} d-none{% endif %}" style="flex: 1 1 240px;">
-                                            <label class="small text-muted mb-1" for="ig-reel-tags-{{ group.id }}">🏷️ Tag people <span>(Reels)</span></label>
-                                            <input type="text" class="form-control form-control-sm" id="ig-reel-tags-{{ group.id }}"
-                                                   value="{% for h in group.ig.ig_reel_tags %}@{{ h }}{% if not loop.last %}, {% endif %}{% endfor %}"
-                                                   placeholder="@username, @username" autocomplete="off" spellcheck="false"
-                                                   onchange="saveIgPeople({{ group.id }})">
-                                        </div>
-                                    </div>
-                                    <div class="small text-muted mt-1">Collaborators receive an invite and only appear on the post once they accept. They must be public accounts. Stories can't have collaborators.</div>
-                                    <div class="small text-danger mt-1 d-none" id="ig-people-error-{{ group.id }}" role="alert"></div>
-                                </div>
-                                <!-- Multi-media builder for carousel / reel / story -->
-                                <div id="ig-media-builder-{{ group.id }}"
-                                     class="border rounded p-2 mb-2 {% if group.ig.ig_post_type in [None, 'feed'] %}d-none{% endif %}"
-                                     data-ig-type="{{ group.ig.ig_post_type or 'feed' }}"
-                                     data-ig-media='{{ group.ig.media_items | tojson }}'
-                                     data-ig-tags='{{ group.ig.ig_user_tags | tojson }}'>
-                                    <div id="ig-media-strip-{{ group.id }}" class="d-flex flex-wrap gap-2 mb-2">
-                                        <span class="text-muted small">No media added yet.</span>
-                                    </div>
-                                    <div class="d-flex gap-2 flex-wrap align-items-center">
-                                        <input type="url" class="form-control form-control-sm" style="max-width: 300px;"
-                                               id="ig-media-url-{{ group.id }}" placeholder="Paste public image or video URL">
-                                        <button class="btn btn-sm btn-outline-primary" type="button" onclick="igAddMediaUrl({{ group.id }})">＋ Add URL</button>
-                                        <label class="btn btn-sm btn-outline-secondary mb-0" title="Upload an image">
-                                            📁 Image
-                                            <input type="file" class="d-none" accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
-                                                   onchange="igUploadMedia({{ group.id }}, this, 'image')">
-                                        </label>
-                                        <label class="btn btn-sm btn-outline-secondary mb-0" title="Upload a video (MP4/MOV)">
-                                            🎬 Video
-                                            <input type="file" class="d-none" accept="video/mp4,video/quicktime"
-                                                   onchange="igUploadMedia({{ group.id }}, this, 'video')">
-                                        </label>
-                                        <span class="spinner-border spinner-border-sm text-secondary d-none" id="ig-media-spinner-{{ group.id }}" role="status"></span>
-                                    </div>
-                                </div>
-                                {% endif %}
-                                <div id="ig-feed-block-{{ group.id }}"{% if group.ig and group.ig.ig_post_type not in [None, 'feed'] %} class="d-none"{% endif %}>
+                                <div>
                                 {% if group.image_url %}
                                 <div class="d-flex align-items-center gap-2 mb-2" id="image-preview-{{ group.id }}">
                                     <img src="{{ group.image_url }}" alt="Post image" class="img-thumbnail" style="max-height: 60px; max-width: 100px; cursor: pointer;" onclick="openImageLightbox('{{ group.image_url }}')" title="Click to enlarge">
@@ -417,11 +290,11 @@
                                     🖼️ Add Image
                                 </button>
                                 {% endif %}
-                                </div><!-- /ig-feed-block -->
+                                </div>
                             </div>
                             {# One video for the whole card, like the image: it is stored on every
                                row and is part of what groups them. A card with a video posts the
-                               video (Instagram as a Reel) and the image is not sent. #}
+                               video and the image is not sent. #}
                             <div class="post-video-section mt-2" id="video-section-{{ group.id }}"
                                  data-video-url="{{ group.video_url or '' }}">
                                 <div class="align-items-center gap-2 mb-2 {{ 'd-flex' if group.video_url else 'd-none' }}"
@@ -437,7 +310,7 @@
                                     </button>
                                 </div>
                                 <div class="small text-muted mb-1 {{ '' if group.video_url else 'd-none' }}" id="video-note-{{ group.id }}">
-                                    🎬 The video posts instead of the image{% if group.ig %}; on Instagram it goes out as a Reel{% endif %}.
+                                    🎬 视频将代替图片发布。
                                 </div>
                                 <ul class="list-unstyled small mb-2" id="video-warnings-{{ group.id }}"></ul>
                                 <div class="video-edit-form d-none" id="video-edit-form-{{ group.id }}">

@@ -22,44 +22,11 @@
     </div>
     <div class="col-md-6">
         <h2>Action Items</h2>
-        <form method="post" action="{{ url_for('create_jira') }}" class="mb-3">
-            <input type="hidden" name="title" value="{{ title }}">
-            <input type="hidden" name="episode_url" value="{{ url }}">
-            <ul>
-            {% for item in actions %}
-                <li>
-                    <label>
-                        <input type="checkbox" name="items" value="{{ item }}">
-                        {{ item }}
-                    </label>
-                </li>
-            {% endfor %}
-            </ul>
-            <input type="submit" class="btn btn-primary" value="Create JIRA Tickets">
-        </form>
-        {% if tickets %}
-        <h3>JIRA Tickets</h3>
         <ul>
-        {% for t in tickets %}
-            <li>
-                <a href="{{ t.ticket_url }}" target="_blank">{{ t.ticket_key }}</a>
-                ({{ t.status }}) - {{ t.action_item }}
-                {% if t.transitions %}
-                <form method="post" action="{{ url_for('update_ticket') }}" class="d-inline">
-                    <input type="hidden" name="ticket_key" value="{{ t.ticket_key }}">
-                    <input type="hidden" name="ref" value="{{ current_url }}">
-                    <select name="transition_id" class="form-select d-inline w-auto">
-                    {% for tr in t.transitions %}
-                        <option value="{{ tr.id }}">{{ tr.name }}</option>
-                    {% endfor %}
-                    </select>
-                    <button type="submit" class="btn btn-sm btn-secondary">Update</button>
-                </form>
-                {% endif %}
-            </li>
+        {% for item in actions %}
+            <li>{{ item }}</li>
         {% endfor %}
         </ul>
-        {% endif %}
     </div>
     <div class="col-12">
         <h2>{% if is_text %}Article Content{% else %}Transcript{% endif %}</h2>

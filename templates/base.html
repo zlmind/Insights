@@ -362,7 +362,7 @@
         {'label': 'Compose', 'href': url_for('compose_page'), 'prefixes': ['/compose', '/posts']},
         {'label': 'Create', 'items': [
             {'label': 'Content Agent', 'desc': 'Briefs that research and draft for you', 'href': url_for('briefs_page'), 'prefixes': ['/briefs']},
-            {'label': 'Articles', 'desc': 'Long-form drafts and their social posts', 'href': url_for('view_articles'), 'prefixes': ['/article', '/generate_article', '/social']},
+            {'label': 'Articles', 'desc': 'Long-form drafts', 'href': url_for('view_articles'), 'prefixes': ['/article', '/generate_article']},
             {'label': 'Thumbnails', 'desc': 'Generate video thumbnails', 'href': url_for('thumbnails_page'), 'prefixes': ['/thumbnails']},
         ]},
         {'label': 'Sources', 'items': [
@@ -370,9 +370,7 @@
             {'label': 'Saved URLs', 'desc': 'Pages kept for generating posts', 'href': url_for('sources_page'), 'prefixes': ['/sources']},
             {'label': 'Content Library', 'desc': 'Sort a media archive by year and category', 'href': url_for('library_page'), 'prefixes': ['/library']},
             {'label': 'Processing status', 'desc': 'Episode transcripts and summaries', 'href': url_for('status_page'), 'prefixes': ['/status', '/episode']},
-            {'label': 'JIRA tickets', 'desc': 'Action items turned into tickets', 'href': url_for('view_tickets'), 'prefixes': ['/tickets', '/create_jira', '/update_ticket']},
         ]},
-        {'label': 'Schedule', 'href': url_for('schedule_list'), 'prefixes': ['/schedule']},
     ] %}
     {% set ACCOUNT_NAV = [
         {'label': 'Activity log', 'desc': 'What changed, and when', 'href': url_for('activity_page'), 'prefixes': ['/activity']},
@@ -461,8 +459,8 @@
     {% if current_user and not agent_online and request.endpoint != 'agent_jobs_page' %}
     {# No heartbeat means the extension never paired on this browser, or just
        dropped. Pairing happens once per browser; once the 30s heartbeat
-       resumes the strip is gone without anyone dismissing it. The queue page
-       is excluded — it already carries the offline badge and the button. #}
+       resumes the strip is gone without anyone dismissing it. The agent jobs
+       page is excluded — it already carries the offline badge and the button. #}
     <div class="pair-strip" role="status">
         <div class="container d-flex flex-wrap align-items-center gap-2 py-2">
             <span class="pair-dot" aria-hidden="true"></span>
