@@ -5924,19 +5924,22 @@ function renderBulkPlatformResult(totals, failure) {
     }
 
     add(`${plural(totals.cards || 0, 'post', 'posts')} processed.`, 'fw-semibold mb-2');
+    // Each part goes through the interface dictionary on its own, so the line
+    // reads in Chinese no matter which combination of counts came back.
+    const zh = s => (window.t ? window.t(s) : s);
     totals.by_target.forEach(t => {
         const parts = [];
         if (removing) {
-            if (t.removed) parts.push(`removed from ${t.removed}`);
-            if (t.absent) parts.push(`not on ${t.absent}`);
-            if (t.skipped) parts.push(`kept on ${t.skipped}`);
+            if (t.removed) parts.push(`${zh('removed from')} ${t.removed}`);
+            if (t.absent) parts.push(`${zh('not on')} ${t.absent}`);
+            if (t.skipped) parts.push(`${zh('kept on')} ${t.skipped}`);
         } else {
-            if (t.added) parts.push(`added to ${t.added}`);
-            if (t.already) parts.push(`already on ${t.already}`);
-            if (t.queued) parts.push(`queued ${t.queued}`);
-            if (t.already_queued) parts.push(`already queued ${t.already_queued}`);
+            if (t.added) parts.push(`${zh('added to')} ${t.added}`);
+            if (t.already) parts.push(`${zh('already on')} ${t.already}`);
+            if (t.queued) parts.push(`${zh('queued')} ${t.queued}`);
+            if (t.already_queued) parts.push(`${zh('already queued')} ${t.already_queued}`);
         }
-        add(`${PLATFORM_CHIP_ICONS[t.platform] || ''} ${t.label}: ${parts.join(', ') || 'nothing to do'}`, 'small mb-1');
+        add(`${PLATFORM_CHIP_ICONS[t.platform] || ''} ${t.label}: ${parts.join(', ') || zh('nothing to do')}`, 'small mb-1');
     });
     if (removing && totals.unqueued) {
         add(`${plural(totals.unqueued, 'queue entry was', 'queue entries were')} taken out of the queue.`, 'small mb-1');

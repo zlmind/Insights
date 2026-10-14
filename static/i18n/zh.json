@@ -188,6 +188,854 @@
   {
    "re": "^Access$",
    "to": "访问控制"
+  },
+  {
+   "re": "^Delete (\\d+) selected posts?\\? This cannot be undone\\.$",
+   "to": "删除所选的 $1 篇帖子吗？此操作无法撤销。"
+  },
+  {
+   "re": "^Delete all (\\d+) posts? across every page\\? This cannot be undone\\.$",
+   "to": "删除所有页共 $1 篇帖子吗？此操作无法撤销。"
+  },
+  {
+   "re": "^Deleted (\\d+) posts?$",
+   "to": "已删除 $1 篇帖子"
+  },
+  {
+   "re": "^Mark all (\\d+) posts? across every page as (.+)\\?$",
+   "to": "将所有页共 $1 篇帖子标记为“$2”吗？"
+  },
+  {
+   "re": "^Marked (\\d+) posts? as (.+)$",
+   "to": "已将 $1 篇帖子标记为“$2”"
+  },
+  {
+   "re": "^Find and add stock images to (\\d+) selected posts?\\?$",
+   "to": "为所选的 $1 篇帖子查找并添加图库图片吗？"
+  },
+  {
+   "re": "^Remove images from (\\d+) selected posts?\\?$",
+   "to": "移除 $1 篇所选帖子的图片吗？"
+  },
+  {
+   "re": "^Added images to (\\d+) posts?$",
+   "to": "已为 $1 篇帖子添加图片"
+  },
+  {
+   "re": "^Removed images from (\\d+) posts?$",
+   "to": "已移除 $1 篇帖子的图片"
+  },
+  {
+   "re": "^Added image to (\\d+) posts$",
+   "to": "已为 $1 篇帖子添加图片"
+  },
+  {
+   "re": "^➖ Remove a platform from (\\d+) posts?$",
+   "to": "➖ 从 $1 篇帖子移除一个平台"
+  },
+  {
+   "re": "^🌐 Add a platform to (\\d+) posts?$",
+   "to": "🌐 给 $1 篇帖子添加一个平台"
+  },
+  {
+   "re": "^○ Mark as Unused \\((\\d+)\\)$",
+   "to": "○ 标记未用（$1）"
+  },
+  {
+   "re": "^(\\d+) of ([\\d,]+) posts$",
+   "to": "已加载 $1 / $2 篇帖子"
+  },
+  {
+   "re": "^Showing (\\d+) of ([\\d,]+)$",
+   "to": "显示 $1 / $2"
+  },
+  {
+   "re": "^([\\d,]+) shown$",
+   "to": "已显示 $1 条"
+  },
+  {
+   "re": "^Loaded all ([\\d,]+) posts$",
+   "to": "已加载全部 $1 篇帖子"
+  },
+  {
+   "re": "^⏳ Loading… (\\d+) of ([\\d,]+) — click to stop$",
+   "to": "⏳ 加载中… $1 / $2 —— 点击停止"
+  },
+  {
+   "re": "^Show (\\d+) more posts ▼$",
+   "to": "展开其余 $1 篇帖子 ▼"
+  },
+  {
+   "re": "^all (\\d+) selected$",
+   "to": "已选全部 $1 项"
+  },
+  {
+   "re": "^(\\d+) matches? in (\\d+) posts?$",
+   "to": "$1 处匹配（$2 篇帖子）"
+  },
+  {
+   "re": "^Showing the first (\\d+) of ([\\d,]+) matching posts\\.$",
+   "to": "显示匹配帖子中的前 $1 篇（共 $2 篇）。"
+  },
+  {
+   "re": "^Replace All covers all ([\\d,]+) — unticking a post here excludes just that post\\.$",
+   "to": "“全部替换”覆盖全部 $1 篇 —— 在这里取消勾选仅排除该篇。"
+  },
+  {
+   "re": "^Replace in (\\d+) posts?\\? Only (\\d+) of them are shown here\\.$",
+   "to": "在 $1 篇帖子中替换吗？此处仅显示其中 $2 篇。"
+  },
+  {
+   "re": "^Replaced in (\\d+) posts?$",
+   "to": "已在 $1 篇帖子中替换"
+  },
+  {
+   "re": "^Searching (\\d+) of (\\d+) posts \\(filters active\\)$",
+   "to": "正在搜索 $1 / $2 篇（筛选已启用）"
+  },
+  {
+   "re": "^Searching all ([\\d,]+) .+ across every page\\.$",
+   "to": "正在搜索所有页的全部内容（共 $1 处）。"
+  },
+  {
+   "re": "^Select all (\\d+) .+ across every page$",
+   "to": "选择所有页的全部 $1 条内容"
+  },
+  {
+   "re": "^All (\\d+) .+ selected — bulk actions apply to every page\\.$",
+   "to": "已选择全部 $1 条 —— 批量操作将应用到每一页。"
+  },
+  {
+   "re": "^All (\\d+) loaded .+ selected\\.$",
+   "to": "已选择已加载的全部 $1 条。"
+  },
+  {
+   "re": "^Remove (.+) from all (\\d+) .+ across every page\\? This cannot be undone\\.$",
+   "to": "从所有页共 $2 条内容中移除 $1 吗？此操作无法撤销。"
+  },
+  {
+   "re": "^Add (.+) to all (\\d+) .+ across every page\\?$",
+   "to": "将 $1 添加到所有页共 $2 条内容吗？"
+  },
+  {
+   "re": "^Remove (.+) from (.+), including queued and published ones\\? This cannot be undone\\.$",
+   "to": "从 $2 移除 $1（含排队和已发布的帖子）吗？此操作无法撤销。"
+  },
+  {
+   "re": "^Remove (.+) from (.+)\\? This cannot be undone\\.$",
+   "to": "从 $2 移除 $1 吗？此操作无法撤销。"
+  },
+  {
+   "re": "^Add (.+) to (.+) and queue them\\?$",
+   "to": "将 $1 添加到 $2 并加入队列吗？"
+  },
+  {
+   "re": "^Add (.+) to (.+)\\?$",
+   "to": "将 $1 添加到 $2 吗？"
+  },
+  {
+   "re": "^…and (\\d+) more$",
+   "to": "…以及另外 $1 条"
+  },
+  {
+   "re": "^(\\d+) posts? processed\\.$",
+   "to": "已处理 $1 篇帖子。"
+  },
+  {
+   "re": "^(\\d+) queue entries were taken out of the queue\\.$",
+   "to": "已移出 $1 条队列记录。"
+  },
+  {
+   "re": "^1 queue entry was taken out of the queue\\.$",
+   "to": "已移出 1 条队列记录。"
+  },
+  {
+   "re": "^(\\d+) posts? (?:was|were) kept:$",
+   "to": "$1 篇被保留："
+  },
+  {
+   "re": "^(\\d+) posts? (?:was|were) not queued:$",
+   "to": "$1 篇未入队："
+  },
+  {
+   "re": "^(\\d+) Instagram posts? (?:has|have) no image yet\\.$",
+   "to": "有 $1 篇 Instagram 帖子还没有图片。"
+  },
+  {
+   "re": "^Stopped: (.+)$",
+   "to": "已停止：$1"
+  },
+  {
+   "re": "^(.+): removed from (\\d+)(?:, not on (\\d+))?(?:, kept on (\\d+))?$",
+   "to": "$1：移除 $2（未发布于 $3，保留于 $4）"
+  },
+  {
+   "re": "^(.+): added to (\\d+)(?:, already on (\\d+))?(?:, queued (\\d+))?(?:, already queued (\\d+))?$",
+   "to": "$1：新增到 $2（原本就在 $3，排队 $4，原本已排队 $5）"
+  },
+  {
+   "re": "^Post saved for (\\d+) accounts! Refreshing\\.\\.\\.$",
+   "to": "已为 $1 个账号保存帖子！正在刷新…"
+  },
+  {
+   "re": "^Scheduled for (.+)$",
+   "to": "已排期：$1"
+  },
+  {
+   "re": "^Queued for (.+), click to remove$",
+   "to": "已排队（$1），点击移出"
+  },
+  {
+   "re": "^Queued for (.+) — click to remove$",
+   "to": "已排队（$1）—— 点击移出"
+  },
+  {
+   "re": "^Queued — click to remove$",
+   "to": "已排队 —— 点击移出"
+  },
+  {
+   "re": "^Queued for (.+)$",
+   "to": "已排队：$1"
+  },
+  {
+   "re": "^Add to the (.+) queue$",
+   "to": "加入 $1 队列"
+  },
+  {
+   "re": "^Added to (.+)$",
+   "to": "已添加到 $1"
+  },
+  {
+   "re": "^Removed from (.+)$",
+   "to": "已从 $1 移除"
+  },
+  {
+   "re": "^Remove (.+) from this post\\?$",
+   "to": "从这篇帖子移除 $1 吗？"
+  },
+  {
+   "re": "^This post has already been published to (.+) \\(removing it here won't unpublish it\\)\\.$",
+   "to": "这篇帖子已发布到 $1（在此移除不会撤回已发布的内容）。"
+  },
+  {
+   "re": "^This post is queued for (.+) at (.+), and removing it will take it out of the queue\\.$",
+   "to": "此帖已排入 $1 的队列（$2），移除会将其移出队列。"
+  },
+  {
+   "re": "^This post is queued for (.+), and removing it will take it out of the queue\\.$",
+   "to": "此帖已排入 $1 的队列，移除会将其移出队列。"
+  },
+  {
+   "re": "^Please connect (.+) first$",
+   "to": "请先连接 $1"
+  },
+  {
+   "re": "^Post to (.+) now\\?",
+   "to": "立即发布到 $1 吗？"
+  },
+  {
+   "re": "^Publish this post to (.+) now\\? This cannot be undone\\.$",
+   "to": "现在把这篇帖子发布到 $1 吗？此操作无法撤销。"
+  },
+  {
+   "re": "^Posted to (.+)!$",
+   "to": "已发布到 $1！"
+  },
+  {
+   "re": "^Post to (.+) now$",
+   "to": "立即发布到 $1"
+  },
+  {
+   "re": "^Posted to (\\d+) of (\\d+) platforms\\. Not posted:$",
+   "to": "已发布到 $2 个平台中的 $1 个。未发布："
+  },
+  {
+   "re": "^Cancel this post on all (\\d+) platforms\\?$",
+   "to": "取消该帖子在全部 $1 个平台上的发布吗？"
+  },
+  {
+   "re": "^Delete this post from all (\\d+) platforms\\?$",
+   "to": "从全部 $1 个平台删除此帖吗？"
+  },
+  {
+   "re": "^Move (\\d+) posts? to the top of the queue\\?$",
+   "to": "将 $1 篇帖子移到队列顶部吗？"
+  },
+  {
+   "re": "^Move (\\d+) posts? to the bottom of the queue\\?$",
+   "to": "将 $1 篇帖子移到队列底部吗？"
+  },
+  {
+   "re": "^(\\d+) selected posts? \\((\\d+) platform entries\\)$",
+   "to": "已选 $1 篇帖子（$2 个平台条目）"
+  },
+  {
+   "re": "^(\\d+) selected posts?$",
+   "to": "已选 $1 篇帖子"
+  },
+  {
+   "re": "^(\\d+) platform entries$",
+   "to": "$1 个平台条目"
+  },
+  {
+   "re": "^(\\d+) posts · (\\d+) entries$",
+   "to": "$1 篇帖子 · $2 个条目"
+  },
+  {
+   "re": "^Queued (\\d+) posts, (\\d+) failed$",
+   "to": "已入队 $1 篇，失败 $2 篇"
+  },
+  {
+   "re": "^Successfully queued (\\d+) posts for (.+)!$",
+   "to": "已成功将 $1 篇帖子加入 $2 队列！"
+  },
+  {
+   "re": "^No unscheduled (.+) posts to queue$",
+   "to": "$1 没有可入队的未排期帖子"
+  },
+  {
+   "re": "^Adding (\\d+) posts to (.+) queue\\.\\.\\.$",
+   "to": "正在将 $1 篇帖子加入 $2 队列…"
+  },
+  {
+   "re": "^Added (\\d+) posts? to queue$",
+   "to": "已将 $1 篇帖子加入队列"
+  },
+  {
+   "re": "^Added (\\d+), failed (\\d+)$",
+   "to": "成功 $1 篇，失败 $2 篇"
+  },
+  {
+   "re": "^📅 Schedule (.+) Post$",
+   "to": "📅 排期 $1 帖子"
+  },
+  {
+   "re": "^📅 Queue all (\\d+) accounts$",
+   "to": "📅 全部 $1 个账号加入队列"
+  },
+  {
+   "re": "^Posted: (.+)$",
+   "to": "发布于：$1"
+  },
+  {
+   "re": "^Delete (\\d+) feeds? and ALL their episodes, articles, and tickets\\? This cannot be undone!$",
+   "to": "删除 $1 个订阅源及其全部单集、文章和工单吗？此操作无法撤销！"
+  },
+  {
+   "re": "^Delete (\\d+) episodes? and ALL their associated articles and tickets\\? This cannot be undone!$",
+   "to": "删除 $1 个单集及其关联的文章和工单吗？此操作无法撤销！"
+  },
+  {
+   "re": "^Delete (\\d+) selected tickets? from the database\\? \\(This does not delete them in JIRA\\)$",
+   "to": "从数据库删除所选的 $1 个工单吗？（不会删除 JIRA 上的）"
+  },
+  {
+   "re": "^Delete brief \\\"(.+)\\\"\\? This removes its run history too\\.$",
+   "to": "删除简报“$1”吗？其运行历史也会一并删除。"
+  },
+  {
+   "re": "^Delete (.+)\\? This cannot be undone\\.$",
+   "to": "删除 $1 吗？此操作无法撤销。"
+  },
+  {
+   "re": "^Delete this post\\?",
+   "to": "删除这篇帖子吗？"
+  },
+  {
+   "re": "^By (.+)$",
+   "to": "作者：$1"
+  },
+  {
+   "re": "^Created (\\d+) tickets:$",
+   "to": "已创建 $1 个工单："
+  },
+  {
+   "re": "^Disconnect (.+)\\? Queued posts for this account are removed\\. Other accounts on this platform keep working\\.$",
+   "to": "断开 $1 吗？该账号的排队帖将被移除，同平台其他账号不受影响。"
+  },
+  {
+   "re": "^(.+)\\. (\\d+) queued posts? removed\\.$",
+   "to": "$1 已移除 $2 篇排队帖。"
+  },
+  {
+   "re": "^Request failed \\((\\d+)\\)$",
+   "to": "请求失败（$1）"
+  },
+  {
+   "re": "^\\\"(.+)\\\" has been saved\\.$",
+   "to": "“$1”已保存。"
+  },
+  {
+   "re": "^Re-publish this post to (.+)\\?$",
+   "to": "重新发布这篇帖子到 $1 吗？"
+  },
+  {
+   "re": "^Posted (.+) - click to view$",
+   "to": "发布于 $1 —— 点击查看"
+  },
+  {
+   "re": "^Posted (.+), click to view$",
+   "to": "发布于 $1，点击查看"
+  },
+  {
+   "re": "^Posted just now — click to view$",
+   "to": "刚刚发布 —— 点击查看"
+  },
+  {
+   "re": "^(\\d+) feeds? \\(filtered\\)$",
+   "to": "$1 个订阅源（已筛选）"
+  },
+  {
+   "re": "^(\\d+) episodes? \\(filtered\\)$",
+   "to": "$1 个单集（已筛选）"
+  },
+  {
+   "re": "^(\\d+) tickets? \\(filtered\\)$",
+   "to": "$1 个工单（已筛选）"
+  },
+  {
+   "re": "^(\\d+) articles? \\(filtered\\)$",
+   "to": "$1 篇文章（已筛选）"
+  },
+  {
+   "re": "^(\\d+) saved posts?$",
+   "to": "$1 篇已存帖子"
+  },
+  {
+   "re": "^· page (\\d+) of (\\d+)$",
+   "to": "· 第 $1 / $2 页"
+  },
+  {
+   "re": "^\\((\\d+)d ago\\)$",
+   "to": "（$1 天前）"
+  },
+  {
+   "re": "^\\(up to (\\d+)\\)$",
+   "to": "（最多 $1 人）"
+  },
+  {
+   "re": "^\\(optional, up to (\\d+)\\)$",
+   "to": "（可选，最多 $1 人）"
+  },
+  {
+   "re": "^(.+) \\| Insights$",
+   "to": "$1 | Insights"
+  },
+  {
+   "re": "^⚠️ Image is (.+) — outside Instagram's 4:5–1\\.91:1 range\\. Click 👁️ Preview to fix\\.$",
+   "to": "⚠️ 图片为 $1 —— 超出 Instagram 的 4:5–1.91:1 范围。点击 👁️ 预览修复。"
+  },
+  {
+   "re": "^✅ (.+) — fits Instagram$",
+   "to": "✅ $1 —— 符合 Instagram 要求"
+  },
+  {
+   "re": "^❌ (.+) is outside Instagram's allowed range \\(4:5 to 1\\.91:1\\) — the post will be REJECTED\\.$",
+   "to": "❌ $1 超出 Instagram 允许的范围（4:5 至 1.91:1）—— 发布将被拒绝。"
+  },
+  {
+   "re": "^✅ (.+) — fills the (.+) screen perfectly\\.$",
+   "to": "✅ $1 —— 完美覆盖 $2 全屏。"
+  },
+  {
+   "re": "^✅ (.+) is within Instagram's allowed range — it will post as-is\\.$",
+   "to": "✅ $1 在 Instagram 允许的范围内 —— 将按原样发布。"
+  },
+  {
+   "re": "^🎬 Videos can't be adjusted here\\. If it doesn't fit, re-export it at the right size \\(1080×1920, 9:16 for (.+)s\\)\\.$",
+   "to": "🎬 视频无法在此调整。如不符合，请按 1080×1920（9:16 $1）重新导出。"
+  },
+  {
+   "re": "^Your media: (\\d+)×(\\d+) \\((.+)\\) · target (.+)$",
+   "to": "素材尺寸：$1×$2（$3）· 目标 $4"
+  },
+  {
+   "re": "^Image adjusted to (\\d+)×(\\d+) and saved to the post!$",
+   "to": "图片已调整为 $1×$2 并保存到帖子！"
+  },
+  {
+   "re": "^Carousel · item (\\d+)$",
+   "to": "轮播 · 第 $1 张"
+  },
+  {
+   "re": "^This format allows (.+)\\.$",
+   "to": "该形式允许：$1。"
+  },
+  {
+   "re": "^(.+) — (\\d+) added$",
+   "to": "$1 —— 已添加 $2 个"
+  },
+  {
+   "re": "^\\(need (\\d+)\\)$",
+   "to": "（至少 $1 个）"
+  },
+  {
+   "re": "^\\(max (\\d+)\\)$",
+   "to": "（最多 $1 个）"
+  },
+  {
+   "re": "^Maximum (\\d+) images allowed$",
+   "to": "最多允许 $1 张图片"
+  },
+  {
+   "re": "^Now tap the photo where @(.+) is\\.$",
+   "to": "请在图片上点击 @$1 所在的位置"
+  },
+  {
+   "re": "^platform: (.+)$",
+   "to": "平台：$1"
+  },
+  {
+   "re": "^server returned (\\d+)$",
+   "to": "服务器返回 $1"
+  },
+  {
+   "re": "^The server answered (\\d+)$",
+   "to": "服务器返回 $1"
+  },
+  {
+   "re": "^Failed: (.+)$",
+   "to": "失败：$1"
+  },
+  {
+   "re": "^Could not load files: (.+)$",
+   "to": "文件加载失败：$1"
+  },
+  {
+   "re": "^Could not load: (.+)$",
+   "to": "加载失败：$1"
+  },
+  {
+   "re": "^Could not start: (.+)$",
+   "to": "无法开始：$1"
+  },
+  {
+   "re": "^Search failed: (.+)$",
+   "to": "搜索失败：$1"
+  },
+  {
+   "re": "^Error: (.+)$",
+   "to": "错误：$1"
+  },
+  {
+   "re": "^Import failed: (.+)$",
+   "to": "导入失败：$1"
+  },
+  {
+   "re": "^Row (\\d+)$",
+   "to": "第 $1 行"
+  },
+  {
+   "re": "^([\\d,]+) matching files \\(showing ([\\d,]+), ([\\d,]+) with previews\\)$",
+   "to": "匹配 $1 个文件（显示 $2 个，其中 $3 个有预览）"
+  },
+  {
+   "re": "^([\\d,]+) previews cached \\(([\\d.]+) MB\\)$",
+   "to": "已缓存 $1 个预览（$2 MB）"
+  },
+  {
+   "re": "^([\\d,]+) cached in total \\(([\\d,]+) MB\\)\\.$",
+   "to": "共缓存 $1 个（$2 MB）。"
+  },
+  {
+   "re": "^The remaining ([\\d,]+) files are in OneDrive and have no bytes on this Mac, so they cannot be previewed without downloading them\\.$",
+   "to": "其余 $1 个文件在 OneDrive 上，本机没有数据，不下载就无法预览。"
+  },
+  {
+   "re": "^([\\d,]+) files planned\\.$",
+   "to": "已规划 $1 个文件。"
+  },
+  {
+   "re": "^events need AI \\(([\\d,]+) already resolved by folder or file name$",
+   "to": "个事件需要 AI 识别（其中 $1 个已按文件夹/文件名判定"
+  },
+  {
+   "re": "^, ([\\d,]+) skipped as already classified$",
+   "to": "，$1 个此前已分类，跳过"
+  },
+  {
+   "re": "^of ([\\d.]+) GB free\\.$",
+   "to": "，磁盘可用 $1 GB。"
+  },
+  {
+   "re": "^total — ([\\d.]+) h of downloading at ([\\d.]+) MB/s \\(estimated\\), overlapped with ([\\d.]+) h of captioning\\.$",
+   "to": "：下载 $1 小时（$2 MB/s，估算），与 $3 小时的图像识别同时进行。"
+  },
+  {
+   "re": "^total — ([\\d.]+) h of downloading at ([\\d.]+) MB/s \\(just measured on your archive\\), overlapped with ([\\d.]+) h of captioning\\.$",
+   "to": "：下载 $1 小时（$2 MB/s，按你的存档实测），与 $3 小时的图像识别同时进行。"
+  },
+  {
+   "re": "^of the archive; ([\\d,]+) files sit in events whose smallest file exceeds the size cap\\.$",
+   "to": "的存档；$1 个文件所在事件的最小文件超出大小上限。"
+  },
+  {
+   "re": "^⚠ This exceeds free disk space \\(([\\d.]+) GB\\)\\. Lower the max file size, or run it in stages\\.$",
+   "to": "⚠ 超出磁盘可用空间（$1 GB）。请调低单文件大小上限，或分批运行。"
+  },
+  {
+   "re": "^(.+) is not on this Mac\\. Opening it downloads ([\\d.]+) MB from OneDrive\\. Continue\\?$",
+   "to": "$1 不在这台 Mac 上。打开将从 OneDrive 下载 $2 MB。继续吗？"
+  },
+  {
+   "re": "^duplicate groups — ([\\d.]+ GB) reclaimable if you keep one copy of each\\.$",
+   "to": "个重复组 —— 每组只保留一份即可回收 $1"
+  },
+  {
+   "re": "^corrected · ([\\d,]+) files$",
+   "to": "已修正 · $1 个文件"
+  },
+  {
+   "re": "^(Linking|Copying) ([\\d,]+) files \\(no bytes copied\\)\\. Undo manifest: (.+)$",
+   "to": "$1 $2 个文件（未复制字节）。撤销清单：$3"
+  },
+  {
+   "re": "^(Linking|Copying) ([\\d,]+) files \\(([\\d.]+ GB)\\)\\. Undo manifest: (.+)$",
+   "to": "$1 $2 个文件（$3）。撤销清单：$4"
+  },
+  {
+   "re": "^\\((_[\\d,.]+) chars\\)$",
+   "to": "（$1 字符）"
+  },
+  {
+   "re": "^\\(([\\d,]+) chars\\)$",
+   "to": "（$1 字符）"
+  },
+  {
+   "re": "^\\((\\d+) excluded\\)$",
+   "to": "（已排除 $1 篇）"
+  },
+  {
+   "re": "^\\((\\d+) posts? excluded by filter\\)$",
+   "to": "（有 $1 篇被筛选条件排除）"
+  },
+  {
+   "re": "^⚠️ (.+) doesn't match the 9:16 full-screen (.+)\\. Instagram will shrink it and pad the rest with a background, so it looks small and off\\. Re-export the video at 1080×1920 \\(9:16\\) — videos can't be adjusted here\\.$",
+   "to": "⚠️ $1 不符合 9:16 全屏的 $2 尺寸。Instagram 会缩小图片并用背景补白，看起来又小又别扭。请以 1080×1920（9:16）重新导出视频 —— 视频无法在此调整。"
+  },
+  {
+   "re": "^⚠️ (.+) doesn't match the 9:16 full-screen (.+)\\. Instagram will shrink it and pad the rest with a background, so it looks small and off\\. Fix it below: crop to fill, or fit it over a background\\.$",
+   "to": "⚠️ $1 不符合 9:16 全屏的 $2 尺寸。Instagram 会缩小图片并用背景补白，看起来又小又别扭。请在下方修复：裁剪铺满，或垫背景适配。"
+  },
+  {
+   "re": "^❌ (.+) is outside Instagram's allowed range \\(4:5 to 1\\.91:1\\) — the post will be REJECTED\\. Re-export the video within that range\\.$",
+   "to": "❌ $1 超出 Instagram 允许的范围（4:5 至 1.91:1）—— 发布将被拒绝。请在该范围内重新导出视频。"
+  },
+  {
+   "re": "^❌ (.+) is outside Instagram's allowed range \\(4:5 to 1\\.91:1\\) — the post will be REJECTED\\. Crop or pad it below before posting\\.$",
+   "to": "❌ $1 超出 Instagram 允许的范围（4:5 至 1.91:1）—— 发布将被拒绝。请在下方裁剪或补边后再发布。"
+  },
+  {
+   "re": "^✅ (.+) is within Instagram's allowed range — it will post as-is\\. Use the tools below only if you want a different shape\\.$",
+   "to": "✅ $1 在 Instagram 允许的范围内 —— 将按原样发布。只有想改变形状时才需要用下面的工具。"
+  },
+  {
+   "re": "^🎬 Videos can't be adjusted here\\. If it doesn't fit, re-export it at the right size \\(1080×1920, 9:16 for (.+)s\\) and re-upload\\.$",
+   "to": "🎬 视频无法在此调整。如不符合，请按 1080×1920（9:16，$1）重新导出后再上传。"
+  },
+  {
+   "re": "^🎬 Videos can't be adjusted here\\. If it doesn't fit, re-export it at the right size \\(within 4:5 – 1\\.91:1\\) and re-upload\\.$",
+   "to": "🎬 视频无法在此调整。如不符合，请按 4:5 – 1.91:1 的范围重新导出后再上传。"
+  },
+  {
+   "re": "^Text baked into the (image|video) and saved to the post!$",
+   "to": "文字已写入$1并保存到帖子！"
+  },
+  {
+   "re": "^Build a folder tree of links in (.+)\\? Originals stay where they are\\.$",
+   "to": "在 $1 建立链接文件夹树吗？原文件保持原位。"
+  },
+  {
+   "re": "^Copy approved files into (.+)\\? Originals stay where they are\\.$",
+   "to": "把已批准的文件复制到 $1 吗？原文件保持原位。"
+  },
+  {
+   "re": "^(\\d+) posts? updated · (\\d+) removed$",
+   "to": "$1 篇帖子已更新 · 移除 $2"
+  },
+  {
+   "re": "^(\\d+) posts? updated · (\\d+) added · (\\d+) queued$",
+   "to": "$1 篇帖子已更新 · 新增 $2 · 排队 $3"
+  },
+  {
+   "re": "^(\\d+) posts? updated · (\\d+) added$",
+   "to": "$1 篇帖子已更新 · 新增 $2"
+  },
+  {
+   "re": "^(.+) is not connected, so it will be added but not queued\\.$",
+   "to": "$1 尚未连接，添加后不会入队。"
+  },
+  {
+   "re": "^(.+) are not connected, so they will be added but not queued\\.$",
+   "to": "$1 尚未连接，添加后不会入队。"
+  },
+  {
+   "re": "^(.+): removed from (\\d+), not on (\\d+), kept on (\\d+)$",
+   "to": "$1：移除 $2，未发布于 $3，保留于 $4"
+  },
+  {
+   "re": "^(.+): removed from (\\d+), not on (\\d+)$",
+   "to": "$1：移除 $2，未发布于 $3"
+  },
+  {
+   "re": "^(.+): removed from (\\d+), kept on (\\d+)$",
+   "to": "$1：移除 $2，保留于 $3"
+  },
+  {
+   "re": "^(.+): not on (\\d+), kept on (\\d+)$",
+   "to": "$1：未发布于 $2，保留于 $3"
+  },
+  {
+   "re": "^(.+): added to (\\d+), already on (\\d+), queued (\\d+), already queued (\\d+)$",
+   "to": "$1：新增到 $2，原本就在 $3，排队 $4，原本已排队 $5"
+  },
+  {
+   "re": "^(.+): added to (\\d+), already on (\\d+), queued (\\d+)$",
+   "to": "$1：新增到 $2，原本就在 $3，排队 $4"
+  },
+  {
+   "re": "^(.+): added to (\\d+), already on (\\d+)$",
+   "to": "$1：新增到 $2，原本就在 $3"
+  },
+  {
+   "re": "^(.+): added to (\\d+)$",
+   "to": "$1：新增到 $2"
+  },
+  {
+   "re": "^This post is queued for (.+) at (.+), and removing it will take it out of the queue\\. Remove (.+) from this post\\?$",
+   "to": "此帖已排入 $1 的队列（$2），移除会将其移出队列。\\n\\n从这篇帖子移除 $3 吗？"
+  },
+  {
+   "re": "^This post is queued for (.+), and removing it will take it out of the queue\\. Remove (.+) from this post\\?$",
+   "to": "此帖已排入 $1 的队列，移除会将其移出队列。\\n\\n从这篇帖子移除 $2 吗？"
+  },
+  {
+   "re": "^This post has already been published to (.+) \\(removing it here won't unpublish it\\)\\. Remove (.+) from this post\\?$",
+   "to": "这篇帖子已发布到 $1（在此移除不会撤回已发布的内容）。\\n\\n从这篇帖子移除 $2 吗？"
+  },
+  {
+   "re": "^(\\d+) characters?$",
+   "to": "$1 个字符"
+  },
+  {
+   "re": "^(\\d+) / ([\\d,]+) characters \\((.+) limit\\)$",
+   "to": "$1 / $2 字符（$3 上限）"
+  },
+  {
+   "re": "^(\\d+) / ([\\d,]+) characters$",
+   "to": "$1 / $2 字符"
+  },
+  {
+   "re": "^This post is ([\\d,]+) characters, over the limit for (.+)$",
+   "to": "这篇帖子共 $1 字符，超出 $2 的上限"
+  },
+  {
+   "re": "^(.+): ([\\d,]+) of ([\\d,]+) files checked…$",
+   "to": "$1：已检查 $2 / $3 个文件…"
+  },
+  {
+   "re": "^([\\d,]+) events flagged · ([\\d,]+) files already corrected by hand$",
+   "to": "已标记 $1 个事件 · 已有 $2 个文件人工修正"
+  },
+  {
+   "re": "^(.+) \\((\\d+(?:\\.\\d+)?) MB\\)$",
+   "to": "$1（$2 MB）"
+  },
+  {
+   "re": "^No matches found for \\\"(.+)\\\"$",
+   "to": "未找到与“$1”匹配的内容"
+  },
+  {
+   "re": "^conf ([\\d.]+)$",
+   "to": "置信度 $1"
+  },
+  {
+   "re": "^Edit: (.+) \\| Insights$",
+   "to": "编辑：$1 | Insights"
+  },
+  {
+   "re": "^📅 Saved: (.+)$",
+   "to": "📅 保存于：$1"
+  },
+  {
+   "re": "^Post (\\d+)$",
+   "to": "第 $1 篇"
+  },
+  {
+   "re": "^Running — ",
+   "to": "运行中 —— "
+  },
+  {
+   "re": "^Added images to (\\d+) posts, skipped (\\d+) \\(already have images\\), (\\d+) failed$",
+   "to": "已为 $1 篇帖子添加图片，跳过 $2 篇（已有图片），失败 $3 篇"
+  },
+  {
+   "re": "^Added images to (\\d+) posts, skipped (\\d+) \\(already have images\\)$",
+   "to": "已为 $1 篇帖子添加图片，跳过 $2 篇（已有图片）"
+  },
+  {
+   "re": "^Added images to (\\d+) posts, (\\d+) failed$",
+   "to": "已为 $1 篇帖子添加图片，失败 $2 篇"
+  },
+  {
+   "re": "^Import failed: ?(.*)$",
+   "to": "导入失败：$1"
+  },
+  {
+   "re": "^Remove (.+) from (.+)\\.$",
+   "to": "从 $2 移除 $1。"
+  },
+  {
+   "re": "^(\\d+) matches?$",
+   "to": "$1 处匹配"
+  },
+  {
+   "re": "^(\\d+) post$",
+   "to": "$1 篇帖子"
+  },
+  {
+   "re": "^(.+), not connected yet$",
+   "to": "$1（尚未连接）"
+  },
+  {
+   "re": "^(\\d+) episodes?$",
+   "to": "$1 个单集"
+  },
+  {
+   "re": "^(\\d+) tickets?$",
+   "to": "$1 个工单"
+  },
+  {
+   "re": "^(\\d+) articles?$",
+   "to": "$1 篇文章"
+  },
+  {
+   "re": "^(\\d+) briefs?$",
+   "to": "$1 份简报"
+  },
+  {
+   "re": "^Account menu for (.+)$",
+   "to": "账号菜单：$1"
+  },
+  {
+   "re": "^⚠️ (.+) doesn't match the 9:16 full-screen (.+)\\.$",
+   "to": "⚠️ $1 不符合 9:16 全屏的 $2 尺寸。"
+  },
+  {
+   "re": "^(\\d+) posts? updated · (\\d+) removed\\. Some need attention\\.$",
+   "to": "$1 篇帖子已更新 · 移除 $2。部分帖子需要注意。"
+  },
+  {
+   "re": "^(\\d+) posts? updated · (\\d+) added · (\\d+) queued\\. Some need attention\\.$",
+   "to": "$1 篇帖子已更新 · 新增 $2 · 排队 $3。部分帖子需要注意。"
+  },
+  {
+   "re": "^(\\d+) posts? updated · (\\d+) added\\. Some need attention\\.$",
+   "to": "$1 篇帖子已更新 · 新增 $2。部分帖子需要注意。"
+  },
+  {
+   "re": "^(.+)\\. Some need attention\\.$",
+   "to": "$1。部分帖子需要注意。"
   }
  ],
  "texts": {
@@ -1573,6 +2421,374 @@
   "Whether new people can register after the first admin. Invite by sharing the URL is not supported.": "首个管理员之后是否允许新人自行注册。不支持通过分享链接邀请。",
   "Scheduled Posts": "定时帖子",
   "All": "全部",
-  "Add specific guidance in": "在以下位置添加具体要求："
+  "Add specific guidance in": "在以下位置添加具体要求：",
+  "Unknown error": "未知错误",
+  "Untitled": "无标题",
+  "Yes": "是",
+  "No": "否",
+  "New": "新",
+  "Done": "完成",
+  "Failed": "失败",
+  "Remove": "移除",
+  "Removing": "移除中",
+  "Adding": "添加中",
+  "Started": "开始时间",
+  "Trigger": "触发方式",
+  "Posts": "帖子",
+  "Copied!": "已复制！",
+  "Success!": "成功！",
+  "Load": "加载",
+  "Year": "年份",
+  "Category": "分类",
+  "File": "文件",
+  "Files": "文件",
+  "Covers": "覆盖",
+  "Roughly": "预计",
+  "Approve": "批准",
+  "Approve all": "全部批准",
+  "Approved": "已批准",
+  "Correct it": "去修正",
+  "Current label": "当前分类",
+  "Why suspect": "疑点",
+  "Reclaimable": "可回收",
+  "Copies": "副本数",
+  "Unsorted": "未分类",
+  "Estimating…": "估算中…",
+  "Scoring labels…": "正在评估分类…",
+  "Filtering…": "筛选中…",
+  "Fetching...": "获取中…",
+  "Generating...": "生成中…",
+  "Generation failed:": "生成失败：",
+  "Posting...": "发布中…",
+  "Importing...": "导入中…",
+  "Import complete!": "导入完成！",
+  "Saving...": "保存中…",
+  "Uploading video...": "视频上传中…",
+  "Uploading video…": "视频上传中…",
+  "⏳ Posting...": "⏳ 发布中…",
+  "⏳ Applying...": "⏳ 应用中…",
+  "⏳ Loading...": "⏳ 加载中…",
+  "⏳ Marking...": "⏳ 标记中…",
+  "⏳ Removing...": "⏳ 移除中…",
+  "⏳ Replacing...": "⏳ 替换中…",
+  "⏳ Saving...": "⏳ 保存中…",
+  "⏳ Adding...": "⏳ 添加中…",
+  "⏳ Queueing...": "⏳ 入队中…",
+  "⏳ Deleting...": "⏳ 删除中…",
+  "⏳ Moving...": "⏳ 移动中…",
+  "⏳ Retrying...": "⏳ 重试中…",
+  "⏳ Running": "⏳ 运行中",
+  "⏳ Stopping…": "⏳ 正在停止…",
+  "⏳ Rendering…": "⏳ 渲染中…",
+  "⏳ Adjusting…": "⏳ 调整中…",
+  "⏳ Baking text…": "⏳ 写入文字中…",
+  "⏳ Rendering video… (can take a minute)": "⏳ 正在渲染视频…（可能需要一分钟）",
+  "✕ Cancel": "✕ 取消",
+  "✓ Posts generated and saved!": "✓ 帖子已生成并保存！",
+  "⚠️ No stock image API configured.": "⚠️ 未配置图库图片 API。",
+  "❌ Error loading images": "❌ 图片加载失败",
+  "❌ Error searching images": "❌ 图片搜索失败",
+  "🔍 Searching for images...": "🔍 正在搜索图片…",
+  "🔍 Searching...": "🔍 搜索中…",
+  "Something went wrong": "出错了",
+  "An error occurred. Please try again.": "出错了，请重试。",
+  "No images found. Try different keywords.": "未找到图片，换个关键词试试。",
+  "Failed to load images": "图片加载失败",
+  "Error loading images": "图片加载失败",
+  "No uploaded images yet": "还没有上传过图片",
+  "No images in library": "图库中暂无图片",
+  "Failed to load library": "图库加载失败",
+  "Could not get image from link:": "无法从链接获取图片：",
+  "Could not load image. Make sure the URL is valid.": "无法加载图片，请确认链接有效。",
+  "Could not load image. Make sure the URL is valid and publicly accessible.": "无法加载图片。请确认链接有效且可公开访问。",
+  "Could not save media": "媒体保存失败",
+  "Could not save collaborators": "协作者保存失败",
+  "Could not save tags": "标签保存失败",
+  "Could not refresh image": "图片刷新失败",
+  "Could not adjust the image": "图片调整失败",
+  "Could not add text": "文字添加失败",
+  "Error saving image": "图片保存失败",
+  "Error saving image:": "图片保存出错：",
+  "Error saving:": "保存出错：",
+  "Image removed!": "已移除图片！",
+  "Image saved!": "图片已保存！",
+  "Image selected and saved!": "已选择并保存图片！",
+  "Image selected from library": "已从图库选择图片",
+  "Image uploaded and saved!": "图片已上传并保存！",
+  "Image uploaded successfully!": "图片上传成功！",
+  "Image refreshed from source!": "已从来源刷新图片！",
+  "Video uploaded and attached!": "视频已上传并附加！",
+  "Pulled image from link!": "已从链接抓取图片！",
+  "Stock image added!": "已添加图库图片！",
+  "Failed to load image": "图片加载失败",
+  "Upload error:": "上传出错：",
+  "Invalid file type. Please choose an MP4 or MOV video.": "文件类型无效，请选择 MP4 或 MOV 视频。",
+  "Invalid file type. Please upload an MP4 or MOV video.": "文件类型无效，请上传 MP4 或 MOV 视频。",
+  "Unsupported file type:": "不支持的文件类型：",
+  "No URL detected in this post.": "帖子中未检测到链接。",
+  "No media added yet.": "尚未添加媒体。",
+  "Add an image to this post first.": "请先给这篇帖子添加图片。",
+  "Add media to this post first (use the ＋ Add URL / upload buttons).": "请先添加媒体（用“＋ 添加链接”或上传按钮）。",
+  "Could not read the media dimensions (the host may block loading).": "无法读取媒体尺寸（图床可能禁止外链加载）。",
+  "Add UNSPLASH_ACCESS_KEY to your .env file (free!).": "在 .env 中添加 UNSPLASH_ACCESS_KEY 即可启用（免费）。",
+  "Add UNSPLASH_ACCESS_KEY to your .env file to enable this feature (free!).": "在 .env 中添加 UNSPLASH_ACCESS_KEY 以启用此功能（免费）。",
+  "Stock image API not configured.": "未配置图库图片 API。",
+  "Sign up at: https://unsplash.com/developers": "在 https://unsplash.com/developers 注册（免费）。",
+  "This will automatically search for relevant images based on each post's content.": "将根据每篇帖子的内容自动搜索合适的图片。",
+  "Refresh image from original source (YouTube/article)": "从原始来源刷新图片（YouTube/文章）",
+  "Refresh this post's image from its original source?": "从原始来源刷新这篇帖子的图片吗？",
+  "Paste public image or video URL": "粘贴公开的图片/视频链接",
+  "Enter a public URL accessible by the target platforms": "输入目标平台可访问的公开链接",
+  "Use this URL": "使用此链接",
+  "Upload an image": "上传图片",
+  "Upload a video (MP4/MOV)": "上传视频（MP4/MOV）",
+  "Change Video": "更换视频",
+  "Remove Video": "移除视频",
+  "Remove the video from this post?": "移除这篇帖子的视频吗？",
+  "＋ Add URL": "＋ 添加链接",
+  "📁 Image": "📁 图片",
+  "📚 Or pick a video you uploaded before…": "📚 或选择之前上传的视频…",
+  "…or paste a public video URL (https://…/clip.mp4)": "…或粘贴公开视频链接（https://…/clip.mp4）",
+  "🎬 The video posts instead of any image.": "🎬 将发布视频（不发图片）。",
+  "🎬 The video posts instead of the image; on Instagram it goes out as a Reel.": "🎬 将发布视频（替代图片）；在 Instagram 上以 Reel 形式发出。",
+  "Thumbnail": "缩略图",
+  "Saved thumbnail": "缩略图已保存",
+  "Generated thumbnail for:": "已生成缩略图：",
+  "Please enter a YouTube URL": "请输入 YouTube 链接",
+  "⚡ Story": "⚡ 快拍",
+  "🎬 Reel (video)": "🎬 Reel（视频）",
+  "🎠 Carousel (2–10)": "🎠 轮播（2–10）",
+  "🖼️ Feed (1 image)": "🖼️ 图文（1 张图片）",
+  "📷 Instagram format:": "📷 Instagram 形式：",
+  "Story": "快拍",
+  "Reel": "Reel",
+  "Carousel": "轮播",
+  "9:16 full-screen": "9:16 全屏",
+  "2–10 images/videos": "2–10 张图片/视频",
+  "(within 4:5 – 1.91:1)": "（介于 4:5 – 1.91:1）",
+  "between 4:5 and 1.91:1": "介于 4:5 和 1.91:1 之间",
+  "4:5 portrait takes up the most space in the feed.": "4:5 竖图在信息流中占据空间最大。",
+  "Ideal: 1080×1920 (9:16) — fills the whole screen.": "理想尺寸：1080×1920（9:16）—— 铺满全屏。",
+  "Ideal: 1080×1920 (9:16), MP4 (H.264 + AAC), up to ~90 seconds.": "理想参数：1080×1920（9:16）、MP4（H.264 + AAC），时长约 90 秒内。",
+  "Keep faces and text out of the shaded top/bottom zones — Instagram overlays your username and the reply box there.": "避免把人脸和文字放在上下阴影区 —— Instagram 会在那里叠放你的用户名和回复框。",
+  "The right edge is covered by the like/comment rail; the bottom by the caption.": "右侧会被点赞/评论栏遮挡，底部被文案遮挡。",
+  "Allowed: between 4:5 (portrait) and 1.91:1 (landscape) — anything else is rejected.": "允许范围：4:5（竖图）到 1.91:1（横图）之间 —— 其他比例会被拒绝。",
+  "Each item must be between 4:5 and 1.91:1.": "每一项都须介于 4:5 和 1.91:1 之间。",
+  "Instagram crops every item to the FIRST item's shape — keep them consistent.": "Instagram 会按第一项的形状裁剪所有项 —— 请保持一致。",
+  "Use the tools below only if you want a different shape.": "只有想改变形状时才需要用下面的工具。",
+  "Drag the image in the phone frame to choose what stays in view, then apply.": "在手机框中拖动图片选择保留区域，然后点应用。",
+  "The whole image is kept; the empty space is filled with the background you pick.": "保留整张图片，空白处用你选择的背景填充。",
+  "Instagram will shrink it and pad the rest with a background, so it looks small and off.": "Instagram 会缩小图片并用背景补白，看起来又小又别扭。",
+  "Fix it below: crop to fill, or fit it over a background.": "在下方修复：裁剪铺满，或垫背景适配。",
+  "Crop or pad it below before posting.": "发布前在下方裁剪或补边。",
+  "Instagram needs an image before it can publish": "Instagram 需要有图片才能发布",
+  "Instagram needs an image or video to publish": "Instagram 需要有图片或视频才能发布",
+  "Reels need a video.": "Reel 需要视频。",
+  "Instagram only supports people-tags on feed photos": "Instagram 仅支持在图文帖上标记好友",
+  "Instagram only supports people-tags on feed photos. For stories, add an @name as text instead.": "Instagram 仅支持在图文帖上标记好友。快拍请改用文字 @名称。",
+  "Instagram Stories cannot have collaborators. Clear them first.": "Instagram 快拍不能添加协作者，请先清空。",
+  "Tag people on this photo (real Instagram tags)": "在这张图上标记好友（真实 Instagram 标记）",
+  "At most 20 people can be tagged.": "最多标记 20 人。",
+  "Enter a valid Instagram username (letters, numbers, dots, underscores).": "请输入有效的 Instagram 用户名（字母、数字、点、下划线）。",
+  "No one tagged yet.": "还没有标记任何人。",
+  "Collaborators receive an invite and only appear on the post once they accept. They must be public accounts. Stories can't have collaborators.": "协作者会收到邀请，接受后才会显示在帖子上。必须是公开账号。快拍不能添加协作者。",
+  "Collaborators saved. They are invited when the post goes out.": "协作者已保存，发布时会发出邀请。",
+  "🤝 Collaborators": "🤝 协作者",
+  "Preview shown as Instagram would frame it — dimensions unavailable, so no automatic verdict.": "按 Instagram 的裁剪方式预览 —— 无法获取尺寸，因此没有自动判定。",
+  "Preview how this will look on Instagram and fix the aspect ratio": "预览在 Instagram 上的呈现并修正宽高比",
+  "Pick at least one platform": "请至少选择一个平台",
+  "Pick at least one platform below": "请在下方至少选择一个平台",
+  "Pick at least one platform.": "请至少选择一个平台。",
+  "Tick at least one account for this post.": "请为这篇帖子勾选至少一个账号。",
+  "Please write some content for your post.": "请先填写帖子内容。",
+  "Failed to generate posts": "帖子生成失败",
+  "Posts generated and saved! Refreshing...": "帖子已生成并保存！正在刷新…",
+  "Post saved! Refreshing...": "帖子已保存！正在刷新…",
+  "Post saved. Heads up about the video:": "帖子已保存。关于视频的提醒：",
+  "Could not publish": "发布失败",
+  "Could not publish:": "发布失败：",
+  "Could not queue": "入队失败",
+  "Could not queue:": "入队失败：",
+  "Nothing was queued": "没有帖子入队",
+  "Could not update platforms": "平台更新失败",
+  "Could not update platforms:": "平台更新失败：",
+  "None of the selected posts go here": "所选帖子没有发布到此处的",
+  "Nothing to do: every post already had that.": "无需变更：所有帖子本来就有。",
+  "Nothing to do: none of them went there.": "无需变更：没有帖子发布到那里。",
+  "Tick “Also remove ones that are queued or already published” to include those.": "勾选“同时移除排队中或已发布的帖子”即可一并处理。",
+  "A post’s only platform is never removed. Use Delete Selected to delete the post.": "帖子最后一个平台不会被移除。如需删除整篇帖子请用“删除所选”。",
+  "…and more": "…以及另外",
+  "Posts handled before this point were updated. Running it again finishes the rest and never does anything twice.": "此前的帖子已更新。重跑会完成剩余部分，且不会重复处理。",
+  "Add one before they can publish.": "发布前需先添加图片。",
+  "Queued and published ones are kept.": "排队中和已发布的会保留。",
+  "Queued ones are taken out of the queue.": "已排队的会移出队列。",
+  ", each queued for its next free slot.": "，各自排入下一个空闲时段。",
+  "Prompt text cannot be empty.": "提示词内容不能为空。",
+  "No recent prompts match your search.": "没有匹配的最近提示词。",
+  "No recent prompts yet.": "还没有最近提示词。",
+  "No starter templates match your search.": "没有匹配的入门模板。",
+  "No saved prompts yet. Type one above and click": "还没有保存过提示词。在上方输入后点击",
+  "Save to Library": "保存到库",
+  "to reuse it anywhere.": "即可在任意地方复用。",
+  "Insert": "插入",
+  "Save a copy": "保存副本",
+  "Inserts into:": "插入到：",
+  "Image Focus / Prompt": "图片焦点 / 提示词",
+  "Recent History": "最近历史",
+  "Click to insert": "点击插入",
+  "Insert into the field": "插入到输入框",
+  "Save an editable copy to your library": "保存一份可编辑的副本到资料库",
+  "Remove from history": "从历史中移除",
+  "Scroll to post": "转到该帖",
+  "[view]": "查看",
+  "skipped row(s) — click for details": "已跳过部分行 —— 点击查看详情",
+  "Post now": "立即发布",
+  "Schedule for": "排期到",
+  "Schedule for a specific time": "排期到指定时间",
+  "🚀 Post to all accounts": "🚀 发布到所有账号",
+  "Delete this post everywhere": "在所有平台删除此帖",
+  "From agent brief:": "来自智能体简报：",
+  "Accounts this post goes to": "此帖要发布的账号",
+  "Cancel this scheduled post?": "取消这条排期帖吗？",
+  "Failed to cancel post": "取消发布失败",
+  "𝕏 twitter": "𝕏 推特",
+  "Renamed": "已重命名",
+  "Connect": "连接",
+  "Connect another": "再连接一个",
+  "Connected": "已连接",
+  "Not Connected": "未连接",
+  "Not Configured": "未配置",
+  "Configure LinkedIn first": "请先配置 LinkedIn",
+  "Connect LinkedIn": "连接 LinkedIn",
+  "Connect LinkedIn first": "请先连接 LinkedIn",
+  "Would you like to configure now?": "要现在去配置吗？",
+  "Connect or configure the account from the Status page.": "请在“处理状态”页连接或配置该账号。",
+  "This will disconnect your Facebook account. You will need to reconnect to refresh your token. Continue?": "将断开你的 Facebook 账号。之后需要重新连接以刷新令牌。继续吗？",
+  "This will disconnect your Instagram account. You will need to reconnect to refresh your token. Continue?": "将断开你的 Instagram 账号。之后需要重新连接以刷新令牌。继续吗？",
+  "This will disconnect your Threads account. You will need to reconnect to refresh your token. Continue?": "将断开你的 Threads 账号。之后需要重新连接以刷新令牌。继续吗？",
+  "This will disconnect your LinkedIn account. You will need to reconnect with the updated permissions. Continue?": "将断开你的 LinkedIn 账号。之后需要用更新后的权限重新连接。继续吗？",
+  "— to post on Pages you manage": "—— 允许发布到你管理的主页",
+  "— to read Page info": "—— 允许读取主页信息",
+  "— this is your": "—— 即你的",
+  "⚠️ Configure Member ID to post": "⚠️ 需配置 Member ID 才能发布",
+  "Error checking Facebook status:": "检查 Facebook 状态出错：",
+  "Error checking LinkedIn status:": "检查 LinkedIn 状态出错：",
+  "Error checking Twitter status:": "检查 X 状态出错：",
+  "Error checking Threads status:": "检查 Threads 状态出错：",
+  "e.g., ivenza.app": "例如：ivenza.app",
+  "e.g., showupshowout": "例如：showupshowout",
+  "Configure Facebook": "配置 Facebook",
+  "Configure Instagram": "配置 Instagram",
+  "Configure LinkedIn": "配置 LinkedIn",
+  "Configure Threads": "配置 Threads",
+  "This URL has already been saved.": "该链接已保存过。",
+  "View existing source": "查看已有来源",
+  "GitHub repository data extracted.": "已提取 GitHub 仓库数据。",
+  "YouTube video ready for transcription.": "YouTube 视频已就绪，可转写。",
+  "Content re-extracted successfully!": "内容重新提取成功！",
+  "Re-extraction failed. Please try again.": "重新提取失败，请重试。",
+  "Re-extraction failed:": "重新提取失败：",
+  "Refresh failed. Please try again.": "刷新失败，请重试。",
+  "No posts have been generated from this source yet.": "该来源还没有生成过帖子。",
+  "Failed to load posts for this source.": "该来源的帖子加载失败。",
+  "Failed to load source details": "来源详情加载失败",
+  "Extracted Content": "提取的内容",
+  "No content extracted": "暂无提取内容",
+  "No description": "暂无描述",
+  "No title": "无标题",
+  "Please enter a URL": "请输入链接",
+  "Not posted yet": "尚未发布",
+  "🔗 Posted": "🔗 已发布",
+  "💬 Posts": "💬 帖子",
+  "Transcript": "文字稿",
+  "Show content": "展开内容",
+  "Show transcript": "展开文字稿",
+  "Create a blog post or article based on this ": "基于该",
+  ". Specify a topic to focus on—like cybersecurity, privacy, or a specific technology discussed.": "撰写博文或文章。可指定关注主题 —— 如网络安全、隐私或文中讨论的某项技术。",
+  "source article": "来源文章",
+  "podcast episode": "播客单集",
+  "Create JIRA Tickets": "创建 JIRA 工单",
+  "What the model saw": "模型识别内容",
+  "Install Ollama": "安装 Ollama",
+  "Not detected —": "未检测到 ——",
+  "files planned.": "个文件已规划。",
+  "Plan is empty — try lowering the minimum confidence.": "计划为空 —— 试试调低最低置信度。",
+  "Scanning for files that are on this Mac but have no preview yet…": "正在扫描本机上有文件但还没有预览的项目…",
+  "Nothing flagged.": "没有发现疑点。",
+  "— change to —": "—— 改为 ——",
+  "— labels most likely to be wrong, worst first": "—— 最可能标错的分类，按严重程度排序",
+  "— learned from your sorted folder; untick to exclude": "—— 从你整理过的文件夹学得；取消勾选可排除",
+  "— review, approve, then copy. Originals are never moved.": "—— 核对、批准后复制。原文件不会被移动。",
+  ". Ranked by low confidence, how many files a wrong label affects, and whether the caption contradicts the category.": "。按置信度低、影响文件多、描述与分类矛盾的程度排序。",
+  "In OneDrive, not downloaded — no preview without fetching it": "在 OneDrive 中，未下载 —— 不获取就没有预览",
+  "On this Mac, preview not rendered yet": "在本机上，尚未生成预览",
+  "Reveal in Finder": "在 Finder 中显示",
+  "Summarize": "生成摘要",
+  "By ": "作者：",
+  "Edit Content Brief": "编辑内容简报",
+  "No runs yet.": "暂无运行记录。",
+  "#AIsecurity, read more →": "#AIsecurity，阅读更多 →",
+  "Refreshing page to show your saved posts...": "正在刷新页面以显示已保存的帖子…",
+  "Show less ▲": "收起 ▲",
+  "⌘/Ctrl + Enter to save · Esc to cancel": "⌘/Ctrl + Enter 保存 · Esc 取消",
+  "Show content transcript": "展开内容文字稿",
+  "removed from": "移除",
+  "not on": "未发布于",
+  "kept on": "保留于",
+  "added to": "新增到",
+  "already on": "原本就在",
+  "queued": "排队",
+  "already queued": "原本已排队",
+  "nothing to do": "无需变更",
+  "Some need attention.": "部分帖子需要注意。",
+  "updated ·": "篇已更新 ·",
+  "added": "新增",
+  "removed": "移除",
+  "will be queued": "将入队",
+  "Linking": "建立链接",
+  "Copying": "复制",
+  "Will caption": "将识别",
+  "sample files, downloading": "个样本文件，需下载",
+  "Add some text first (＋ Add text).": "请先添加文字（＋ 添加文字）。",
+  "Please enter search keywords": "请输入搜索关键词",
+  "Clear selection": "清除选择",
+  "⏳ Finding images...": "⏳ 正在查找图片…",
+  "Refined content applied to editor. Don't forget to save!": "优化后的内容已应用到编辑器，别忘了保存！",
+  "An image is required and will be auto-attached if the post has none.": "Instagram 发布必须带图；帖子没有图片时会自动附加一张。",
+  "No scheduled posts match the current filters.": "当前筛选条件下没有排期帖。",
+  "Re-export the video at 1080×1920 (9:16) — videos can't be adjusted here.": "请以 1080×1920（9:16）重新导出视频 —— 视频无法在此调整。",
+  "Re-export the video within that range.": "请在该范围内重新导出视频。",
+  "Re-export the video within that range. ": "请在该范围内重新导出视频。",
+  "Post this to Facebook now?": "把这条内容立即发布到 Facebook 吗？",
+  "Post this to LinkedIn now?": "把这条内容立即发布到 LinkedIn 吗？",
+  "Post this to Threads now?": "把这条内容立即发布到 Threads 吗？",
+  "Post this to X now?": "把这条内容立即发布到 X 吗？",
+  "(max 16MB)": "（最大 16MB）",
+  "Add to the queue": "加入队列",
+  "Build a folder tree of links in": "在",
+  "Originals stay where they are.": "原文件保持原位。",
+  "Text baked into the ": "文字已写入",
+  " and saved to the post!": "并保存到帖子！",
+  " removed": " 篇已移除",
+  " added": " 篇已新增",
+  " queued": " 篇已排队",
+  "To sort": "待归类",
+  "Teaches categories": "用于教分类",
+  "from": "从",
+  "to": "到",
+  "scanning": "扫描中",
+  "done": "完成",
+  "failed": "失败",
+  "pending": "等待中",
+  "stopped": "已停止",
+  "Images are captioned locally and free. Only the short text mapping step can go to the cloud — your photos never leave this Mac. With discovery on, your categories are a starting point, not a constraint: content that fits none of them gets a new name, and a name is adopted once it recurs across 3 events. Rarer suggestions are saved switched off for you to review.": "图片识别在本机完成且免费。只有一小步文本归类会走云端 —— 照片绝不离开这台 Mac。开启自动发现后，你的分类只是起点而非限制：都不属于的内容会得到新名字，某名字在 3 个事件中重复出现即自动启用。更冷门的建议会保持关闭状态供你审阅。",
+  "episodes": "个单集",
+  "episode": "个单集",
+  "tickets": "个工单",
+  "ticket": "个工单",
+  "articles": "篇文章",
+  "article": "篇文章",
+  "brief": "份简报",
+  "feeds": "个订阅源"
  }
 }
