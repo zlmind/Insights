@@ -159,7 +159,7 @@ NO_EM_DASH_RULE = (
 # (Chinese) platforms write 中文 with the prompts_zh set; every other platform
 # defaults to English. Registering a new platform's language here is all a
 # generator needs: mixed selections are split into one LLM call per language.
-PLATFORM_LANGS = {"xiaohongshu": "zh", "douyin": "zh", "wechat": "zh"}
+PLATFORM_LANGS = {"xiaohongshu": "zh", "douyin": "zh", "wechat": "zh", "zhihu": "zh", "toutiao": "zh"}
 
 
 def _platform_lang(platform: str) -> str:

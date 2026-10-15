@@ -23,6 +23,12 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     {# Interface translation: picks up the Chinese dictionary while the page
        parses, then watches the DOM so JS-rendered content translates too. #}
+    {# Hold the page until i18n.js has run its first translation pass — the
+       sidebar and page body are server-rendered in English and swapped to
+       Chinese client-side, so without this every menu click flashes English
+       for the duration of the dictionary fetch. i18n.js removes the class
+       once translated (or if the dictionary fails). #}
+    <style>html[data-lang="zh"].i18n-loading body { visibility: hidden; }</style>
     <script src="{{ url_for('static', filename='i18n.js') }}"></script>
     <style>
         /* ---------- Design tokens ----------
@@ -50,6 +56,11 @@
             --line-strong: #c9cfd9;
             --text:        #080a10;
             --muted:       #5f636f;
+
+            /* Semantic states (used by the .pd prototype component library) */
+            --ok: #16A34A; --ok-bg: #ECFDF3;
+            --warn: #B45309; --warn-bg: #FFFBEB; --warn-dot: #F59E0B;
+            --danger: #DC2626;
 
             --radius:    10px;
             --radius-lg: 14px;
@@ -80,7 +91,7 @@
                 "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
             -webkit-font-smoothing: antialiased;
         }
-        .app-main { padding: 1.75rem 0 4rem; }
+        .app-main { padding: 1.5rem 1.75rem 4rem; }
         .skip-link {
             position: absolute; left: .75rem; top: -3rem; z-index: 3000;
             background: var(--brand-500); color: #fff; padding: .5rem .9rem;
@@ -94,67 +105,116 @@
             box-shadow: 0 0 0 .2rem rgba(20, 71, 230, .15);
         }
 
-        /* ---------- Page header ---------- */
-        .page-head {
-            display: flex; flex-wrap: wrap; align-items: flex-end;
-            justify-content: space-between; gap: .75rem 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-        .page-title {
-            font-size: clamp(1.5rem, 1.2rem + 1vw, 2rem);
-            font-weight: 700; letter-spacing: -.02em;
-            line-height: 1.2; margin: 0;
-        }
-        .page-subtitle { color: var(--muted); margin: .35rem 0 0; max-width: 62ch; }
-        .page-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
-        .page-actions:empty { display: none; }
+        /* ---------- App frame ---------- */
+        .app { display: flex; min-height: 100vh; }
+        .frame { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
-        /* ---------- Navigation ----------
-           Glassy light bar: translucent canvas over a blur, hairline bottom
-           border, quiet gray links that darken on hover, blue active pill. */
-        .app-nav {
-            position: sticky; top: 0; z-index: 1050;
-            background: rgba(249, 250, 251, .8);
-            -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
-            border-bottom: 1px solid rgba(222, 225, 232, .5);
-            padding: .4rem 0;
+        /* ---------- Sidebar ---------- */
+        .app-sidebar {
+            width: 248px; flex: none; position: sticky; top: 0; height: 100vh;
+            background: var(--surface); border-right: 1px solid var(--line);
+            display: flex; flex-direction: column; z-index: 1100;
+            transition: width .18s ease;
         }
-        .app-nav .navbar-brand {
+        .app.is-collapsed .app-sidebar { width: 68px; }
+        .side-brand {
+            display: flex; align-items: center; gap: .6rem;
+            padding: .9rem .9rem .9rem 1.1rem; border-bottom: 1px solid var(--line);
+        }
+        .side-brand .navbar-brand {
             display: flex; align-items: center; gap: .5rem;
-            padding: 0; margin-right: 1.25rem;
+            padding: 0; margin: 0; min-width: 0; flex: 1;
         }
-        .app-nav .brand-word {
+        .side-brand .brand-word {
             font-weight: 600; letter-spacing: -.01em; color: var(--text);
+            white-space: nowrap;
         }
-        .app-nav .nav-link {
-            color: var(--muted); font-weight: 500; font-size: .93rem;
-            padding: .5rem .8rem; border-radius: 8px;
+        .collapse-btn {
+            margin-left: auto; color: var(--muted); border-radius: 8px; padding: .3rem;
+            background: none; border: 0; cursor: pointer; flex: none;
+            transition: transform .18s ease, background-color .15s ease, color .15s ease;
+        }
+        .collapse-btn:hover { background: rgba(8,10,16,.05); color: var(--text); }
+        .collapse-btn:focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
+        .app.is-collapsed .collapse-btn { transform: rotate(180deg); margin-left: 0; }
+        .collapse-btn svg { width: 20px; height: 20px; display: block; }
+
+        .side-nav {
+            flex: 1; overflow-y: auto; padding: .7rem .7rem 1rem;
+            display: flex; flex-direction: column;
+        }
+        .nav-group {
+            font-size: .7rem; font-weight: 600; letter-spacing: .08em;
+            text-transform: uppercase; color: var(--muted);
+            padding: 1rem .6rem .3rem;
+        }
+        .nav-group:first-child { padding-top: .4rem; }
+        .side-link {
+            display: flex; align-items: center; gap: .65rem; width: 100%;
+            padding: .5rem .65rem; border-radius: 8px;
+            color: var(--muted); font-weight: 500; text-decoration: none; font-size: .9rem;
             transition: background-color .15s ease, color .15s ease;
         }
-        .app-nav .nav-link:hover,
-        .app-nav .nav-link:focus-visible,
-        .app-nav .nav-link.show { color: var(--text); background: rgba(8, 10, 16, .045); }
-        .app-nav .nav-link.is-active { color: var(--brand-600); background: rgba(20, 71, 230, .08); }
-        .app-nav .dropdown-toggle::after { margin-left: .4em; vertical-align: .2em; opacity: .7; }
-        .app-nav .dropdown-menu {
-            background: var(--panel); border: 1px solid var(--panel-line);
-            border-radius: 12px; padding: .4rem; min-width: 17rem;
-            box-shadow: 0 12px 32px rgba(8, 10, 16, .12);
-            margin-top: .55rem;
+        .side-link .side-ic { width: 19px; height: 19px; flex: none; }
+        .side-link:hover, .side-link:focus-visible { background: rgba(8,10,16,.045); color: var(--text); }
+        .side-link.is-active { color: var(--brand-600); background: rgba(20,71,230,.08); }
+        .side-badge {
+            margin-left: auto; font-size: .72rem; font-weight: 600;
+            background: var(--brand-100); color: var(--brand-700);
+            border-radius: 999px; padding: .05rem .45rem; flex: none;
         }
-        .app-nav .dropdown-item {
-            border-radius: 8px; padding: .5rem .7rem; color: var(--ink-800);
-            display: flex; flex-direction: column; gap: .05rem; white-space: normal;
-        }
-        .app-nav .dropdown-item small { color: var(--muted); font-size: .78rem; }
-        .app-nav .dropdown-item:hover,
-        .app-nav .dropdown-item:focus { background: var(--brand-50); color: var(--ink-900); }
-        .app-nav .dropdown-item.is-active { background: var(--brand-100); color: var(--brand-700); }
-        .app-nav .dropdown-item.is-active small { color: var(--brand-600); }
-        .app-nav .dropdown-divider { border-color: var(--panel-line); margin: .35rem .2rem; }
-        .app-nav .navbar-toggler { border-color: var(--line); padding: .3rem .55rem; }
-        .app-nav .navbar-toggler:focus { box-shadow: 0 0 0 .2rem rgba(20, 71, 230, .25); }
+        .side-badge.is-warn { background: var(--warn-bg, #FFFBEB); color: var(--warn, #B45309); }
+        .app.is-collapsed .side-word,
+        .app.is-collapsed .nav-group,
+        .app.is-collapsed .side-link > span:not(.side-ic),
+        .app.is-collapsed .side-badge { display: none; }
+        .app.is-collapsed .side-link { justify-content: center; padding: .55rem 0; }
 
+        /* Sidebar footer: agent status + icon row */
+        .side-foot { border-top: 1px solid var(--line); padding: .6rem .7rem; display: grid; gap: .35rem; }
+        .conn {
+            display: flex; align-items: center; gap: .55rem; width: 100%;
+            font-size: .8rem; color: var(--muted); padding: .4rem .55rem;
+            border-radius: 8px; background: var(--canvas); border: 0; text-align: left;
+        }
+        .conn.is-link { cursor: pointer; }
+        .conn.is-link:hover { background: var(--brand-50); }
+        .conn .conn-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+        .conn-ok { background: #16A34A; box-shadow: 0 0 0 3px rgba(22,163,74,.15); }
+        .conn-warn { background: #F59E0B; box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+        .conn-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .foot-row { display: flex; align-items: center; gap: .15rem; }
+        .foot-icon {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 34px; height: 34px; border-radius: 8px; color: var(--muted);
+            background: none; border: 0; cursor: pointer; text-decoration: none;
+            transition: background-color .15s ease, color .15s ease;
+        }
+        .foot-icon:hover { background: rgba(8,10,16,.05); color: var(--text); }
+        .foot-icon:focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
+        .foot-icon svg { width: 19px; height: 19px; display: block; }
+        .app.is-collapsed .conn { justify-content: center; padding: .4rem 0; background: none; }
+        .app.is-collapsed .conn .conn-label { display: none; }
+        .app.is-collapsed .foot-row { flex-direction: column; }
+        .app.is-collapsed .foot-icon { margin-top: .15rem; }
+
+        /* ---------- Top bar ---------- */
+        .topbar {
+            display: flex; align-items: center; gap: 1rem;
+            padding: .75rem 1.75rem;
+            background: rgba(249,250,251,.85);
+            -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+            border-bottom: 1px solid rgba(222,225,232,.6);
+            position: sticky; top: 0; z-index: 1050;
+        }
+        .topbar .page-title {
+            font-size: 1.08rem; font-weight: 650; letter-spacing: -.01em;
+            margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .topbar .page-subtitle { font-size: .8rem; color: var(--muted); margin: 0; max-width: 60ch; }
+        .topbar .tb-mid { display: grid; gap: .05rem; min-width: 0; }
+        .topbar .tb-spacer { flex: 1; }
+        .topbar-right { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; justify-content: flex-end; }
         .nav-jump {
             display: inline-flex; align-items: center; gap: .6rem;
             background: var(--surface);
@@ -179,12 +239,7 @@
             color: #fff; font-weight: 700; font-size: .8rem;
             display: inline-flex; align-items: center; justify-content: center;
         }
-        @media (max-width: 991.98px) {
-            .app-nav .navbar-collapse { padding: .6rem 0 .4rem; }
-            .app-nav .dropdown-menu { box-shadow: none; margin-top: .25rem; }
-            .nav-jump { width: 100%; margin-bottom: .4rem; }
-            .nav-jump kbd { display: none; }   /* no keyboard on a phone */
-        }
+        .menu-btn { display: none; }
 
         /* ---------- Pair strip ----------
            The extension pairs once and then heartbeats every 30 seconds, so
@@ -237,6 +292,13 @@
             border-top: 1px solid var(--panel-line); padding: .5rem 1rem;
             font-size: .75rem; color: var(--muted); display: flex; gap: 1rem;
         }
+
+        /* Sidebar drawer on small screens */
+        .scrim {
+            position: fixed; inset: 0; background: rgba(8,10,16,.4); z-index: 1050;
+            border: 0; padding: 0;
+        }
+        .scrim[hidden] { display: none; }
 
         /* ---------- Components (skin over Bootstrap) ---------- */
         .btn { font-weight: 500; border-radius: 8px; }
@@ -344,86 +406,286 @@
         #loadingOverlay.d-none { display: none !important; }
         #loadingOverlay .spinner-border { color: var(--brand-500) !important; }
 
+        @media (max-width: 991.98px) {
+            .app-sidebar {
+                position: fixed; left: 0; top: 0; transform: translateX(-100%);
+                width: 248px !important; box-shadow: 0 0 60px rgba(8,10,16,.2);
+            }
+            .app.side-open .app-sidebar { transform: translateX(0); }
+            .app.is-collapsed .app-sidebar { width: 248px !important; }
+            .collapse-btn { display: none; }
+            .menu-btn { display: inline-flex; }
+            .topbar { padding: .65rem 1rem; }
+            .app-main { padding: 1.2rem 1rem 4rem; }
+            .nav-jump span { display: none; }
+            .app.is-collapsed .side-word,
+            .app.is-collapsed .nav-group,
+            .app.is-collapsed .side-link > span:not(.side-ic),
+            .app.is-collapsed .side-badge { display: inline; }
+            .app.is-collapsed .side-link { justify-content: flex-start; padding: .5rem .65rem; }
+        }
+
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after { transition: none !important; animation-duration: .01ms !important; scroll-behavior: auto !important; }
         }
+    </style>
+
+    {# Prototype component library — scoped to .pd pages (sources / briefs /
+       thumbnails). Rules that would clash with Bootstrap or the legacy pages
+       (compose, feeds, status, library, partials) are prefixed `.pd `. The
+       rest are new class names that only the redesign pages use. #}
+    <style>
+        .pd .btn {
+            display: inline-flex; align-items: center; gap: .45rem;
+            border-radius: 8px; font-weight: 550; font-size: .88rem;
+            padding: .5rem .95rem; border: 1px solid transparent;
+            transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+        }
+        .pd .btn .ic { width: 16px; height: 16px; }
+        .pd .btn-primary:hover { background: var(--brand-600); }
+        .pd .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+        .pd .btn-ghost { color: var(--muted); }
+        .pd .btn-ghost:hover { background: rgba(8,10,16,.05); color: var(--text); }
+        .pd .btn-outline { border-color: var(--line-strong); color: var(--text); background: var(--surface); }
+        .pd .btn-outline:hover { border-color: var(--brand-300); }
+        .pd .btn-sm { padding: .3rem .7rem; font-size: .8rem; }
+
+        .pd .input {
+            border: 1px solid var(--line); border-radius: 8px;
+            padding: .45rem .7rem; font-size: .87rem; background: var(--surface);
+            color: var(--text); transition: border-color .15s ease, box-shadow .15s ease;
+        }
+        .pd .input:focus { outline: 0; border-color: var(--brand-400); box-shadow: 0 0 0 .2rem rgba(20,71,230,.12); }
+        .pd textarea.input { resize: vertical; }
+        .pd .field { display: grid; gap: .25rem; }
+        .pd .field > label { font-size: .76rem; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
+        .pd .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: .9rem; }
+
+        .pd .card-head { display: flex; align-items: center; gap: .6rem; padding: .85rem 1.1rem; border-bottom: 1px solid var(--line); }
+        .pd .card-head b { font-size: .95rem; font-weight: 650; }
+        .pd .card-head .spacer { margin-left: auto; }
+        .pd .card-body { padding: 1rem 1.1rem; }
+        .pd .card-foot { padding: .65rem 1.1rem; border-top: 1px solid var(--line); display: flex; align-items: center; gap: .6rem; }
+        .pd .card-foot .spacer { margin-left: auto; }
+
+        .status-pill { font-size: .72rem; font-weight: 600; border-radius: 999px; padding: .12rem .55rem; display: inline-flex; align-items: center; gap: .3rem; flex: none; }
+        .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; }
+        .status-pill.is-ok { color: var(--ok); background: var(--ok-bg); }
+        .status-pill.is-warn { color: var(--warn); background: var(--warn-bg); }
+        .status-pill.is-off { color: var(--muted); background: var(--canvas); }
+        .status-pill.is-danger { color: var(--danger); background: #FEF2F2; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; }
+        .dot-ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(22,163,74,.15); }
+        .dot-warn { background: var(--warn-dot); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+        .dot-off { background: #9aa1ad; }
+
+        .pill { font-size: .74rem; font-weight: 600; color: var(--brand-700); background: var(--brand-50); border-radius: 999px; padding: .1rem .55rem; }
+        .pill.is-warn { color: var(--warn); background: var(--warn-bg); }
+        .pill.is-ok { color: var(--ok); background: var(--ok-bg); }
+        .pill.is-danger { color: var(--danger); background: #FEF2F2; }
+        .pmark { width: 24px; height: 24px; flex: none; border-radius: 7px; background: var(--pc, #475569); color: #fff; font-size: .72rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+        .pmark.lg { width: 34px; height: 34px; border-radius: 9px; font-size: .95rem; }
+        .pmark.sm { width: 18px; height: 18px; border-radius: 5px; font-size: .62rem; }
+
+        .chip-row { display: flex; flex-wrap: wrap; gap: .4rem; }
+        .chip { display: inline-flex; align-items: center; gap: .3rem; border: 1px solid var(--line); border-radius: 999px; padding: .18rem .65rem; font-size: .78rem; color: var(--muted); background: var(--surface); cursor: pointer; transition: border-color .15s ease, color .15s ease, background-color .15s ease; }
+        .chip:hover { border-color: var(--brand-300); color: var(--text); }
+        .chip.on, .chip:has(input:checked) { background: var(--brand-50); border-color: var(--brand-300); color: var(--brand-700); font-weight: 600; }
+        .chip input { position: absolute; opacity: 0; pointer-events: none; }
+        .filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; padding: .85rem 1.1rem; border-bottom: 1px solid var(--line); }
+
+        .tag { font-size: .74rem; font-weight: 600; }
+        .tag.muted { color: rgba(255,255,255,.85); }
+        .muted { color: var(--muted); }
+        .small { font-size: .8rem; }
+        .num { font-variant-numeric: tabular-nums; }
+        .linklike { color: var(--brand-600); font-weight: 550; font-size: .85rem; background: none; border: 0; cursor: pointer; border-radius: 6px; padding: 0; text-decoration: none; }
+        .linklike:hover { color: var(--brand-700); text-decoration: underline; }
+        .linklike.is-danger { color: var(--danger); }
+
+        .tbl-wrap { overflow-x: auto; }
+        .tbl { width: 100%; border-collapse: collapse; font-size: .86rem; }
+        .tbl th { text-align: left; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; padding: .55rem .9rem; border-bottom: 1px solid var(--line-strong); background: var(--surface); white-space: nowrap; }
+        .tbl td { padding: .62rem .9rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+        .tbl tbody tr:last-child td { border-bottom: 0; }
+        .tbl tbody tr:hover { background: var(--canvas); }
+        .row-title { font-weight: 600; }
+        .row-sub { font-size: .75rem; color: var(--muted); }
+        .acts-cell { white-space: nowrap; text-align: right; }
+        .acts-cell .linklike { margin-left: .8rem; }
+
+        .acct-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: .9rem; }
+        .acct-card { padding: 1rem 1.1rem; display: grid; gap: .55rem; transition: box-shadow .15s ease; }
+        .acct-card:hover { box-shadow: var(--shadow-md); }
+        .acct-card .row1 { display: flex; align-items: center; gap: .65rem; }
+        .acct-card .name { font-weight: 600; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .acct-card .meta { font-size: .78rem; color: var(--muted); }
+        .acct-card .acts { display: flex; gap: .9rem; border-top: 1px solid var(--line); padding-top: .55rem; flex-wrap: wrap; }
+        .add-card { border: 1.5px dashed var(--line-strong); border-radius: var(--radius-lg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5rem; padding: 1.4rem; color: var(--muted); min-height: 130px; text-align: center; cursor: pointer; background: none; transition: border-color .15s ease, color .15s ease, background-color .15s ease; }
+        .add-card:hover { border-color: var(--brand-400); color: var(--brand-600); background: var(--brand-50); }
+
+        .composer { display: grid; gap: 1.1rem; align-items: start; }
+        details.options { border-top: 1px solid var(--line); padding: .6rem .1rem .8rem; font-size: .86rem; }
+        details.options summary { cursor: pointer; color: var(--muted); font-weight: 550; list-style: none; }
+        details.options summary::-webkit-details-marker { display: none; }
+        details.options summary::before { content: "▸ "; }
+        details.options[open] summary::before { content: "▾ "; }
+        .options-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .7rem; padding-top: .7rem; }
+
+        .step-badge { width: 22px; height: 22px; border-radius: 50%; background: var(--brand-500); color: #fff; font-size: .75rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+        .step-head { display: flex; align-items: center; gap: .55rem; margin-bottom: .7rem; font-weight: 650; }
+        .thumb-16 { aspect-ratio: 16/9; border-radius: 8px; border: 1px solid var(--line); }
+        .thumb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .9rem; }
+        .thumb-opt { position: relative; border-radius: 10px; border: 2px solid transparent; overflow: hidden; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease; }
+        .thumb-opt img { display: block; width: 100%; aspect-ratio: 16/9; object-fit: cover; }
+        .thumb-opt:hover { box-shadow: var(--shadow-md); }
+        .thumb-opt.selected { border-color: var(--brand-500); }
+        .thumb-opt .sel-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: .4rem; padding: .4rem .5rem; background: linear-gradient(transparent, rgba(8,10,16,.55)); }
+        .thumb-opt .sel-bar .tag { color: #fff; font-size: .74rem; font-weight: 600; }
+        .thumb-opt .sel-bar .btn { background: rgba(255,255,255,.92); border: 0; color: var(--ink-800); padding: .18rem .5rem; }
+
+        .queue { list-style: none; margin: 0; padding: .35rem 0; }
+        .queue li { display: flex; align-items: center; gap: .6rem; padding: .45rem 1.1rem; font-size: .85rem; }
+        .queue li + li { border-top: 1px solid var(--line); }
+        .queue .acct-name { flex: 1; }
+        .q-status { display: inline-flex; align-items: center; gap: .35rem; font-size: .74rem; color: var(--muted); }
     </style>
 </head>
 <body>
     <a class="skip-link" href="#main">Skip to content</a>
 
     {# ---- Navigation ----------------------------------------------------
-       One table drives the bar, the dropdowns, the active state and the
-       Ctrl/Cmd+K palette, so a page added here shows up in all four.
-       `prefixes` are matched against the request path; `exact` is for "/",
-       which would otherwise match everything. #}
+       One table drives the sidebar, the active state and the Ctrl/Cmd+K
+       palette, so a page added here shows up in all three. `prefixes` are
+       matched against the request path; `exact` is for "/", which would
+       otherwise match everything. #}
     {% set p = request.path %}
     {% set NAV = [
-        {'label': 'Compose', 'href': url_for('compose_page'), 'prefixes': ['/compose', '/posts']},
-        {'label': 'Create', 'items': [
-            {'label': 'Content Agent', 'desc': 'Briefs that research and draft for you', 'href': url_for('briefs_page'), 'prefixes': ['/briefs']},
-            {'label': 'Articles', 'desc': 'Long-form drafts', 'href': url_for('view_articles'), 'prefixes': ['/article', '/generate_article']},
-            {'label': 'Thumbnails', 'desc': 'Generate video thumbnails', 'href': url_for('thumbnails_page'), 'prefixes': ['/thumbnails']},
+        {'group': 'Create', 'items': [
+            {'label': 'Compose', 'ic': 'publish', 'href': url_for('compose_page'), 'prefixes': ['/compose', '/posts']},
+            {'label': 'Content Agent', 'ic': 'spark', 'desc': 'Briefs that research and draft for you', 'href': url_for('briefs_page'), 'prefixes': ['/briefs']},
+            {'label': 'Articles', 'ic': 'article', 'desc': 'Long-form drafts', 'href': url_for('view_articles'), 'prefixes': ['/article', '/generate_article']},
+            {'label': 'Thumbnails', 'ic': 'image', 'desc': 'Generate video thumbnails', 'href': url_for('thumbnails_page'), 'prefixes': ['/thumbnails']},
         ]},
-        {'label': 'Sources', 'items': [
-            {'label': 'Feeds', 'desc': 'Podcasts, RSS and YouTube', 'href': url_for('index'), 'exact': ['/'], 'prefixes': ['/feed', '/process', '/enqueue']},
-            {'label': 'Saved URLs', 'desc': 'Pages kept for generating posts', 'href': url_for('sources_page'), 'prefixes': ['/sources']},
-            {'label': 'Content Library', 'desc': 'Sort a media archive by year and category', 'href': url_for('library_page'), 'prefixes': ['/library']},
-            {'label': 'Processing status', 'desc': 'Episode transcripts and summaries', 'href': url_for('status_page'), 'prefixes': ['/status', '/episode']},
+        {'group': 'Sources', 'items': [
+            {'label': 'Feeds', 'ic': 'rss', 'desc': 'Podcasts, RSS and YouTube', 'href': url_for('index'), 'exact': ['/'], 'prefixes': ['/feed', '/process', '/enqueue']},
+            {'label': 'Saved URLs', 'ic': 'link', 'desc': 'Pages kept for generating posts', 'href': url_for('sources_page'), 'prefixes': ['/sources']},
+            {'label': 'Content Library', 'ic': 'folder', 'desc': 'Sort a media archive by year and category', 'href': url_for('library_page'), 'prefixes': ['/library']},
+            {'label': 'Processing status', 'ic': 'pulse', 'desc': 'Episode transcripts and summaries', 'href': url_for('status_page'), 'prefixes': ['/status', '/episode']},
+        ]},
+        {'group': 'Publish', 'items': [
+            {'label': 'Schedule', 'ic': 'calendar', 'desc': 'Monthly calendar of posts', 'href': url_for('schedule_page'), 'prefixes': ['/schedule']},
+            {'label': 'Publish Log', 'ic': 'list', 'desc': 'Queue and result of pushes', 'href': url_for('agent_jobs_page'), 'prefixes': ['/agent-jobs']},
+        ]},
+        {'group': 'Accounts', 'items': [
+            {'label': 'Accounts', 'ic': 'users', 'desc': 'Platform logins and connection state', 'href': url_for('accounts_page'), 'prefixes': ['/accounts']},
         ]},
     ] %}
-    {% set ACCOUNT_NAV = [
-        {'label': 'Activity log', 'desc': 'What changed, and when', 'href': url_for('activity_page'), 'prefixes': ['/activity']},
-        {'label': 'Usage & cost', 'desc': 'AI spend and token use', 'href': url_for('usage_page'), 'prefixes': ['/usage']},
-    ] %}
-    {# Admins also get the instance settings page (keys, models, signup). #}
-    {% if current_user and current_user['is_admin'] %}
-        {% set ACCOUNT_NAV = ACCOUNT_NAV + [
-            {'label': 'Settings', 'desc': 'Instance configuration and API keys', 'href': url_for('instance_settings'), 'prefixes': ['/settings']},
-        ] %}
-    {% endif %}
     {% macro on(item) -%}
         {%- for pre in item.get('exact', []) %}{% if p == pre %}1{% endif %}{% endfor -%}
         {%- for pre in item.get('prefixes', []) %}{% if p.startswith(pre) %}1{% endif %}{% endfor -%}
     {%- endmacro %}
 
-    <nav class="navbar navbar-expand-lg app-nav" aria-label="Main">
-        <div class="container">
-            <a class="navbar-brand" href="{{ url_for('index') }}">
-                <img src="{{ url_for('static', filename='logo.svg') }}" alt="" height="32" width="32">
-                <span class="brand-word">Insights</span>
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
-                    aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="mainNav">
-                <ul class="navbar-nav me-auto gap-lg-1">
-                    {% for item in NAV %}
-                        {% if item.get('items') %}
-                            {% set group_on = namespace(v=false) %}
-                            {% for sub in item['items'] %}{% if on(sub)|trim %}{% set group_on.v = true %}{% endif %}{% endfor %}
-                            <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle{% if group_on.v %} is-active{% endif %}" href="#" role="button"
-                                   data-bs-toggle="dropdown" aria-expanded="false">{{ item.label }}</a>
-                                <ul class="dropdown-menu">
-                                    {% for sub in item['items'] %}
-                                    <li><a class="dropdown-item{% if on(sub)|trim %} is-active{% endif %}" href="{{ sub.href }}"
-                                           data-palette-group="{{ item.label }}"{% if on(sub)|trim %} aria-current="page"{% endif %}>
-                                        {{ sub.label }}<small>{{ sub.desc }}</small></a></li>
-                                    {% endfor %}
-                                </ul>
-                            </li>
-                        {% else %}
-                            <li class="nav-item">
-                                <a class="nav-link{% if on(item)|trim %} is-active{% endif %}" href="{{ item.href }}"
-                                   {% if on(item)|trim %}aria-current="page"{% endif %}>{{ item.label }}</a>
-                            </li>
+    <div class="app" id="app">
+        {# ================= Sidebar ================= #}
+        <aside class="app-sidebar" id="sidebar" aria-label="Main">
+            <div class="side-brand">
+                <a class="navbar-brand" href="{{ url_for('index') }}">
+                    <img src="{{ url_for('static', filename='logo.svg') }}" alt="" height="32" width="32">
+                    <span class="brand-word">Insights</span>
+                </a>
+                <button type="button" class="collapse-btn" id="collapseBtn" aria-label="Collapse sidebar"
+                        aria-pressed="false" title="Collapse sidebar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="m14.5 6-6 6 6 6"/>
+                    </svg>
+                </button>
+            </div>
+            <nav class="side-nav">
+                {% for group in NAV %}
+                <div class="nav-group">{{ group.group }}</div>
+                {% for item in group['items'] %}
+                <a class="side-link{% if on(item)|trim %} is-active{% endif %}" href="{{ item.href }}"
+                   data-palette-group="{{ group.group }}"
+                   {% if on(item)|trim %}aria-current="page"{% endif %}>
+                    {% set ic = item.get('ic', 'publish') %}
+                    <svg class="side-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        {% if ic == 'spark' %}<path d="M12 3.5 13.9 9l5.6 1.9-5.6 1.9L12 18.5l-1.9-5.7L4.5 10.9 10.1 9 12 3.5Z"/>
+                        {% elif ic == 'article' %}<rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 9h8M8 12.5h8M8 16h4.5"/>
+                        {% elif ic == 'image' %}<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m5.5 18 4.5-4.5 3 3 3-3 2.5 2.5"/>
+                        {% elif ic == 'rss' %}<path d="M4.5 11.5a8 8 0 0 1 8 8"/><path d="M4.5 4.5a15 15 0 0 1 15 15"/><circle cx="5.8" cy="18.2" r="1.3" fill="currentColor" stroke="none"/>
+                        {% elif ic == 'link' %}<path d="M10 14a4.5 4.5 0 0 0 6.4.4l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.5 1.5"/><path d="M14 10a4.5 4.5 0 0 0-6.4-.4l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.5-1.5"/>
+                        {% elif ic == 'folder' %}<path d="M3.5 7A2.5 2.5 0 0 1 6 4.5h3.2l2 2H18A2.5 2.5 0 0 1 20.5 9v8a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 17V7Z"/>
+                        {% elif ic == 'pulse' %}<path d="M3.5 12h4l2-5.5 4.5 11 2-5.5h4.5"/>
+                        {% elif ic == 'calendar' %}<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 9.5h17M8.5 3v4M15.5 3v4"/>
+                        {% elif ic == 'list' %}<path d="M9.5 6.5h10M9.5 12h10M9.5 17.5h10"/><rect x="4" y="5.2" width="2.6" height="2.6" rx=".6"/><rect x="4" y="10.7" width="2.6" height="2.6" rx=".6"/><rect x="4" y="16.2" width="2.6" height="2.6" rx=".6"/>
+                        {% elif ic == 'users' %}<circle cx="9.5" cy="8" r="3.2"/><path d="M3.5 19.5a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.6"/><path d="M16 14.7a5 5 0 0 1 4.5 4.8"/>
+                        {% else %}<path d="M21 3 10.5 13.5"/><path d="M21 3l-6.8 18-3.7-7.5L3 9.8 21 3Z"/>
                         {% endif %}
-                    {% endfor %}
-                </ul>
+                    </svg>
+                    <span>{{ item.label }}</span>
+                </a>
+                {% endfor %}
+                {% endfor %}
+            </nav>
+            <div class="side-foot">
+                <button type="button" class="conn{% if current_user and not agent_online %} is-link{% endif %}" id="agentConn"
+                        {% if current_user and not agent_online %}onclick="location.href='{{ url_for('agent_jobs_page') }}#pair'"{% endif %}
+                        title="{{ '发布助手未连接 —— 推送到公众号等平台需要它' if current_user and not agent_online else '发布助手在线，可推送到需要登录态的平台' }}">
+                    <span class="conn-dot{% if agent_online %} conn-ok{% else %} conn-warn{% endif %}" aria-hidden="true"></span>
+                    <span class="conn-label">{% if agent_online %}发布助手 · 在线{% else %}发布助手 · 未连接{% endif %}</span>
+                </button>
+                <div class="foot-row">
+                    <a class="foot-icon" href="{{ url_for('activity_page') }}" title="Activity log" aria-label="Activity log"
+                       data-palette-group="Account">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.5V12l3 2"/></svg>
+                    </a>
+                    <a class="foot-icon" href="{{ url_for('usage_page') }}" title="Usage & cost" aria-label="Usage & cost"
+                       data-palette-group="Account">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 19.5v-4.5M9.5 19.5V9.5M14.5 19.5v-7M19.5 19.5v-14"/></svg>
+                    </a>
+                    {% if current_user and current_user['is_admin'] %}
+                    <a class="foot-icon" href="{{ url_for('instance_settings') }}" title="Settings" aria-label="Settings"
+                       data-palette-group="Account">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.2v2.4M12 18.4v2.4M3.2 12h2.4M18.4 12h2.4M5.8 5.8l1.7 1.7M16.5 16.5l1.7 1.7M18.2 5.8l-1.7 1.7M7.5 16.5l-1.7 1.7"/></svg>
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </aside>
 
-                <div class="d-flex flex-column flex-lg-row align-items-stretch align-items-lg-center gap-2">
+        {# Drawer scrim (mobile) #}
+        <button type="button" class="scrim" id="scrim" hidden aria-label="Close navigation"></button>
+
+        {# ================= Frame: topbar + content ================= #}
+        <div class="frame">
+            {% if current_user and not agent_online and request.endpoint != 'agent_jobs_page' %}
+            {# No heartbeat means the extension never paired on this browser, or just
+               dropped. Pairing happens once per browser; once the 30s heartbeat
+               resumes the strip is gone without anyone dismissing it. The queue page
+               is excluded — it already carries the offline badge and the button. #}
+            <div class="pair-strip" role="status">
+                <div class="d-flex flex-wrap align-items-center gap-2 px-3 py-2">
+                    <span class="pair-dot" aria-hidden="true"></span>
+                    <span>发布助手未连接 —— 推送到公众号等平台需要它。</span>
+                    <a class="ms-auto" href="{{ url_for('agent_jobs_page') }}#pair">去配对 →</a>
+                </div>
+            </div>
+            {% endif %}
+
+            <header class="topbar">
+                <button type="button" class="btn icon-btn menu-btn foot-icon" id="menuBtn" aria-label="Open navigation">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+                </button>
+                <div class="tb-mid">
+                    <h1 class="page-title">{% block header %}Insights{% endblock %}</h1>
+                    {% block subtitle %}{% endblock %}
+                </div>
+                <div class="tb-spacer"></div>
+                <div class="topbar-right">
+                    {% block page_actions %}{% endblock %}
                     <button type="button" class="nav-jump" id="paletteBtn" aria-haspopup="dialog" aria-controls="palette">
                         <span>Jump to…</span><kbd id="paletteKey">Ctrl K</kbd>
                     </button>
@@ -434,14 +696,14 @@
                             <span class="avatar" aria-hidden="true">{{ current_user['username'][:1]|upper }}</span>
                             <span class="d-lg-none">{{ current_user['username'] }}</span>
                         </a>
-                        <ul class="dropdown-menu dropdown-menu-lg-end">
+                        <ul class="dropdown-menu dropdown-menu-end">
                             <li class="px-3 py-2 small" style="color:var(--muted);">Signed in as <strong style="color:var(--text);">{{ current_user['username'] }}</strong></li>
                             <li><hr class="dropdown-divider"></li>
-                            {% for sub in ACCOUNT_NAV %}
-                            <li><a class="dropdown-item{% if on(sub)|trim %} is-active{% endif %}" href="{{ sub.href }}"
-                                   data-palette-group="Account"{% if on(sub)|trim %} aria-current="page"{% endif %}>
-                                {{ sub.label }}<small>{{ sub.desc }}</small></a></li>
-                            {% endfor %}
+                            <li><a class="dropdown-item" href="{{ url_for('activity_page') }}" data-palette-group="Account">Activity log</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('usage_page') }}" data-palette-group="Account">Usage & cost</a></li>
+                            {% if current_user['is_admin'] %}
+                            <li><a class="dropdown-item" href="{{ url_for('instance_settings') }}" data-palette-group="Account">Settings</a></li>
+                            {% endif %}
                             <li><hr class="dropdown-divider"></li>
                             <li>
                                 <form method="post" action="{{ url_for('logout') }}" class="m-0">
@@ -452,50 +714,27 @@
                     </div>
                     {% endif %}
                 </div>
-            </div>
-        </div>
-    </nav>
-
-    {% if current_user and not agent_online and request.endpoint != 'agent_jobs_page' %}
-    {# No heartbeat means the extension never paired on this browser, or just
-       dropped. Pairing happens once per browser; once the 30s heartbeat
-       resumes the strip is gone without anyone dismissing it. The agent jobs
-       page is excluded — it already carries the offline badge and the button. #}
-    <div class="pair-strip" role="status">
-        <div class="container d-flex flex-wrap align-items-center gap-2 py-2">
-            <span class="pair-dot" aria-hidden="true"></span>
-            <span>发布助手未连接 —— 推送到公众号等平台需要它。</span>
-            <a class="ms-auto" href="{{ url_for('agent_jobs_page') }}#pair">去配对 →</a>
-        </div>
-    </div>
-    {% endif %}
-
-    <div id="paletteBackdrop" class="palette-backdrop" hidden>
-        <div class="palette" id="palette" role="dialog" aria-modal="true" aria-label="Jump to a page">
-            <input id="paletteInput" type="text" role="combobox" aria-expanded="true" aria-controls="paletteList"
-                   aria-autocomplete="list" placeholder="Jump to a page…" autocomplete="off" spellcheck="false">
-            <ul id="paletteList" role="listbox"></ul>
-            <div class="palette-foot"><span>↑↓ to move</span><span>↵ to open</span><span>Esc to close</span></div>
-        </div>
-    </div>
-
-    <div id="loadingOverlay" class="d-none" role="status" aria-live="polite">
-        <div class="spinner-border" aria-hidden="true"></div>
-        <span class="ms-2">Processing...</span>
-    </div>
-
-    <main id="main" class="app-main">
-        <div class="container">
-            <header class="page-head">
-                <div>
-                    <h1 class="page-title">{% block header %}Insights{% endblock %}</h1>
-                    {% block subtitle %}{% endblock %}
-                </div>
-                <div class="page-actions">{% block page_actions %}{% endblock %}</div>
             </header>
-            {% block content %}{% endblock %}
+
+            <div id="paletteBackdrop" class="palette-backdrop" hidden>
+                <div class="palette" id="palette" role="dialog" aria-modal="true" aria-label="Jump to a page">
+                    <input id="paletteInput" type="text" role="combobox" aria-expanded="true" aria-controls="paletteList"
+                           aria-autocomplete="list" placeholder="Jump to a page…" autocomplete="off" spellcheck="false">
+                    <ul id="paletteList" role="listbox"></ul>
+                    <div class="palette-foot"><span>↑↓ to move</span><span>↵ to open</span><span>Esc to close</span></div>
+                </div>
+            </div>
+
+            <div id="loadingOverlay" class="d-none" role="status" aria-live="polite">
+                <div class="spinner-border" aria-hidden="true"></div>
+                <span class="ms-2">Processing...</span>
+            </div>
+
+            <main id="main" class="app-main">
+                {% block content %}{% endblock %}
+            </main>
         </div>
-    </main>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
@@ -519,6 +758,29 @@
         });
     });
 
+    /* Sidebar collapse + mobile drawer */
+    (function () {
+        var app = document.getElementById('app');
+        var collapseBtn = document.getElementById('collapseBtn');
+        var menuBtn = document.getElementById('menuBtn');
+        var scrim = document.getElementById('scrim');
+        if (!app) return;
+
+        if (collapseBtn) collapseBtn.addEventListener('click', function () {
+            var on = app.classList.toggle('is-collapsed');
+            collapseBtn.setAttribute('aria-pressed', String(on));
+        });
+
+        function closeDrawer() { app.classList.remove('side-open'); if (scrim) scrim.hidden = true; }
+        if (menuBtn) menuBtn.addEventListener('click', function () {
+            app.classList.add('side-open'); if (scrim) scrim.hidden = false;
+        });
+        if (scrim) scrim.addEventListener('click', closeDrawer);
+        if (document.querySelector('.side-nav')) document.querySelector('.side-nav').addEventListener('click', function (e) {
+            if (e.target.closest('a')) closeDrawer();
+        });
+    })();
+
     /* Jump palette: built from the links already in the nav, so it can't drift. */
     (function () {
         var backdrop = document.getElementById('paletteBackdrop');
@@ -531,11 +793,12 @@
         document.getElementById('paletteKey').textContent = isMac ? '⌘ K' : 'Ctrl K';
 
         var entries = [];
-        document.querySelectorAll('.app-nav a[href]').forEach(function (a) {
+        document.querySelectorAll('.side-link[href], .foot-icon[href], .topbar a[href], .dropdown-item[href]').forEach(function (a) {
             var href = a.getAttribute('href');
-            if (!href || href === '#' || a.classList.contains('navbar-brand')) return;
+            if (!href || href === '#') return;
             var group = a.getAttribute('data-palette-group') || '';
-            var label = a.classList.contains('dropdown-item') ? a.firstChild.textContent.trim() : a.textContent.trim();
+            var label = a.firstChild ? a.firstChild.textContent.trim() : '';
+            if (!label) label = (a.getAttribute('title') || a.getAttribute('aria-label') || '');
             entries.push({ label: label, group: group, href: href });
         });
 

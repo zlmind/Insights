@@ -2176,6 +2176,131 @@ def list_api_routes():
     routes.sort(key=lambda x: x['path'])
     return jsonify({'routes': routes, 'count': len(routes)})
 
+@app.route('/accounts')
+def accounts_page():
+    """Platform logins: what is connected, what needs a fresh login.
+
+    One card per platform. Each platform's row shows the current login
+    (or none), the last time it was seen, and the login state from the
+    agent's heartbeat — ok / logged_out / unknown / offline. Domestic
+    platforms log in through the browser, so "connecting" is a browser
+    login the agent then reports.
+    """
+    meta = {
+        'xiaohongshu': {'label': '小红书', 'color': '#FF2442'},
+        'douyin':      {'label': '抖音',   'color': '#FE2C55'},
+        'wechat':      {'label': '公众号', 'color': '#07C160'},
+        'zhihu':       {'label': '知乎',   'color': '#0084FF'},
+        'toutiao':     {'label': '头条号', 'color': '#ED1C24'},
+    }
+    login = agent_hub.login_states_view()
+    states = login.get('platforms', {})
+    accounts = list_social_accounts()
+    platforms = []
+    for pid, m in meta.items():
+        rows = [a for a in accounts if a['platform'] == pid]
+        st = states.get(pid, {'state': 'offline', 'at': None})
+        state = st.get('state', 'offline')
+        account = rows[0] if rows else None
+        platforms.append({
+            'id': pid,
+            'label': m['label'],
+            'color': m['color'],
+            'state': state,
+            'checked_at': st.get('at'),
+            'login_url': st.get('login_url'),
+            'account': {
+                'label': account['label'] or account['display_name'] or account['handle'] or account['external_id']
+                         if account else None,
+                'last_seen': account['updated_at'] if account else None,
+            } if account else None,
+        })
+    summary = {'logged_in': 0, 'logged_out': 0, 'unknown': 0}
+    for pl in platforms:
+        if pl['state'] in ('ok',): summary['logged_in'] += 1
+        elif pl['state'] == 'logged_out': summary['logged_out'] += 1
+        elif pl['state'] in ('unknown', 'offline'): summary['unknown'] += 1
+    return render_template('accounts.html', platforms=platforms,
+                           summary=summary,
+                           agent_online=agent_hub.agent_online())
+
+@app.route('/schedule')
+def schedule_page():
+    """Monthly calendar of scheduled posts plus slot and limit settings.
+
+    Reads today's month from the request (what you came from the sidebar or
+    a date picker) and lists that month's scheduled posts. The calendar is a
+    read view of queue data the composer writes: each entry shows on the date
+    it is scheduled for, tagged by platform colour, and carries its post
+    status. Below the grid sit the configured publish time slots and the
+    per-platform daily limits — both already stored in the database by the
+    composer.
+    """
+    year = request.args.get('year', type=int)
+    month = request.args.get('month', type=int)
+    today = datetime.now(timezone.utc).date()
+    year = year or today.year
+    month = month or today.month
+    month = max(1, min(12, month))
+    first = "%04d-%02d-01" % (year, month)
+    if month == 12:
+        nxt_y, nxt_m = year + 1, 1
+    else:
+        nxt_y, nxt_m = year, month + 1
+    last = "%04d-%02d-01" % (nxt_y, nxt_m)
+
+    rows = database.list_scheduled_posts(date_from=first, date_to=last, sort_order='asc')
+    PLATFORM_META = {
+        'xiaohongshu': {'label': '小红书', 'color': '#FF2442'},
+        'douyin':      {'label': '抖音',   'color': '#FE2C55'},
+        'wechat':      {'label': '公众号', 'color': '#07C160'},
+        'zhihu':       {'label': '知乎',   'color': '#0084FF'},
+        'toutiao':     {'label': '头条号', 'color': '#ED1C24'},
+    }
+    def _title(row):
+        for key in ('article_topic', 'social_content', 'standalone_content'):
+            val = row[key] if key in row.keys() else None
+            if val:
+                return (val if len(val) <= 40 else val[:40] + '…')
+        return '未命名'
+    events = []
+    for row in rows:
+        status = row['status'] if 'status' in row.keys() else 'pending'
+        if status == 'cancelled':
+            continue
+        when = row['scheduled_for'] if 'scheduled_for' in row.keys() else ''
+        platform = row['platform'] if 'platform' in row.keys() else ''
+        meta = PLATFORM_META.get(platform, {'label': platform, 'color': '#8b93a7'})
+        events.append({
+            'day': when[:10] if len(when) >= 10 else '',
+            'time': when[11:16] if len(when) >= 16 else '',
+            'platform': platform,
+            'label': meta['label'],
+            'color': meta['color'],
+            'title': _title(row),
+            'status': status,
+        })
+    events = [e for e in events if e['day']]
+    slots = database.list_time_slots()
+    slots_by_day = {d: [] for d in range(7)}
+    for s in slots:
+        d = s.get('day_of_week')
+        if d is None or d < -1 or d > 6:
+            continue
+        if d == -1:
+            for k in slots_by_day:
+                slots_by_day[k].append(s)
+        else:
+            slots_by_day[d].append(s)
+    import sqlite3 as _sqlite3
+    conn = _sqlite3.connect(database.DB_PATH)
+    limit_rows = conn.execute("SELECT platform, max_posts_per_day FROM platform_daily_limits").fetchall()
+    conn.close()
+    limits_list = [{'platform': r[0], 'max': r[1]} for r in limit_rows]
+    return render_template('schedule.html', year=year, month=month, events=events,
+                           slots=slots, slots_by_day=slots_by_day, limits=limits_list,
+                           platform_meta=PLATFORM_META)
+
 @app.route('/status')
 def status_page():
     """Display processing status for all episodes."""
@@ -2858,6 +2983,18 @@ def compose_page():
         for r in recent_img
     ]
 
+    # Local drafts for the composer's right-hand column: manual posts that no
+    # platform has marked used yet, grouped so one post aimed at several targets
+    # shows once. Derived from the in-memory groups — no extra DB pass.
+    draft_groups = [g for g in groups
+                    if g['head']['source_type'] == 'manual'
+                    and not any(r['used'] for r in g['platforms'].values())]
+    local_drafts = [{
+        'id': g['head']['id'],
+        'content': g['head']['content'],
+        'created_at': g['head']['created_at'],
+    } for g in draft_groups[:5]]
+
     # Curated, named prompts from the reusable library
     library_prompts_list = _serialize_library_prompts()
 
@@ -2875,6 +3012,7 @@ def compose_page():
         page_size=POSTS_PAGE_SIZE,
         max_batch=POSTS_MAX_BATCH,
         brief_filter_options=brief_filter_options,
+        local_drafts=local_drafts,
         saved_sources=saved_sources,
         selected_source=selected_source,
         recent_prompts=recent_prompts_list,

@@ -19,6 +19,16 @@
     var LANG = document.documentElement.getAttribute('data-lang') || 'en';
     if (LANG === 'en') return;
 
+    // Hold the page invisible until the first translation pass has run, so a
+    // fresh navigation never flashes its untranslated English. The matching
+    // CSS lives in base.html / login.html / signup.html (scoped to
+    // html[data-lang="zh"]); if it's missing this class is inert.
+    document.documentElement.classList.add('i18n-loading');
+    function reveal() { document.documentElement.classList.remove('i18n-loading'); }
+    // Backstop: never leave the page hidden. If the dictionary fetch hangs,
+    // show whatever is there (English) so the user isn't stuck on a blank page.
+    setTimeout(reveal, 8000);
+
     // Resolve the dictionary URL from this script's own address, so it works
     // wherever the app is mounted (currentScript is valid during sync load).
     var DICT_URL = '/static/i18n/zh.json';
@@ -67,6 +77,18 @@
         return false;
     }
 
+    // Attribute translation (placeholder / title / aria-label) still applies
+    // inside TEXTAREA, CODE and PRE — their text content is skipped, but a
+    // placeholder is UI chrome. Only script/style/noscript blocks and
+    // data-i18n-ignore subtrees are fully off-limits.
+    function inSkipAttrTree(node) {
+        for (var el = node; el && el.nodeType === 1; el = el.parentElement) {
+            if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'NOSCRIPT' ||
+                el.hasAttribute('data-i18n-ignore')) return true;
+        }
+        return false;
+    }
+
     function translateTextNode(node) {
         var raw = node.nodeValue;
         if (!raw) return;
@@ -108,11 +130,11 @@
         while ((n = walker.nextNode())) {
             if (!inSkipTree(n.parentElement)) translateTextNode(n);
         }
-        if (!inSkipTree(root)) translateElement(root);
+        if (!inSkipAttrTree(root)) translateElement(root);
         // Attributes of every descendant element.
         var els = root.querySelectorAll('*');
         for (var i = 0; i < els.length; i++) {
-            if (!inSkipTree(els[i])) translateElement(els[i]);
+            if (!inSkipAttrTree(els[i])) translateElement(els[i]);
         }
     }
 
@@ -148,6 +170,7 @@
     function start() {
         translateTree(document.body);
         if (document.title) translateElement(document.head.querySelector('title') || document.body);
+        reveal();
 
         // Pages render most of their UI from JavaScript after load; watch for
         // the additions and translate each batch as it lands.
@@ -185,5 +208,9 @@
                 start();
             }
         })
-        .catch(function () { /* no dictionary, no translation — page stays English */ });
+        .catch(function () {
+            // No dictionary, no translation — the page stays English. Reveal
+            // it so a failed fetch never leaves the page hidden.
+            reveal();
+        });
 })();

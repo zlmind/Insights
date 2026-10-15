@@ -1,222 +1,108 @@
 {% extends "base.html" %}
 {% block title %}Saved Sources | Insights{% endblock %}
-{% block header %}Saved Sources{% endblock %}
-{% block subtitle %}<p class="page-subtitle">Pages you've saved, ready to turn into posts.</p>{% endblock %}
-{% block page_actions %}<button type="button" class="btn btn-primary" onclick="showAddUrlModal()">+ Add URL</button>{% endblock %}
+{% block header %}收藏的链接{% endblock %}
+{% block subtitle %}<p class="page-subtitle">保存过的文章、YouTube、GitHub 链接，随时可生成帖子。</p>{% endblock %}
 {% block content %}
+<div class="pd">
 <style>
     /* Fix long URLs overflowing in modal */
     #sourceDetailsContent a {
         word-break: break-all;
         overflow-wrap: break-word;
     }
-    .source-card {
-        border: 1px solid #dee2e6;
-        border-radius: 12px;
-        padding: 1.25rem;
-        margin-bottom: 1rem;
-        background: white;
-        transition: all 0.2s ease;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-    }
-    .source-card:hover {
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        transform: translateY(-2px);
-    }
-    .source-thumbnail {
-        width: 120px;
-        height: 80px;
-        object-fit: cover;
-        border-radius: 8px;
-        background: var(--brand-500, #1447e6);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 2rem;
-        flex-shrink: 0;
-    }
-    .source-thumbnail img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        border-radius: 8px;
-    }
-    .source-title {
-        font-size: 1.1rem;
-        font-weight: 600;
-        color: #212529;
-        margin-bottom: 0.25rem;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-    }
-    .source-url {
-        font-size: 0.8rem;
-        color: #6c757d;
-        text-decoration: none;
-        display: block;
-        margin-bottom: 0.5rem;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        max-width: 100%;
-    }
-    .source-card .flex-grow-1 {
-        min-width: 0;
-        overflow: hidden;
-    }
-    .source-url:hover {
-        color: #0d6efd;
-    }
-    .source-description {
-        font-size: 0.9rem;
-        color: #495057;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-        margin-bottom: 0.5rem;
-    }
-    .source-meta {
-        font-size: 0.75rem;
-        color: #6c757d;
-    }
-    .source-actions {
-        display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-    }
-    .empty-state {
-        text-align: center;
-        padding: 4rem 2rem;
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        border-radius: 12px;
-        margin-top: 2rem;
-    }
-    .empty-state h3 {
-        color: #495057;
-        margin-bottom: 1rem;
-    }
-    .empty-state p {
-        color: #6c757d;
-        margin-bottom: 1.5rem;
-    }
+    .hero-letter { text-transform: capitalize; }
 </style>
 
-{% if sources %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <span class="results-count">
-        <strong>{{ sources|length }}</strong> saved source{% if sources|length != 1 %}s{% endif %}
-    </span>
+{% set PLAT_COLORS = {'youtube': '#FF0000', 'github': '#24292f'} %}
+
+<div class="card" style="margin-bottom:1rem">
+    <div class="filter-row" style="border-bottom:0">
+        <input type="url" class="input" id="barUrl" style="flex:1; min-width:240px"
+               placeholder="https://example.com/article、YouTube 链接或 GitHub 仓库"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();addUrlFromBar();}">
+        <button class="btn btn-primary" onclick="addUrlFromBar()">＋ Save</button>
+        <span class="small muted" id="barStatus" style="flex-basis:100%"></span>
+    </div>
 </div>
 
-<div class="sources-list">
-    {% for source in sources %}
-    <div class="source-card" data-source-id="{{ source.id }}">
-        <div class="d-flex gap-3">
-            <div class="source-thumbnail">
-                {% if source.og_image %}
-                <img src="{{ source.og_image }}" alt="Preview" onerror="this.style.display='none'; this.parentElement.innerHTML='🔗';">
-                {% else %}
-                🔗
-                {% endif %}
+{% if sources %}
+<div class="card">
+    <div class="card-head"><b>收藏的链接</b><span class="pill" id="sourceCount">{{ sources|length }}</span></div>
+    <div class="card-body" style="padding-top:1rem">
+    <div class="acct-grid" id="sourcesGrid">
+        {% for s in sources %}
+        {% set url_l = (s.url or '').lower() %}
+        {% if s.is_youtube %}
+            {% set pc = '#FF0000' %}
+            {% set letter = 'YT' %}
+            {% set type = 'YouTube' %}
+            {% if s.episode_status == 'complete' %}
+                {% set pill_state, pill_dot, pill_txt = 'is-ok', 'dot-ok', 'Transcribed' %}
+            {% elif s.episode_status == 'processing' %}
+                {% set pill_state, pill_dot, pill_txt = 'is-warn', 'dot-warn', 'Processing' %}
+            {% elif s.episode_status == 'queued' %}
+                {% set pill_state, pill_dot, pill_txt = 'is-off', 'dot-off', 'Queued' %}
+            {% elif s.episode_status == 'error' %}
+                {% set pill_state, pill_dot, pill_txt = 'is-danger', 'dot-warn', 'Error' %}
+            {% else %}
+                {% set pill_state, pill_dot, pill_txt = 'is-ok', 'dot-ok', 'Saved' %}
+            {% endif %}
+        {% else %}
+            {% if 'github' in url_l %}
+                {% set pc, letter, type = '#24292f', (s.title or 'G').strip()[:1]|upper or 'G', 'GitHub' %}
+            {% else %}
+                {% set pc, letter, type = '#475569', (s.title or 'L').strip()[:1]|upper or 'L', 'Link' %}
+            {% endif %}
+            {% set pill_state, pill_dot, pill_txt = 'is-ok', 'dot-ok', 'Saved' %}
+        {% endif %}
+        {% set host = s.url.split('//')[-1].split('/')[0] if s.url else '' %}
+        <div class="card acct-card" data-source-id="{{ s.id }}">
+            <div class="row1">
+                <span class="pmark hero-letter" style="--pc: {{ pc }}">{{ letter }}</span>
+                <span class="name" title="{{ s.title or 'Untitled' }}">{{ s.title or 'Untitled' }}</span>
+                <span class="status-pill {{ pill_state }}"><span class="dot {{ pill_dot }}"></span>{{ pill_txt }}</span>
             </div>
-            <div class="flex-grow-1">
-                <h5 class="source-title">{{ source.title or 'Untitled' }}</h5>
-                <a href="{{ source.url }}" target="_blank" rel="noopener" class="source-url">
-                    {{ source.url }}
-                </a>
-                {% if source.description %}
-                <p class="source-description">{{ source.description }}</p>
-                {% endif %}
-                <div class="source-meta">
-                    {% if source.is_youtube %}
-                    <span class="badge" style="background-color: #ff0000; color: #fff;">▶ YouTube</span>
-                    {% endif %}
-                    {% if source.is_youtube and source.episode_status == 'complete' %}
-                    <span class="badge bg-success">Transcribed</span>
-                    {% elif source.is_youtube and source.episode_status == 'processing' %}
-                    <span class="badge bg-warning text-dark">Processing</span>
-                    {% elif source.is_youtube and source.episode_status == 'queued' %}
-                    <span class="badge bg-secondary">Queued</span>
-                    {% elif source.is_youtube and source.episode_status == 'error' %}
-                    <span class="badge bg-danger">Error</span>
-                    {% endif %}
-                    <span title="Created">📅 Saved: {{ source.created_at[:10] if source.created_at else 'Unknown' }}</span>
-                    {% if source.last_used_at %}
-                    <span class="ms-3" title="Last used">🕐 Last used: {{ source.last_used_at[:10] }}</span>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="source-actions align-self-center">
-                {% if source.is_youtube %}
-                    {% if source.episode_status == 'complete' %}
-                <a href="{{ url_for('process_episode', url=source.url, title=source.title) }}"
-                   class="btn btn-sm btn-success" title="View transcription results">
-                    View Results
-                </a>
-                <a href="{{ url_for('compose_page') }}?source_id={{ source.id }}" 
-                   class="btn btn-sm btn-primary" title="Generate posts from this source">
-                    ✨ Generate Posts
-                </a>
-                    {% elif source.episode_status in ('queued', 'processing') %}
-                <a href="{{ url_for('status_page') }}" class="btn btn-sm btn-warning" title="View processing status">
-                    ⏳ In Progress
-                </a>
+            <span class="meta">{{ host }} · {{ type }} · 保存于 {{ s.created_at[:10] if s.created_at else '—' }}</span>
+            <div class="acts">
+                {% if s.is_youtube %}
+                    {% if s.episode_status == 'complete' %}
+                <a class="linklike" href="{{ url_for('process_episode', url=s.url, title=s.title) }}">View results</a>
+                <a class="linklike" href="{{ url_for('compose_page') }}?source_id={{ s.id }}">Generate posts</a>
+                    {% elif s.episode_status in ('queued', 'processing') %}
+                <a class="linklike" href="{{ url_for('status_page') }}">In progress</a>
                     {% else %}
-                <form method="post" action="{{ url_for('transcribe_source', source_id=source.id) }}" class="d-inline">
-                    <button type="submit" class="btn btn-sm btn-primary" title="Transcribe this YouTube video">
-                        🎙️ Transcribe
-                    </button>
+                <form method="post" action="{{ url_for('transcribe_source', source_id=s.id) }}" class="d-inline">
+                    <button type="submit" class="linklike">Transcribe</button>
                 </form>
                     {% endif %}
-                <button type="button" class="btn btn-sm btn-outline-secondary"
-                        onclick="refreshSource({{ source.id }})" title="Refresh metadata from YouTube">
-                    🔄 Refresh
-                </button>
+                <button type="button" class="linklike" onclick="refreshSource({{ s.id }})">Refresh</button>
                 {% else %}
-                <a href="{{ url_for('compose_page') }}?source_id={{ source.id }}" 
-                   class="btn btn-sm btn-primary" title="Generate posts from this source">
-                    ✨ Generate Posts
-                </a>
-                <button type="button" class="btn btn-sm btn-outline-secondary"
-                        onclick="refreshSource({{ source.id }})" title="Refresh metadata from source">
-                    🔄 Refresh
-                </button>
+                <a class="linklike" href="{{ url_for('compose_page') }}?source_id={{ s.id }}">Generate posts</a>
+                <button type="button" class="linklike" onclick="refreshSource({{ s.id }})">Refresh</button>
                 {% endif %}
-                <button type="button" class="btn btn-sm btn-outline-info"
-                        onclick="viewSourcePosts({{ source.id }})" title="View posts generated from this source">
-                    💬 Posts{% if source.post_count %} ({{ source.post_count }}){% endif %}
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" 
-                        onclick="viewSourceDetails({{ source.id }})" title="View full content">
-                    👁️ View
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-danger" 
-                        onclick="confirmDeleteSource({{ source.id }}, '{{ source.title|e }}')" title="Delete">
-                    🗑️
-                </button>
+                <button type="button" class="linklike" onclick="viewSourcePosts({{ s.id }})">Posts{% if s.post_count %} ({{ s.post_count }}){% endif %}</button>
+                <button type="button" class="linklike" onclick="viewSourceDetails({{ s.id }})">View</button>
+                <button type="button" class="linklike is-danger" onclick="confirmDeleteSource({{ s.id }}, '{{ s.title|e }}')">Remove</button>
             </div>
         </div>
+        {% endfor %}
+        <button class="add-card" onclick="showAddUrlModal()">
+            <span style="font-size:1.3rem">＋</span>
+            <span>粘贴文章、视频或仓库链接</span>
+        </button>
     </div>
-    {% endfor %}
+    </div>
 </div>
 {% else %}
-<div class="empty-state">
-    <h3>📭 No Saved Sources Yet</h3>
-    <p>Add article URLs or YouTube videos to extract and save content, or use the Command Center.</p>
-    <div class="d-flex gap-2 justify-content-center">
-        <button type="button" class="btn btn-primary" onclick="showAddUrlModal()">
-            ➕ Add URL
-        </button>
-        <a href="{{ url_for('compose_page') }}" class="btn btn-outline-primary">
-            ✨ Go to Command Center
-        </a>
+<div class="card">
+    <div class="card-body" style="display:grid; place-items:center; gap:.5rem; padding:2.6rem 1rem; text-align:center; color:var(--muted)">
+        <div style="font-size:1.6rem">🗂</div>
+        <div class="small">还没有收藏的链接。粘贴一个文章、YouTube 或 GitHub 链接开始。</div>
+        <button type="button" class="btn btn-primary" style="margin-top:.4rem" onclick="showAddUrlModal()">＋ Save a link</button>
     </div>
 </div>
 {% endif %}
+</div>
 
 <!-- Source Details Modal -->
 <div class="modal fade" id="sourceDetailsModal" tabindex="-1" aria-labelledby="sourceDetailsModalLabel" aria-hidden="true">
@@ -557,95 +443,105 @@ function addSourceCardToPage(source, opts) {
     opts = opts || {};
     // Check if we're showing the empty state
     const emptyState = document.querySelector('.empty-state');
-    if (emptyState) {
+    if (emptyState || !document.getElementById('sourcesGrid')) {
         location.reload();
         return;
     }
-    
-    // Update the count
-    const countSpan = document.querySelector('.results-count strong');
-    if (countSpan) {
-        const currentCount = parseInt(countSpan.textContent) || 0;
-        countSpan.textContent = currentCount + 1;
-        
-        const countText = countSpan.parentElement;
-        if (currentCount + 1 === 1) {
-            countText.innerHTML = '<strong>1</strong> saved source';
-        } else {
-            countText.innerHTML = `<strong>${currentCount + 1}</strong> saved sources`;
-        }
+
+    // Update the count pill
+    const countPill = document.getElementById('sourceCount');
+    if (countPill) {
+        countPill.textContent = (parseInt(countPill.textContent) || 0) + 1;
     }
-    
-    // Create new source card
-    const sourcesList = document.querySelector('.sources-list');
-    if (sourcesList) {
+
+    // Create new source card in the acct-grid, before the add-card button
+    const grid = document.getElementById('sourcesGrid');
+    if (grid) {
         const card = document.createElement('div');
-        card.className = 'source-card';
+        card.className = 'card acct-card';
         card.setAttribute('data-source-id', source.id);
-        
-        let thumbnailContent;
-        if (source.og_image) {
-            thumbnailContent = `<img src="${source.og_image}" alt="Preview" onerror="this.style.display='none'; this.parentElement.innerHTML='🔗';">`;
-        } else {
-            thumbnailContent = '🔗';
-        }
-        
-        const descriptionHtml = source.description 
-            ? `<p class="source-description">${escapeHtml(source.description)}</p>`
-            : '';
-        
+
+        const isYt = source.is_youtube;
+        const url_l = (source.url || '').toLowerCase();
+        const color = isYt ? '#FF0000' : (url_l.indexOf('github') !== -1 ? '#24292f' : '#475569');
+        const letter = isYt ? 'YT' : ((source.title || 'L').trim()[0] || 'L').toUpperCase();
+        const type = isYt ? 'YouTube' : (url_l.indexOf('github') !== -1 ? 'GitHub' : 'Link');
+        const host = (source.url || '').split('//').pop().split('/')[0];
         const today = new Date().toISOString().slice(0, 10);
 
-        let badgeHtml = '';
+        let pill = '<span class="status-pill is-ok"><span class="dot dot-ok"></span>Saved</span>';
+        if (isYt && source.episode_status) {
+            const map = {
+                complete:  ['is-ok', 'dot-ok', 'Transcribed'],
+                processing:['is-warn', 'dot-warn', 'Processing'],
+                queued:    ['is-off', 'dot-off', 'Queued'],
+                error:     ['is-danger', 'dot-warn', 'Error'],
+            };
+            const s = map[source.episode_status];
+            if (s) pill = `<span class="status-pill ${s[0]}"><span class="dot ${s[1]}"></span>${s[2]}</span>`;
+        }
 
-        let actionsHtml = `
-            <a href="{{ url_for('compose_page') }}?source_id=${source.id}" 
-               class="btn btn-sm btn-primary" title="Generate posts from this source">
-                ✨ Generate Posts
-            </a>`;
-        actionsHtml += `
-            <button type="button" class="btn btn-sm btn-outline-secondary"
-                    onclick="refreshSource(${source.id})" title="Refresh metadata from source">
-                🔄 Refresh
-            </button>`;
-        actionsHtml += `
-            <button type="button" class="btn btn-sm btn-outline-info"
-                    onclick="viewSourcePosts(${source.id})" title="View posts generated from this source">
-                💬 Posts
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" 
-                    onclick="viewSourceDetails(${source.id})" title="View full content">
-                👁️ View
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-danger" 
-                    onclick="confirmDeleteSource(${source.id}, '${escapeHtml(source.title)}')" title="Delete">
-                🗑️
-            </button>`;
-        
         card.innerHTML = `
-            <div class="d-flex gap-3">
-                <div class="source-thumbnail">
-                    ${thumbnailContent}
-                </div>
-                <div class="flex-grow-1">
-                    <h5 class="source-title">${escapeHtml(source.title || 'Untitled')}</h5>
-                    <a href="${escapeHtml(source.url)}" target="_blank" rel="noopener" class="source-url">
-                        ${escapeHtml(source.url)}
-                    </a>
-                    ${descriptionHtml}
-                    <div class="source-meta">
-                        ${badgeHtml}
-                        <span title="Created">📅 Saved: ${today}</span>
-                    </div>
-                </div>
-                <div class="source-actions align-self-center">
-                    ${actionsHtml}
-                </div>
+            <div class="row1">
+                <span class="pmark" style="--pc: ${color}">${letter}</span>
+                <span class="name" title="${escapeHtml(source.title || 'Untitled')}">${escapeHtml(source.title || 'Untitled')}</span>
+                ${pill}
+            </div>
+            <span class="meta">${escapeHtml(host)} · ${type} · 保存于 ${today}</span>
+            <div class="acts">
+                <a class="linklike" href="{{ url_for('compose_page') }}?source_id=${source.id}">Generate posts</a>
+                <button type="button" class="linklike" onclick="refreshSource(${source.id})">Refresh</button>
+                <button type="button" class="linklike" onclick="viewSourcePosts(${source.id})">Posts</button>
+                <button type="button" class="linklike" onclick="viewSourceDetails(${source.id})">View</button>
+                <button type="button" class="linklike is-danger" onclick="confirmDeleteSource(${source.id}, '${escapeHtml(source.title)}')">Remove</button>
             </div>
         `;
-        
-        sourcesList.insertBefore(card, sourcesList.firstChild);
+
+        const addCard = grid.querySelector('.add-card');
+        if (addCard) {
+            grid.insertBefore(card, addCard);
+        } else {
+            grid.appendChild(card);
+        }
     }
+}
+
+function addUrlFromBar() {
+    const input = document.getElementById('barUrl');
+    const statusEl = document.getElementById('barStatus');
+    const url = (input.value || '').trim();
+    if (!url) { if (statusEl) statusEl.textContent = '请输入一个链接。'; return; }
+    if (statusEl) statusEl.textContent = '';
+    const btn = event && event.target && event.target.closest ? event.target.closest('input,button') : null;
+    if (btn) btn.disabled = true;
+
+    fetch('/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url })
+    })
+    .then(response => response.json().then(data => ({ status: response.status, data })))
+    .then(({ status, data }) => {
+        if (btn) btn.disabled = false;
+        if (status === 409 && data.existing_id) {
+            if (statusEl) statusEl.textContent = '这个链接已经保存过。';
+            viewSourceDetails(data.existing_id);
+            return;
+        }
+        if (data.error) { if (statusEl) statusEl.textContent = data.error; return; }
+        input.value = '';
+        if (data.is_youtube) {
+            if (statusEl) statusEl.textContent = 'YouTube 链接已保存，正在准备转写…';
+            setTimeout(() => location.reload(), 1200);
+        } else {
+            if (statusEl) statusEl.textContent = '已保存。';
+            addSourceCardToPage(data.source);
+        }
+    })
+    .catch(() => {
+        if (btn) btn.disabled = false;
+        if (statusEl) statusEl.textContent = '保存失败，请重试。';
+    });
 }
 
 function escapeHtml(text) {
@@ -773,7 +669,7 @@ function refreshSource(sourceId) {
     const btn = card ? card.querySelector('[onclick*="refreshSource"]') : null;
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>';
+        btn.textContent = '…';
     }
 
     fetch(`/sources/${sourceId}/reextract`, { method: 'POST' })
@@ -781,32 +677,32 @@ function refreshSource(sourceId) {
         .then(data => {
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '🔄 Refresh';
+                btn.textContent = 'Refresh';
             }
             if (data.error) {
                 alert('Refresh failed: ' + data.error);
                 return;
             }
             if (card && data.source) {
-                const titleEl = card.querySelector('.source-title');
-                const descEl = card.querySelector('.source-description');
-                if (titleEl) titleEl.textContent = data.source.title || 'Untitled';
-                if (descEl) descEl.textContent = data.source.description || '';
+                const nameEl = card.querySelector('.acct-card .name, .name');
+                if (nameEl) nameEl.textContent = data.source.title || 'Untitled';
+                nameEl.setAttribute('title', data.source.title || 'Untitled');
 
-                const thumbEl = card.querySelector('.source-thumbnail');
-                if (thumbEl) {
-                    if (data.source.og_image) {
-                        thumbEl.innerHTML = `<img src="${escapeHtml(data.source.og_image)}" alt="Preview" onerror="this.style.display='none'; this.parentElement.innerHTML='🔗';">`;
-                    } else {
-                        thumbEl.innerHTML = '🔗';
-                    }
-                }
+                const url_l = (data.source.url || '').toLowerCase();
+                const isYt = data.source.is_youtube;
+                const color = isYt ? '#FF0000' : (url_l.indexOf('github') !== -1 ? '#24292f' : '#475569');
+                const letter = isYt ? 'YT' : ((data.source.title || 'L').trim()[0] || 'L').toUpperCase();
+                const pmark = card.querySelector('.pmark');
+                if (pmark) { pmark.style.setProperty('--pc', color); pmark.textContent = letter; }
+
+                const metaEl = card.querySelector('.acct-card .meta, .meta');
+                if (metaEl) metaEl.textContent = `${(data.source.url || '').split('//').pop().split('/')[0]} · ${isYt ? 'YouTube' : url_l.indexOf('github') !== -1 ? 'GitHub' : 'Link'}`;
             }
         })
         .catch(() => {
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '🔄 Refresh';
+                btn.textContent = 'Refresh';
             }
             alert('Refresh failed. Please try again.');
         });
@@ -833,9 +729,15 @@ function deleteSource() {
                 }
                 // Close modal
                 bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
-                
+
+                // Update count pill
+                const countPill = document.getElementById('sourceCount');
+                if (countPill) {
+                    countPill.textContent = Math.max(0, (parseInt(countPill.textContent) || 1) - 1);
+                }
+
                 // Check if no sources left
-                const remainingCards = document.querySelectorAll('.source-card');
+                const remainingCards = document.querySelectorAll('.acct-card');
                 if (remainingCards.length === 0) {
                     location.reload();
                 }

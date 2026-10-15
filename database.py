@@ -124,6 +124,8 @@ def init_db(db_path: str = DB_PATH) -> None:
             conn.execute("ALTER TABLE scheduled_posts ADD COLUMN standalone_post_id INTEGER")
         if "retry_count" not in sched_columns:
             conn.execute("ALTER TABLE scheduled_posts ADD COLUMN retry_count INTEGER DEFAULT 0")
+        if "account_id" not in sched_columns:
+            conn.execute("ALTER TABLE scheduled_posts ADD COLUMN account_id INTEGER")
         # Schedule settings for configurable time slots
         conn.execute(
             """
@@ -211,6 +213,8 @@ def init_db(db_path: str = DB_PATH) -> None:
             conn.execute("ALTER TABLE standalone_posts ADD COLUMN ig_collaborators TEXT")
         if "ig_reel_tags" not in standalone_columns:
             conn.execute("ALTER TABLE standalone_posts ADD COLUMN ig_reel_tags TEXT")
+        if "account_id" not in standalone_columns:
+            conn.execute("ALTER TABLE standalone_posts ADD COLUMN account_id INTEGER")
         # A Reel's collaborators were first kept inside ig_reel_options. They now share
         # ig_collaborators with every other format, so one list is what Compose shows
         # and what publishes. Move any still in the old place; a row is touched only

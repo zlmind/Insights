@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Command Center | Insights{% endblock %}
-{% block header %}Command Center{% endblock %}
-{% block subtitle %}<p class="page-subtitle">Generate AI-powered social posts from prompts, URLs, text, images or files.</p>{% endblock %}
+{% block title %}发布 | Insights{% endblock %}
+{% block header %}发布{% endblock %}
+{% block subtitle %}<p class="page-subtitle">选择平台、撰写内容、确认预览，一屏完成发布；生成结果在下方的已保存帖子中逐条编辑、配图、入队。</p>{% endblock %}
 {% block content %}
 {# with context: the card macro reads PUBLISH_TARGETS, which the app injects
    per request, and an import without context would not see it. #}
@@ -324,8 +324,158 @@
     #posts-filter-bar .form-select { min-width: 7.5rem; }
 </style>
 
-<!-- Generator Card -->
-<div class="card mb-4" style="border-radius: 12px; overflow: hidden;">
+<style>
+    /* ---- 发布工作台（三栏 composer）—— scoped to #composerWrap -----------
+       Mirrors the prototype's 发布 screen (docs/prototype/redesign.html 182-280,
+       378-398) but scoped so the legacy saved-posts grid below keeps its own
+       Bootstrap look. position:static on the columns on purpose: the grid below
+       scrolls and sticky columns would float over it. */
+    #composerWrap .composer {
+        display: grid; grid-template-columns: 236px minmax(0, 1fr) 330px;
+        gap: 1.1rem; align-items: start;
+    }
+    #composerWrap .compose-col { position: static; }
+    #composerWrap .compose-col.is-editor { position: static; }
+    #composerWrap .compose-side { display: grid; gap: 1rem; align-content: start; }
+    #composerWrap .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+    #composerWrap .card-head { display: flex; align-items: center; gap: .6rem; padding: .85rem 1.1rem; border-bottom: 1px solid var(--line); }
+    #composerWrap .card-head b { font-size: .95rem; font-weight: 650; }
+    #composerWrap .card-head .spacer { margin-left: auto; }
+    #composerWrap .card-body { padding: 1rem 1.1rem; }
+    #composerWrap .card-foot { padding: .65rem 1.1rem; border-top: 1px solid var(--line); display: flex; align-items: center; gap: .6rem; }
+    #composerWrap .panel-foot { padding: .6rem 1.1rem; border-top: 1px solid var(--line); text-align: center; }
+    #composerWrap .pill { font-size: .74rem; font-weight: 600; color: var(--brand-700); background: var(--brand-50); border-radius: 999px; padding: .1rem .55rem; }
+    #composerWrap .muted { color: var(--muted); }
+    #composerWrap .small { font-size: .8rem; }
+    #composerWrap .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+    #composerWrap .dot-ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(22,163,74,.15); }
+    #composerWrap .dot-warn { background: var(--warn-dot); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+    #composerWrap .dot-queue { background: var(--brand-400); }
+    #composerWrap .pmark { width: 24px; height: 24px; flex: none; border-radius: 7px; background: var(--pc, #475569); color: #fff; font-size: .72rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+    #composerWrap .pmark.sm { width: 18px; height: 18px; border-radius: 5px; font-size: .62rem; }
+    #composerWrap .pmark.lg { width: 34px; height: 34px; border-radius: 9px; font-size: .95rem; }
+
+    /* Account rows (栏1 发布到) */
+    #composerWrap .acct { display: flex; align-items: center; gap: .6rem; padding: .5rem 1.1rem; cursor: pointer; transition: background-color .12s ease; }
+    #composerWrap .acct:hover { background: var(--canvas); }
+    #composerWrap .cbx { width: 17px; height: 17px; flex: none; border-radius: 5px; border: 1.5px solid var(--line-strong); background: var(--surface); display: inline-flex; align-items: center; justify-content: center; transition: background-color .12s ease, border-color .12s ease; }
+    #composerWrap .cbx::after { content: '✓'; width: 12px; height: 12px; font-size: .68rem; font-weight: 800; color: #fff; text-align: center; line-height: 1; opacity: 0; transition: opacity .12s ease; }
+    #composerWrap .acct input:checked ~ .cbx { background: var(--brand-500); border-color: var(--brand-500); }
+    #composerWrap .acct input:checked ~ .cbx::after { opacity: 1; }
+    #composerWrap .acct input:focus-visible ~ .cbx { outline: 2px solid var(--brand-500); outline-offset: 2px; }
+    #composerWrap .acct-txt { min-width: 0; display: grid; }
+    #composerWrap .acct-name { font-weight: 550; font-size: .87rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #composerWrap .acct-sub { font-size: .75rem; color: var(--muted); display: flex; align-items: center; gap: .35rem; }
+    #composerWrap .acct.is-off { cursor: not-allowed; opacity: .55; }
+    #composerWrap .acct.is-off input { pointer-events: none; }
+    #composerWrap .linklike { color: var(--brand-600); font-weight: 550; font-size: .85rem; background: none; border: 0; cursor: pointer; border-radius: 6px; text-decoration: none; }
+    #composerWrap .linklike:hover { color: var(--brand-700); text-decoration: underline; }
+    #composerWrap .linklike.is-danger { color: var(--danger); }
+    #composerWrap .hint { font-size: .76rem; color: var(--muted); padding: .35rem 1.1rem 0; line-height: 1.5; }
+
+    /* Preview (栏3) */
+    #composerWrap .tabs { display: flex; gap: .2rem; padding: .5rem .6rem 0; border-bottom: 1px solid var(--line); }
+    #composerWrap .tabs [role="tab"] { padding: .45rem .8rem; border-radius: 8px 8px 0 0; color: var(--muted); font-weight: 550; font-size: .86rem; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s ease, border-color .15s ease, background-color .15s ease; }
+    #composerWrap .tabs [role="tab"]:hover { color: var(--text); background: var(--canvas); }
+    #composerWrap .tabs [role="tab"][aria-selected="true"] { color: var(--brand-600); border-bottom-color: var(--brand-500); }
+    #composerWrap .preview { padding: 1rem 1.1rem; }
+    #composerWrap .prev-head { display: flex; align-items: center; gap: .6rem; margin-bottom: .8rem; }
+    #composerWrap .prev-acc { font-weight: 600; font-size: .87rem; }
+    #composerWrap .prev-plat { font-size: .74rem; color: var(--muted); }
+    #composerWrap .prev-title { font-size: 1.02rem; font-weight: 650; line-height: 1.35; margin-bottom: .45rem; }
+    #composerWrap .prev-body { color: var(--ink-800); font-size: .87rem; line-height: 1.7; overflow-wrap: anywhere; }
+    #composerWrap .prev-foot { margin-top: .9rem; padding-top: .7rem; border-top: 1px dashed var(--line); font-size: .76rem; color: var(--muted); }
+    #composerWrap .prev-foot b { color: var(--brand-600); }
+    #composerWrap .prev-empty { font-size: .84rem; color: var(--muted); }
+
+    /* Queue lists (本次发布 / 本地草稿) */
+    #composerWrap .queue { list-style: none; margin: 0; padding: .35rem 0; }
+    #composerWrap .queue li { display: flex; align-items: center; gap: .6rem; padding: .45rem 1.1rem; font-size: .85rem; }
+    #composerWrap .queue li + li { border-top: 1px solid var(--line); }
+    #composerWrap .queue li.is-empty { justify-content: center; color: var(--muted); }
+    #composerWrap .queue .acct-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #composerWrap .q-status { display: inline-flex; align-items: center; gap: .35rem; font-size: .74rem; color: var(--muted); flex: none; }
+    #composerWrap .draft-preview { flex: 1; min-width: 0; }
+    #composerWrap .draft-text { font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #composerWrap .draft-at { font-size: .72rem; color: var(--muted); }
+
+    @media (max-width: 1280px) {
+        #composerWrap .composer { grid-template-columns: 210px minmax(0, 1fr) 290px; }
+    }
+    @media (max-width: 1100px) {
+        #composerWrap .composer { grid-template-columns: 200px minmax(0, 1fr); }
+        #composerWrap .compose-side { grid-column: 1 / -1; position: static; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+    }
+    @media (max-width: 760px) {
+        #composerWrap .composer { grid-template-columns: 1fr; }
+        #composerWrap .compose-side { grid-template-columns: 1fr; }
+    }
+</style>
+
+<!-- 发布工作台：三栏 composer（发布到 / 编辑器 / 预览+本次发布+本地草稿）
+     下方保留整宽的「已保存帖子」管理网格。 -->
+<div id="composerWrap">
+<div class="composer">
+
+    <!-- 栏1：发布到 -->
+    <aside class="card compose-col" id="composeTargets" aria-label="选择发布平台">
+        <div class="card-head"><b>发布到</b><span class="pill" id="selPill">已选 0</span></div>
+        <div class="card-body" style="padding-top:.4rem; padding-bottom:.4rem">
+            {# 平台勾选：保留 id=platform-checkboxes 与同名 checkbox 值/ids，
+               tickedPlatforms()/selectedAccountTargets() 全局选择，迁移安全。
+               去掉 .platform-checkbox-box 类 → 旧监听器查空 inert。 #}
+            <div id="platform-checkboxes" style="display:grid; gap:.1rem">
+                {% for platform, pid, ch, name, plat_color in [
+                    ('xiaohongshu','xiaohongshu','红','小红书','#FF2442'),
+                    ('douyin','douyin','抖','抖音','#FE2C55'),
+                    ('wechat','wechat','信','公众号','#07C160'),
+                    ('zhihu','zhihu','知','知乎','#0084FF'),
+                    ('toutiao','toutiao','头','头条号','#ED1C24')] %}
+                {% set conn = PUBLISH_TARGETS | selectattr('platform','equalto', platform) | selectattr('account_id') | list %}
+                <label class="acct{% if not conn %} is-off{% endif %}">
+                    <input type="checkbox" class="d-none" value="{{ platform }}" id="platform-{{ pid }}"
+                           {% if not conn %}disabled{% endif %}>
+                    <span class="cbx" aria-hidden="true"></span>
+                    <span class="pmark" style="--pc: {{ plat_color }}">{{ ch }}</span>
+                    <span class="acct-txt"><span class="acct-name">{{ name }}</span>
+                        <span class="acct-sub">{% if conn %}<span class="dot dot-ok" aria-hidden="true"></span>当前登录{% else %}未登录{% endif %}</span></span>
+                </label>
+                {% endfor %}
+            </div>
+            {# 多账号平台的账号勾选：值 platform:account_id，data-platform，is_default 默认勾。 #}
+            {% set multi = PUBLISH_TARGETS | selectattr('show_label') | list %}
+            {% if multi %}
+            <div id="account-checkboxes" style="display:grid; gap:.1rem; margin-top:.35rem; border-top:1px solid var(--line); padding-top:.4rem">
+                {% for platform in ['xiaohongshu', 'douyin', 'wechat', 'zhihu', 'toutiao'] %}
+                {% set options = multi | selectattr('platform', 'equalto', platform) | list %}
+                {% if options %}
+                <div class="account-target-row" data-platform="{{ platform }}">
+                    <div class="small muted" style="padding:.35rem 1.1rem 0; font-weight:600">{{ {'xiaohongshu':'小红书','douyin':'抖音','wechat':'公众号','zhihu':'知乎','toutiao':'头条号'}[platform] }}</div>
+                    {% for option in options %}
+                    <label class="acct">
+                        <input type="checkbox" class="d-none account-target-checkbox" value="{{ platform }}:{{ option.account_id }}"
+                               data-platform="{{ platform }}" {% if option.is_default %}checked{% endif %}>
+                        <span class="cbx" aria-hidden="true"></span>
+                        <span class="pmark" style="--pc: {{ {'xiaohongshu':'#FF2442','douyin':'#FE2C55','wechat':'#07C160','zhihu':'#0084FF','toutiao':'#ED1C24'}[platform] }}">{{ option.label[:1] }}</span>
+                        <span class="acct-txt"><span class="acct-name">{{ option.label }}</span>
+                            <span class="acct-sub">{{ {'xiaohongshu':'小红书','douyin':'抖音','wechat':'公众号','zhihu':'知乎','toutiao':'头条号'}[platform] }}</span></span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endfor %}
+                <div class="hint">不勾选某平台的全部账号时，帖子发往该平台默认账号。</div>
+            </div>
+            {% endif %}
+        </div>
+        <div class="hint" style="padding-bottom:.5rem">公众号 / 知乎 / 头条号可一键推送草稿箱（发布助手在线时）；小红书 / 抖音生成后复制文案手动发布。</div>
+        <div class="panel-foot">
+            <a class="linklike" href="{{ url_for('accounts_page') }}">管理账号 →</a>
+        </div>
+    </aside>
+
+    <!-- 栏2：编辑器 -->
+    <div class="card compose-col is-editor" style="border-radius: 12px; overflow: hidden;">
     <div class="card-header" style="background: var(--brand-500, #1447e6); color: white;">
         <strong>✨ Create Posts</strong>
     </div>
@@ -662,78 +812,9 @@
             </div>
         </div>
         
-        <hr>
-        
-        <!-- Platform Selection -->
-        <div class="row mb-4">
-            <div class="col-md-8">
-                <label class="form-label fw-bold mb-3">发布渠道</label>
-                <div class="d-flex flex-wrap gap-3" id="platform-checkboxes">
-                    <label class="platform-checkbox-box" data-platform="xiaohongshu" title="生成小红书笔记草稿（中文），复制后手动发布">
-                        <span class="check-indicator"></span>
-                        <input type="checkbox" class="d-none" value="xiaohongshu" id="platform-xiaohongshu">
-                        📕 小红书
-                    </label>
-                    <label class="platform-checkbox-box" data-platform="douyin" title="生成抖音文案草稿（中文），复制后手动发布">
-                        <span class="check-indicator"></span>
-                        <input type="checkbox" class="d-none" value="douyin" id="platform-douyin">
-                        🎵 抖音
-                    </label>
-                    <label class="platform-checkbox-box" data-platform="wechat" title="生成公众号推文草稿（中文），复制后手动发布">
-                        <span class="check-indicator"></span>
-                        <input type="checkbox" class="d-none" value="wechat" id="platform-wechat">
-                        💬 公众号
-                    </label>
-                    <label class="platform-checkbox-box" data-platform="zhihu" title="生成知乎文章草稿（中文），可一键推送草稿箱">
-                        <span class="check-indicator"></span>
-                        <input type="checkbox" class="d-none" value="zhihu" id="platform-zhihu">
-                        📖 知乎
-                    </label>
-                    <label class="platform-checkbox-box" data-platform="toutiao" title="生成头条号文章草稿（中文），可一键推送草稿箱">
-                        <span class="check-indicator"></span>
-                        <input type="checkbox" class="d-none" value="toutiao" id="platform-toutiao">
-                        📰 头条号
-                    </label>
-                </div>
-                <div class="form-text">公众号 / 知乎 / 头条号支持一键推送草稿箱（需浏览器里的发布助手在线），推送后请到各平台确认发布；小红书 / 抖音生成后复制文案手动发布。
-                    <a href="/agent-jobs" class="small ms-2">发布队列</a>
-                </div>
-                {# Accounts, only where a platform has more than one. The copy is
-                   written once per platform whatever is ticked here; the ticks
-                   decide how many accounts that one piece of copy is saved for,
-                   so two accounts cost nothing extra to generate. #}
-                {% set multi = PUBLISH_TARGETS | selectattr('show_label') | list %}
-                {% if multi %}
-                <div class="mt-3" id="account-checkboxes">
-                    <label class="form-label fw-bold mb-2 d-block">Accounts</label>
-                    {% for platform in ['xiaohongshu', 'douyin', 'wechat', 'zhihu', 'toutiao'] %}
-                    {% set options = multi | selectattr('platform', 'equalto', platform) | list %}
-                    {% if options %}
-                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2 account-target-row"
-                         data-platform="{{ platform }}">
-                        <span class="text-muted small" style="min-width: 5.5rem;">
-                            {{ {'xiaohongshu':'小红书','douyin':'抖音','wechat':'公众号','zhihu':'知乎','toutiao':'头条号'}[platform] }}
-                        </span>
-                        {% for option in options %}
-                        <label class="btn btn-sm {{ 'btn-primary' if option.is_default else 'btn-outline-secondary' }} account-target-btn"
-                               data-platform="{{ platform }}" data-account-id="{{ option.account_id }}">
-                            <input type="checkbox" class="d-none account-target-checkbox"
-                                   value="{{ platform }}:{{ option.account_id }}"
-                                   data-platform="{{ platform }}"
-                                   {% if option.is_default %}checked{% endif %}>
-                            {{ option.label }}
-                        </label>
-                        {% endfor %}
-                    </div>
-                    {% endif %}
-                    {% endfor %}
-                    <div class="form-text">
-                        Untick every account on a platform and its posts go to that platform's default account.
-                    </div>
-                </div>
-                {% endif %}
-            </div>
-            <div class="col-md-4 ai-only">
+        <!-- 每平台条数（AI 模式专用；manual 模式由 #generator-body.mode-manual .ai-only 隐藏） -->
+        <div class="mb-4 ai-only">
+            <div class="col-md-4">
                 <label class="form-label fw-bold" for="posts-per-platform">Posts per Platform</label>
                 <div class="input-group" style="max-width: 170px;">
                     <button class="btn btn-outline-secondary" type="button" onclick="adjustPostCount(-1)">−</button>
@@ -743,13 +824,15 @@
                 <small class="text-muted">Generate 1-10 unique posts per platform</small>
             </div>
         </div>
-        
+
+        <hr>
+
         <!-- Bulk Image -->
         <div class="mb-4">
             <label class="form-label fw-bold">
                 🖼️ Image (Optional)
             </label>
-            
+
             <!-- Image Source Tabs -->
             <ul class="nav nav-pills nav-fill mb-3" id="imageSourceTabs" role="tablist" style="font-size: 0.85rem;">
                 <li class="nav-item" role="presentation">
@@ -886,6 +969,63 @@
             <div class="fw-bold">Generating posts...</div>
             <div class="text-muted small">This may take a few seconds</div>
         </div>
+    </div>
+</div>
+
+    <!-- 栏3：预览 + 本次发布 + 本地草稿 -->
+    {# 只对连接了账号的平台出预览 tab；取该平台首个账号作展示账号。 #}
+    {% set preview_accounts = {} %}
+    {% for platform in ['xiaohongshu', 'douyin', 'wechat', 'zhihu', 'toutiao'] %}
+    {% set conn = PUBLISH_TARGETS | selectattr('platform','equalto', platform) | selectattr('account_id') | list %}
+    {% if conn %}
+    {% set meta = PLATFORM_META[platform] %}
+    {% set _ = preview_accounts.update({platform: {'label': conn[0].label or meta.label,
+                                                   'ch': meta.label[0], 'color': meta.color}}) %}
+    {% endif %}
+    {% endfor %}
+    {% set kinds = {'xiaohongshu':'笔记','douyin':'短视频','wechat':'推文','zhihu':'文章','toutiao':'图文'} %}
+    {% set plat_lbl = {'xiaohongshu':'小红书','douyin':'抖音','wechat':'公众号','zhihu':'知乎','toutiao':'头条号'} %}
+    <aside class="compose-col compose-side" id="composeSide" aria-label="平台预览与发布队列">
+        <div class="card" style="overflow:hidden">
+            <div class="tabs" role="tablist" id="prevTabs" aria-label="平台预览切换">
+                {% for p, info in preview_accounts.items() %}
+                <button role="tab" id="tab-{{ p }}" aria-selected="{{ 'true' if loop.first else 'false' }}"
+                        aria-controls="prevPanel" data-platform="{{ p }}" type="button">{{ plat_lbl[p] }}</button>
+                {% endfor %}
+            </div>
+            <div class="preview" role="tabpanel" id="prevPanel">
+                <div class="prev-head">
+                    <span class="pmark lg" id="prevMark" style="--pc: #475569">—</span>
+                    <div>
+                        <div class="prev-acc" id="prevAcc">—</div>
+                        <div class="prev-plat"><span id="prevPlat">—</span> · <span id="prevKind">—</span></div>
+                    </div>
+                </div>
+                <div class="prev-title" id="prevTitle">（无标题）</div>
+                <div class="prev-body" id="prevBody">在编辑器里撰写内容，预览会实时更新。</div>
+                <div class="prev-foot">将按 <b id="prevPlatName">平台</b> 的排版格式自动转换</div>
+            </div>
+        </div>
+        <div class="card" style="overflow:hidden">
+            <div class="card-head"><b>本次发布</b><span class="pill" id="queuePill">0 个平台</span></div>
+            <ul class="queue" id="queueList"></ul>
+        </div>
+        <div class="card" style="overflow:hidden">
+            <div class="card-head"><b>本地草稿</b><span class="pill" id="draftPill">{{ local_drafts|length }}</span></div>
+            <ul class="queue" id="draftList">
+                {% for d in local_drafts %}
+                <li>
+                    <span class="pmark sm" style="--pc: #475569" aria-hidden="true">草</span>
+                    <span class="draft-preview"><span class="draft-text">{{ d.content[:40] }}{% if d.content|length > 40 %}…{% endif %}</span>
+                        <span class="draft-at">{{ d.created_at }}</span></span>
+                    <button class="linklike" onclick="loadDraft({{ d.id }})">编辑</button>
+                </li>
+                {% endfor %}
+                {% if not local_drafts %}<li class="is-empty">暂无未使用的手动草稿</li>{% endif %}
+            </ul>
+        </div>
+    </aside>
+
     </div>
 </div>
 
@@ -6220,5 +6360,154 @@ document.addEventListener('click', async (ev) => {
         btn.textContent = body.already ? '已在队列' : '已定时 ✓';
     } catch (e) { alert('网络错误：' + e); btn.disabled = false; }
 });
+</script>
+
+<script>
+/* ---- 发布工作台右栏（预览 + 本次发布 + 本地草稿）—— 自足脚本 ----
+   只依赖本页已就绪的全局（manualPostTargets/tickedPlatforms/
+   updateManualComposerCount/PLATFORM_META/bootstrap）与服务端注入的
+   PUBLISH_TARGETS/preview_accounts/local_drafts。新 ID 不与既有冲突。 */
+(function () {
+    'use strict';
+    const $ = (s, r) => (r || document).querySelector(s);
+    const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
+
+    const PUBLISH_TARGETS = {{ PUBLISH_TARGETS | tojson }};
+    const PREVIEW_ACCOUNTS = {{ preview_accounts | tojson }};
+    const LOCAL_DRAFTS = {{ local_drafts | tojson }};
+    const PLATFORM_LABELS = { xiaohongshu: '小红书', douyin: '抖音', wechat: '公众号', zhihu: '知乎', toutiao: '头条号' };
+    const PLATFORM_COLORS = { xiaohongshu: '#FF2442', douyin: '#FE2C55', wechat: '#07C160', zhihu: '#0084FF', toutiao: '#ED1C24' };
+    const PLATFORM_KIND = { xiaohongshu: '笔记', douyin: '短视频', wechat: '推文', zhihu: '文章', toutiao: '图文' };
+    const DRAFT_ONLY = ['xiaohongshu', 'douyin', 'wechat'];
+
+    const TARGET_MAP = {};
+    PUBLISH_TARGETS.forEach(t => {
+        const key = t.account_id ? `${t.platform}:${t.account_id}` : t.platform;
+        TARGET_MAP[key] = t;
+    });
+
+    const selPill = $('#selPill');
+    const queuePill = $('#queuePill');
+    const queueList = $('#queueList');
+    const prevTabs = $('#prevTabs');
+    const prevMark = $('#prevMark');
+    const prevAcc = $('#prevAcc');
+    const prevPlat = $('#prevPlat');
+    const prevKind = $('#prevKind');
+    const prevTitle = $('#prevTitle');
+    const prevBody = $('#prevBody');
+    const prevPlatName = $('#prevPlatName');
+    const manualInput = $('#manual-input');
+
+    // target string "platform" | "platform:account_id" -> {label, ch, color, platform, draft}
+    function targetInfo(key) {
+        const t = TARGET_MAP[key];
+        const platform = t ? t.platform : String(key).split(':')[0];
+        const label = t ? (t.label || PLATFORM_LABELS[platform]) : PLATFORM_LABELS[platform];
+        return {
+            platform,
+            label,
+            ch: (label || PLATFORM_LABELS[platform])[0],
+            color: PLATFORM_COLORS[platform] || '#475569',
+            draft: DRAFT_ONLY.indexOf(platform) !== -1,
+        };
+    }
+
+    // 本次发布队列 + 已选计数：同一目标并集，与 saveManualPost 写给后端的 targets 一致。
+    function renderQueue() {
+        const targets = manualPostTargets();
+        selPill.textContent = '已选 ' + targets.length;
+        queuePill.textContent = targets.length + ' 个平台';
+        queueList.innerHTML = '';
+        if (!targets.length) {
+            const li = document.createElement('li');
+            li.className = 'is-empty';
+            li.textContent = '尚未选择任何平台';
+            queueList.appendChild(li);
+            return;
+        }
+        targets.forEach(key => {
+            const info = targetInfo(key);
+            const li = document.createElement('li');
+            const mark = document.createElement('span');
+            mark.className = 'pmark sm';
+            mark.style.setProperty('--pc', info.color);
+            mark.textContent = info.ch;
+            const name = document.createElement('span');
+            name.className = 'acct-name';
+            name.textContent = info.label;
+            const status = document.createElement('span');
+            status.className = 'q-status';
+            status.innerHTML = '<span class="dot dot-ok" aria-hidden="true"></span>' +
+                               (info.draft ? '草稿箱 · 排队中' : '直接发布 · 排队中');
+            li.appendChild(mark); li.appendChild(name); li.appendChild(status);
+            queueList.appendChild(li);
+        });
+    }
+
+    // 预览：手动 tab 的 textarea 即内容（无标题字段）；首非空行作标题。
+    function renderPreview() {
+        const text = manualInput ? manualInput.value : '';
+        const lines = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
+        prevTitle.textContent = (lines[0] || '').slice(0, 60) || '（无标题）';
+        prevBody.textContent = text.slice(0, 2000) || '在编辑器里撰写内容，预览会实时更新。';
+    }
+
+    function updatePreviewFor(platform) {
+        const acc = PREVIEW_ACCOUNTS[platform];
+        prevMark.textContent = acc ? acc.ch : (PLATFORM_LABELS[platform] || '—')[0];
+        prevMark.style.setProperty('--pc', acc ? acc.color : (PLATFORM_COLORS[platform] || '#475569'));
+        prevAcc.textContent = acc ? acc.label : '—';
+        prevPlat.textContent = PLATFORM_LABELS[platform] || platform;
+        prevKind.textContent = PLATFORM_KIND[platform] || '—';
+        prevPlatName.textContent = PLATFORM_LABELS[platform] || platform;
+    }
+
+    if (prevTabs) {
+        prevTabs.addEventListener('click', e => {
+            const tab = e.target.closest('[role="tab"][data-platform]');
+            if (!tab) return;
+            $$('[role="tab"]', prevTabs).forEach(t => t.setAttribute('aria-selected', String(t === tab)));
+            updatePreviewFor(tab.dataset.platform);
+        });
+        const first = prevTabs.querySelector('[role="tab"]');
+        if (first) updatePreviewFor(first.dataset.platform);
+    }
+
+    // 左栏账号/平台行：手动翻转 checkbox（preventDefault 镜像 account-target-btn 模式），
+    // 复用既有 updateManualComposerCount 刷新每平台字数，再刷右栏。
+    $$('#composerWrap .acct').forEach(row => {
+        row.addEventListener('click', e => {
+            const cb = row.querySelector('input[type="checkbox"]');
+            if (!cb || cb.disabled) return;
+            e.preventDefault();
+            cb.checked = !cb.checked;
+            if (typeof updateManualComposerCount === 'function') updateManualComposerCount();
+            renderQueue();
+            renderPreview();
+        });
+    });
+    if (manualInput) {
+        manualInput.addEventListener('input', () => { renderPreview(); renderQueue(); });
+    }
+
+    // 本地草稿载入：回填 textarea → 切到手动 tab → 刷新。
+    window.loadDraft = function (id) {
+        const d = (LOCAL_DRAFTS || []).find(x => x.id === id);
+        if (!d) return;
+        if (manualInput) manualInput.value = d.content;
+        const manualTab = $('#manual-tab');
+        if (manualTab && window.bootstrap && bootstrap.Tab) {
+            bootstrap.Tab.getOrCreateInstance(manualTab).show();
+        }
+        if (typeof updateManualComposerCount === 'function') updateManualComposerCount();
+        renderQueue(); renderPreview();
+        const editor = $('#composerWrap .is-editor');
+        if (editor) editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
+    renderQueue();
+    renderPreview();
+})();
 </script>
 {% endblock %}
