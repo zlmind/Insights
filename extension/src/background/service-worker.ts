@@ -1,6 +1,7 @@
 import { checkWeixinVerdict } from "../lib/login";
 import { checkDouyinLogin, checkPortalLogin, checkXiaohongshuLogin,
          checkZhihuLogin, LoginVerdict } from "../lib/platform-login";
+import { sameServerImageUrl } from "../lib/image-url";
 import { configured, loadSettings, ProtocolClient } from "../lib/protocol";
 import { backoffSeconds, cachedCheckLogins, LoginCache, LoginVerdicts,
          PLATFORM_IDS, PlatformResult, runCycle } from "./orchestrator";
@@ -47,9 +48,9 @@ async function closeLeftoverTab(): Promise<void> {
 }
 
 const PUBLISH_PAGES: Record<string, { url: string; keepTab: boolean }> = {
-  // weixin's flow resolves inside the tab, so it closes; the other three end
-  // at a filled editor the author must confirm — their tabs stay open.
-  wechat: { url: WEIXIN_HOME, keepTab: false },
+  // Weixin lands on the newly-created draft editor and stays open for review;
+  // the other article platforms end at a filled editor the author confirms.
+  wechat: { url: WEIXIN_HOME, keepTab: true },
   xiaohongshu: { url: "https://creator.xiaohongshu.com/publish/publish?target=image",
                  keepTab: true },
   zhihu: { url: "https://zhuanlan.zhihu.com/write", keepTab: true },
@@ -73,11 +74,14 @@ async function toDataUrl(url: string): Promise<string> {
 // A card with its own picture sends that picture; the bundled cover is the
 // fallback for text-only cards on platforms that require an image. Both
 // travel as data URLs — the SW fetches cross-origin freely, the content
-// script cannot.
-async function imageDataUrl(item: { image_url?: string }): Promise<string> {
+// script cannot. The card's image_url records whatever loopback host the
+// browser used at upload time; the SW only has host permission for the
+// paired serverUrl origin, so the host is rewritten to match before fetching.
+async function imageDataUrl(item: { image_url?: string },
+                            serverUrl: string): Promise<string> {
   if (item.image_url) {
     try {
-      return await toDataUrl(item.image_url);
+      return await toDataUrl(sameServerImageUrl(item.image_url, serverUrl));
     } catch {
       // fall through to the bundled cover
     }
@@ -88,7 +92,8 @@ async function imageDataUrl(item: { image_url?: string }): Promise<string> {
 async function publishViaBridge(target: string,
                                 item: { target: string; content: string;
                                         image_url?: string },
-                                title: string): Promise<PlatformResult> {
+                                title: string,
+                                serverUrl: string): Promise<PlatformResult> {
   const page = PUBLISH_PAGES[target];
   if (!page) {
     return { platform: target, success: false, draft: false,
@@ -98,17 +103,14 @@ async function publishViaBridge(target: string,
   await rememberTab(tab.id!);
   const message = { type: "publish", payload: {
       target, title, content: item.content,
-      imageUrl: await imageDataUrl(item),
+      imageUrl: await imageDataUrl(item, serverUrl),
     } };
   try {
     await waitTabComplete(tab.id!);
     await waitBridgeReady(tab.id!);
     try {
       const resp = await chrome.tabs.sendMessage(tab.id!, message);
-      return resp?.ok
-        ? { platform: target, success: true, draft: true, detail: resp.detail }
-        : { platform: target, success: false, draft: false,
-            code: resp?.code || "sync_failed", error: resp?.error || "适配器无响应" };
+      return await settleResult(target, tab.id!, page, resp);
     } catch (firstError) {
       // A late SPA navigation can close the channel mid-work; one retry on
       // the (by then) settled document.
@@ -116,20 +118,39 @@ async function publishViaBridge(target: string,
       if (!text.includes("message channel closed")) throw firstError;
       await waitBridgeReady(tab.id!, 10000);
       const resp = await chrome.tabs.sendMessage(tab.id!, message);
-      return resp?.ok
-        ? { platform: target, success: true, draft: true, detail: resp.detail }
-        : { platform: target, success: false, draft: false,
-            code: resp?.code || "sync_failed", error: resp?.error || "适配器无响应" };
+      return await settleResult(target, tab.id!, page, resp);
     }
   } catch (exc) {
-    return { platform: target, success: false, draft: false, code: "sync_failed",
-             error: String(exc) };
-  } finally {
     if (!page.keepTab) {
       chrome.tabs.remove(tab.id!).catch(() => {});
       await forgetTab();
     }
+    return { platform: target, success: false, draft: false, code: "sync_failed",
+             error: String(exc) };
   }
+}
+
+// Turn an adapter response into a per-platform result, and for a successful
+// wechat draft navigate the still-open tab to the draft's editor page so the
+// author sees and can publish it. keepTab platforms keep their tab by design.
+async function settleResult(
+  target: string,
+  tabId: number,
+  page: { url: string; keepTab: boolean },
+  resp: { ok?: boolean; detail?: string; url?: string; code?: string; error?: string } | undefined,
+): Promise<PlatformResult> {
+  if (!resp?.ok) {
+    return { platform: target, success: false, draft: false,
+             code: resp?.code || "sync_failed", error: resp?.error || "适配器无响应" };
+  }
+  if (resp.url) {
+    await chrome.tabs.update(tabId, { url: resp.url }).catch(() => {});
+  }
+  if (!page.keepTab) {
+    chrome.tabs.remove(tabId).catch(() => {});
+    await forgetTab();
+  }
+  return { platform: target, success: true, draft: true, detail: resp.detail };
 }
 
 function waitTabComplete(tabId: number, timeoutMs = 30000): Promise<void> {
@@ -185,7 +206,8 @@ async function cycle(): Promise<void> {
     if (!configured(settings)) return;
     const client = new ProtocolClient(settings);
     await runCycle({ client, checkLogins, busy, beatClock,
-                     publishOne: publishViaBridge });
+                     publishOne: (target, item, title) =>
+                       publishViaBridge(target, item, title, settings.serverUrl) });
     consecutiveFailures = 0;
   } catch {
     // The loop outlives any one cycle; back off while the server is down

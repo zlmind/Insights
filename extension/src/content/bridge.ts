@@ -6,7 +6,9 @@ import { publishZhihuArticle } from "./adapters/zhihu";
 type PublishAdapter = (payload: Record<string, unknown>) => Promise<unknown>;
 
 const ADAPTERS: Record<string, PublishAdapter> = {
-  wechat: (p) => publishWeixinArticle(p as { title: string; content: string }),
+  wechat: (p) => publishWeixinArticle(p as {
+    title: string; content: string; imageUrl?: string;
+  }),
   xiaohongshu: (p) => publishRednoteNote(p as { title: string; content: string; imageUrl: string }),
   zhihu: (p) => publishZhihuArticle(p as { title: string; content: string; imageUrl?: string }),
   toutiao: (p) => publishToutiaoArticle(p as { title: string; content: string; imageUrl?: string }),

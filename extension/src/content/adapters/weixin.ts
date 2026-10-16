@@ -39,7 +39,7 @@ interface CropConfig {
 }
 
 export type WeixinPublishResult =
-  | { ok: true; detail: string }
+  | { ok: true; detail: string; url?: string }
   | { ok: false; code: "needs_login" | "sync_failed" | "timeout"; error: string };
 
 // mp.weixin strips non-mmbiz hotlinks, so a content image the pipeline
@@ -150,6 +150,7 @@ function getImageInfo(url: string): Promise<{ width: number; height: number; blo
 export async function publishWeixinArticle(payload: {
   title: string;
   content: string;
+  imageUrl?: string;
 }): Promise<WeixinPublishResult> {
   const pageHtml = document.documentElement.innerHTML;
   const token = parseWeixinToken(pageHtml);
@@ -210,15 +211,18 @@ export async function publishWeixinArticle(payload: {
       }
       const processedContent = doc.body.innerHTML;
 
-      // Cover: the first content image, when there is one. With none, create
-      // the draft without cover fields — createArticle degrades them to empty
-      // strings. mp's filetransfer answers data:-derived placeholder blobs
-      // with the generic ret 200039 (differential test, 2026-10-13): the
-      // placeholder path never worked and is gone.
+      // Cover: the card's own image when it carries one (a data URL from the
+      // service worker — same upload path as a re-hosted content image), else
+      // the first content image, else none. With none, create the draft
+      // without cover fields — createArticle degrades them to empty strings.
+      // mp's filetransfer answers data:-derived placeholder blobs with the
+      // generic ret 200039 (differential test, 2026-10-13): the placeholder
+      // path never worked and is gone.
+      let coverSource = payload.imageUrl || (firstUpload ? firstUpload.url : "");
       let cropedImages: CropedImage[] = [];
-      if (firstUpload) {
-        const info = await getImageInfo(firstUpload.url);
-        const uploadResult = await uploadImage({ url: firstUpload.url }, 8,
+      if (coverSource) {
+        const info = await getImageInfo(coverSource);
+        const uploadResult = await uploadImage({ url: coverSource }, 8,
           { userName, ticket, token });
         if (!uploadResult) return { ok: false, code: "sync_failed",
                                     error: `封面图片上传失败（${uploadRejection || "无详情"}）` };
@@ -240,7 +244,17 @@ export async function publishWeixinArticle(payload: {
       if (!appMsgId) {
         return { ok: false, code: "sync_failed", error: "创建草稿失败（平台未返回 appMsgId）" };
       }
-      return { ok: true, detail: "已保存到公众号草稿箱" };
+      // Jump to the draft's editor page so the author can review and publish
+      // it. Mirrors upstream MultiPost's post-create navigation; the service
+      // worker keeps the tab open and navigates it here.
+      const editUrl = new URL("https://mp.weixin.qq.com/cgi-bin/appmsg");
+      editUrl.searchParams.set("t", "media/appmsg_edit");
+      editUrl.searchParams.set("action", "edit");
+      editUrl.searchParams.set("type", "77");
+      editUrl.searchParams.set("appmsgid", appMsgId);
+      editUrl.searchParams.set("token", token);
+      editUrl.searchParams.set("lang", "zh_CN");
+      return { ok: true, detail: "已保存到公众号草稿箱", url: editUrl.toString() };
     })());
   } catch (exc) {
     const message = exc instanceof Error ? exc.message : String(exc);

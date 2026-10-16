@@ -2202,6 +2202,16 @@ def accounts_page():
         st = states.get(pid, {'state': 'offline', 'at': None})
         state = st.get('state', 'offline')
         account = rows[0] if rows else None
+        # 每平台一号：登录态就是浏览器里那个账号。旧多账号时代留下的
+        # social_accounts 行带身份信息；没有行时，heartbeat 判定已登录
+        # 的平台就用平台名作为当前登录展示，直到 agent 上报真实身份。
+        if account:
+            account_label = (account['label'] or account['display_name']
+                             or account['handle'] or account['external_id'])
+            last_seen = account['updated_at']
+        else:
+            account_label = m['label'] if state in ('ok', 'logged_out') else None
+            last_seen = None
         platforms.append({
             'id': pid,
             'label': m['label'],
@@ -2210,10 +2220,9 @@ def accounts_page():
             'checked_at': st.get('at'),
             'login_url': st.get('login_url'),
             'account': {
-                'label': account['label'] or account['display_name'] or account['handle'] or account['external_id']
-                         if account else None,
-                'last_seen': account['updated_at'] if account else None,
-            } if account else None,
+                'label': account_label,
+                'last_seen': last_seen,
+            } if (account or state in ('ok', 'logged_out')) else None,
         })
     summary = {'logged_in': 0, 'logged_out': 0, 'unknown': 0}
     for pl in platforms:

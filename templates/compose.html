@@ -292,6 +292,31 @@
 
     /* ---- Flat pass: toolbar discipline & layout rhythm ---- */
     .btn-agent-push { white-space: nowrap; }
+    /* Push result chip: the "推送中…" state gets an amber pill + spinner so an
+       in-flight publish is impossible to miss; any other state stays plain. */
+    .agent-push-result.is-pushing {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-weight: 700;
+        line-height: 1.2;
+        color: var(--warn, #b45309);
+        background: var(--warn-bg, rgba(245, 158, 11, 0.12));
+        border: 1px solid var(--warn-dot, rgba(245, 158, 11, 0.45));
+        border-radius: 999px;
+        padding: 0.18rem 0.65rem;
+    }
+    .agent-push-result.is-pushing::before {
+        content: '';
+        width: 0.72rem;
+        height: 0.72rem;
+        flex: none;
+        border-radius: 50%;
+        border: 2px solid currentColor;
+        border-top-color: transparent;
+        animation: agent-push-spin 0.8s linear infinite;
+    }
+    @keyframes agent-push-spin { to { transform: rotate(360deg); } }
     .push-bar {
         display: flex;
         flex-wrap: wrap;
@@ -325,25 +350,33 @@
 </style>
 
 <style>
-    /* ---- 发布工作台（三栏 composer）—— scoped to #composerWrap -----------
-       Mirrors the prototype's 发布 screen (docs/prototype/redesign.html 182-280,
-       378-398) but scoped so the legacy saved-posts grid below keeps its own
-       Bootstrap look. position:static on the columns on purpose: the grid below
-       scrolls and sticky columns would float over it. */
+    /* ---- 发布工作台（两栏 composer）—— scoped to #composerWrap -----------
+       左栏 = 发布到 + 预览/本次发布/本地草稿（compose-rail），右栏 = 编辑器。
+       rail 绝对定位在左侧 280px 带内、不撑高 grid：composer 高度 = 编辑器高度，
+       已存帖子（margin 对齐编辑器列）得以紧跟编辑器开始，rail 再高也只落在
+       已存帖子让出的左侧空带里，互不重叠。 */
     #composerWrap .composer {
-        display: grid; grid-template-columns: 236px minmax(0, 1fr) 330px;
+        position: relative;
+        display: grid; grid-template-columns: 280px minmax(0, 1fr);
         gap: 1.1rem; align-items: start;
     }
+    #composerWrap .compose-rail {
+        position: absolute; top: 0; left: 0; width: 280px;
+        display: grid; gap: 1.1rem; align-content: start;
+    }
+    #composerWrap .is-editor { grid-column: 2; }
     #composerWrap .compose-col { position: static; }
     #composerWrap .compose-col.is-editor { position: static; }
     #composerWrap .compose-side { display: grid; gap: 1rem; align-content: start; }
+    /* 已存帖子在 composerWrap 之外，用 margin 对齐右栏（编辑器列）。 */
+    #saved-posts-section { margin-left: calc(280px + 1.1rem); }
     #composerWrap .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); }
     #composerWrap .card-head { display: flex; align-items: center; gap: .6rem; padding: .85rem 1.1rem; border-bottom: 1px solid var(--line); }
     #composerWrap .card-head b { font-size: .95rem; font-weight: 650; }
     #composerWrap .card-head .spacer { margin-left: auto; }
     #composerWrap .card-body { padding: 1rem 1.1rem; }
     #composerWrap .card-foot { padding: .65rem 1.1rem; border-top: 1px solid var(--line); display: flex; align-items: center; gap: .6rem; }
-    #composerWrap .panel-foot { padding: .6rem 1.1rem; border-top: 1px solid var(--line); text-align: center; }
+    #composerWrap .panel-foot { padding: .5rem 1.1rem; border-top: 1px solid var(--line); text-align: center; }
     #composerWrap .pill { font-size: .74rem; font-weight: 600; color: var(--brand-700); background: var(--brand-50); border-radius: 999px; padding: .1rem .55rem; }
     #composerWrap .muted { color: var(--muted); }
     #composerWrap .small { font-size: .8rem; }
@@ -356,7 +389,7 @@
     #composerWrap .pmark.lg { width: 34px; height: 34px; border-radius: 9px; font-size: .95rem; }
 
     /* Account rows (栏1 发布到) */
-    #composerWrap .acct { display: flex; align-items: center; gap: .6rem; padding: .5rem 1.1rem; cursor: pointer; transition: background-color .12s ease; }
+    #composerWrap .acct { display: flex; align-items: center; gap: .6rem; padding: .38rem 1.1rem; cursor: pointer; transition: background-color .12s ease; }
     #composerWrap .acct:hover { background: var(--canvas); }
     #composerWrap .cbx { width: 17px; height: 17px; flex: none; border-radius: 5px; border: 1.5px solid var(--line-strong); background: var(--surface); display: inline-flex; align-items: center; justify-content: center; transition: background-color .12s ease, border-color .12s ease; }
     #composerWrap .cbx::after { content: '✓'; width: 12px; height: 12px; font-size: .68rem; font-weight: 800; color: #fff; text-align: center; line-height: 1; opacity: 0; transition: opacity .12s ease; }
@@ -373,50 +406,293 @@
     #composerWrap .linklike.is-danger { color: var(--danger); }
     #composerWrap .hint { font-size: .76rem; color: var(--muted); padding: .35rem 1.1rem 0; line-height: 1.5; }
 
-    /* Preview (栏3) */
-    #composerWrap .tabs { display: flex; gap: .2rem; padding: .5rem .6rem 0; border-bottom: 1px solid var(--line); }
-    #composerWrap .tabs [role="tab"] { padding: .45rem .8rem; border-radius: 8px 8px 0 0; color: var(--muted); font-weight: 550; font-size: .86rem; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s ease, border-color .15s ease, background-color .15s ease; }
-    #composerWrap .tabs [role="tab"]:hover { color: var(--text); background: var(--canvas); }
-    #composerWrap .tabs [role="tab"][aria-selected="true"] { color: var(--brand-600); border-bottom-color: var(--brand-500); }
-    #composerWrap .preview { padding: 1rem 1.1rem; }
-    #composerWrap .prev-head { display: flex; align-items: center; gap: .6rem; margin-bottom: .8rem; }
-    #composerWrap .prev-acc { font-weight: 600; font-size: .87rem; }
-    #composerWrap .prev-plat { font-size: .74rem; color: var(--muted); }
-    #composerWrap .prev-title { font-size: 1.02rem; font-weight: 650; line-height: 1.35; margin-bottom: .45rem; }
-    #composerWrap .prev-body { color: var(--ink-800); font-size: .87rem; line-height: 1.7; overflow-wrap: anywhere; }
-    #composerWrap .prev-foot { margin-top: .9rem; padding-top: .7rem; border-top: 1px dashed var(--line); font-size: .76rem; color: var(--muted); }
-    #composerWrap .prev-foot b { color: var(--brand-600); }
-    #composerWrap .prev-empty { font-size: .84rem; color: var(--muted); }
-
     /* Queue lists (本次发布 / 本地草稿) */
-    #composerWrap .queue { list-style: none; margin: 0; padding: .35rem 0; }
-    #composerWrap .queue li { display: flex; align-items: center; gap: .6rem; padding: .45rem 1.1rem; font-size: .85rem; }
+    #composerWrap .queue { list-style: none; margin: 0; padding: .25rem 0; }
+    #composerWrap .queue li { display: flex; align-items: center; gap: .6rem; padding: .35rem 1.1rem; font-size: .85rem; }
     #composerWrap .queue li + li { border-top: 1px solid var(--line); }
     #composerWrap .queue li.is-empty { justify-content: center; color: var(--muted); }
     #composerWrap .queue .acct-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #composerWrap .q-status { display: inline-flex; align-items: center; gap: .35rem; font-size: .74rem; color: var(--muted); flex: none; }
-    #composerWrap .draft-preview { flex: 1; min-width: 0; }
-    #composerWrap .draft-text { font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    #composerWrap .draft-at { font-size: .72rem; color: var(--muted); }
+    #composerWrap .draft-preview { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: .45rem; }
+    #composerWrap .draft-text { font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    #composerWrap .draft-at { font-size: .72rem; color: var(--muted); flex: none; }
+
+    /* Prototype-aligned generator/editor controls. Keep the Bootstrap tab hooks
+       and IDs for the existing composer JavaScript, but present them as the
+       compact segmented editor from redesign.html. */
+    #composerWrap #generator-body.card-body {
+        padding: 0;
+    }
+    #composerWrap #sourceTypeTabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .2rem;
+        margin: 0;
+        padding: .45rem .6rem;
+        background: transparent;
+        border: 0;
+        border-bottom: 1px solid var(--line);
+        border-radius: 0;
+    }
+    #composerWrap #sourceTypeTabs .nav-item { margin: 0 !important; }
+    #composerWrap #sourceTypeTabs .nav-link {
+        border: 0;
+        border-radius: 7px;
+        padding: .32rem .72rem;
+        color: var(--muted);
+        background: transparent;
+        font-size: .84rem;
+        font-weight: 550;
+        line-height: 1.4;
+        white-space: nowrap;
+        transition: background-color .15s ease, color .15s ease, box-shadow .15s ease;
+    }
+    #composerWrap #sourceTypeTabs .nav-link:hover {
+        color: var(--text);
+        background: rgba(8,10,16,.045);
+    }
+    #composerWrap #sourceTypeTabs .nav-link.active {
+        color: var(--brand-600);
+        background: var(--brand-50);
+    }
+    #composerWrap #sourceTypeContent {
+        border-top: 0;
+    }
+    #composerWrap #sourceTypeContent > .tab-pane {
+        padding: .85rem 1.1rem;
+    }
+    #composerWrap #sourceTypeContent > .tab-pane > .mb-3:last-child,
+    #composerWrap #sourceTypeContent > .tab-pane > .mb-2:last-child { margin-bottom: 0 !important; }
+    #composerWrap #generator-body .form-control,
+    #composerWrap #generator-body .form-select {
+        border-color: var(--line);
+        border-radius: 8px;
+        color: var(--text);
+        background: var(--surface);
+        font-size: .87rem;
+    }
+    #composerWrap #generator-body .form-control:focus,
+    #composerWrap #generator-body .form-select:focus {
+        border-color: var(--brand-400);
+        box-shadow: 0 0 0 .2rem rgba(20,71,230,.12);
+    }
+    #composerWrap #ai-provider-toggle {
+        display: inline-flex;
+        gap: .2rem;
+        padding: .22rem;
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+    }
+    #composerWrap #ai-provider-toggle .btn {
+        border: 0;
+        border-radius: 7px;
+        color: var(--muted);
+        background: transparent;
+        font-size: .8rem;
+        padding: .32rem .7rem;
+    }
+    #composerWrap #ai-provider-toggle .btn:hover { color: var(--text); background: rgba(8,10,16,.045); }
+    #composerWrap #ai-provider-toggle .btn-check:checked + .btn {
+        color: var(--brand-600);
+        background: var(--surface);
+        box-shadow: var(--shadow-md);
+    }
+    #composerWrap .tone-option {
+        display: inline-flex;
+        align-items: center;
+        gap: .25rem;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: .12rem .55rem;
+        margin: 0;
+        color: var(--muted);
+        background: var(--surface);
+        font-size: .75rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: border-color .15s ease, color .15s ease, background-color .15s ease;
+    }
+    #composerWrap .tone-option:hover { border-color: var(--brand-300); color: var(--text); }
+    #composerWrap .tone-option.selected {
+        border-color: var(--brand-300);
+        color: var(--brand-700);
+        background: var(--brand-50);
+        font-weight: 600;
+    }
+    #composerWrap .editor-foot {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: .7rem 1.1rem;
+        border-top: 1px solid var(--line);
+        flex-wrap: wrap;
+    }
+    #composerWrap .editor-foot .actions { margin-left: auto; display: flex; gap: .5rem; }
+    #composerWrap .generator-action {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: .6rem;
+        padding: .7rem 1.1rem;
+        border-top: 1px solid var(--line);
+    }
+    #composerWrap .generator-action .manual-only,
+    #composerWrap .generator-action .ai-only { width: auto; }
+    #composerWrap .generator-action .btn { width: auto !important; }
+    #composerWrap .dropzone-prototype {
+        border: 1.5px dashed var(--line-strong) !important;
+        border-radius: var(--radius) !important;
+        background: transparent !important;
+        color: var(--muted);
+        transition: border-color .15s ease, color .15s ease, background-color .15s ease;
+    }
+    #composerWrap .dropzone-prototype:hover {
+        border-color: var(--brand-400) !important;
+        color: var(--brand-600);
+        background: var(--brand-50) !important;
+    }
+
+    /* Compact the legacy Bootstrap editor body without touching DOM/JS.
+       #generator-body 自身 padding:0（tab 条和 tab 面板自带内边距），tab 面板
+       之后的直接子分节必须自己留出 1.1rem 水平内边距，否则控件顶到卡片两边。 */
+    #composerWrap #generator-body > .mb-4,
+    #composerWrap #generator-body > .mb-3,
+    #composerWrap #generator-body > .mb-2 {
+        margin-left: 1.1rem; margin-right: 1.1rem;
+    }
+    #composerWrap #generator-body > hr { margin: .7rem 1.1rem; }
+    #composerWrap #generator-body .mb-4 { margin-bottom: .75rem !important; }
+    #composerWrap #generator-body .mb-3 { margin-bottom: .55rem !important; }
+    #composerWrap #generator-body .mb-2 { margin-bottom: .35rem !important; }
+    #composerWrap #generator-body .mt-2 { margin-top: .35rem !important; }
+    #composerWrap #generator-body .mt-3 { margin-top: .55rem !important; }
+    #composerWrap #generator-body hr { border-color: var(--line); }
+    #composerWrap #generator-body .form-label.fw-bold { font-size: .82rem; margin-bottom: .25rem; }
+    #composerWrap #generator-body textarea.form-control { min-height: 72px; }
+    /* AI 提供方行：收进卡片内、圆角成一条配置带 */
+    #composerWrap #generator-body .ai-only.d-flex.align-items-center.flex-wrap {
+        margin: .7rem 1.1rem .55rem !important;
+        padding: .4rem .6rem !important; gap: .4rem !important;
+        border-radius: 8px;
+    }
+    /* 图片区等处的内嵌 nav-pills 同样压缩成 seg 风格 */
+    #composerWrap #generator-body ul.nav-pills { gap: .2rem; }
+    #composerWrap #generator-body ul.nav-pills .nav-link {
+        border: 0; border-radius: 7px;
+        padding: .28rem .65rem;
+        color: var(--muted); background: transparent;
+        font-size: .8rem; font-weight: 550; line-height: 1.4;
+    }
+    #composerWrap #generator-body ul.nav-pills .nav-link:hover { color: var(--text); background: rgba(8,10,16,.045); }
+    #composerWrap #generator-body ul.nav-pills .nav-link.active { color: var(--brand-600); background: var(--brand-50); }
+    #composerWrap #generate-btn,
+    #composerWrap #manual-save-btn {
+        width: auto; padding: .5rem 1.1rem; font-size: .9rem; border-radius: 8px; font-weight: 600;
+    }
+    /* generator-action 内的 manual/ai 切换按原来的 tab 模式走 */
+    #generator-body .generator-action .manual-only { display: none; }
+    #generator-body.mode-manual .generator-action .manual-only { display: inline-flex; }
+    #generator-body.mode-manual .generator-action .ai-only { display: none !important; }
 
     @media (max-width: 1280px) {
-        #composerWrap .composer { grid-template-columns: 210px minmax(0, 1fr) 290px; }
+        #composerWrap .composer { grid-template-columns: 250px minmax(0, 1fr); }
+        #composerWrap .compose-rail { width: 250px; }
+        #saved-posts-section { margin-left: calc(250px + 1.1rem); }
     }
     @media (max-width: 1100px) {
-        #composerWrap .composer { grid-template-columns: 200px minmax(0, 1fr); }
-        #composerWrap .compose-side { grid-column: 1 / -1; position: static; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+        #composerWrap .composer { grid-template-columns: minmax(0, 1fr); }
+        #composerWrap .compose-rail { position: static; width: auto; grid-template-columns: 1fr 1fr; }
+        #composerWrap #composeTargets { grid-column: 1 / -1; }
+        #composerWrap .is-editor { grid-column: auto; }
+        #saved-posts-section { margin-left: 0; }
     }
     @media (max-width: 760px) {
         #composerWrap .composer { grid-template-columns: 1fr; }
-        #composerWrap .compose-side { grid-template-columns: 1fr; }
+        #composerWrap .compose-rail { grid-template-columns: 1fr; }
+        #saved-posts-section { margin-left: 0; }
+    }
+
+    /* ---- 已存帖子区域：与 composer 卡片风格一致，去掉渐变头和臃肿间距 ---- */
+    #saved-posts-section {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg);
+        margin-top: 1.5rem;
+        margin-bottom: 1rem;
+        overflow: hidden; /* 让首尾子元素贴住圆角 */
+    }
+    #saved-posts-section .card-head {
+        display: flex; align-items: center; gap: .6rem;
+        padding: .85rem 1.1rem; border-bottom: 1px solid var(--line);
+    }
+    #saved-posts-section .card-head b { font-size: .95rem; font-weight: 650; }
+    #saved-posts-section .card-head .spacer { margin-left: auto; }
+    #saved-posts-section .card-body { padding: 1rem 1.1rem; }
+    #saved-posts-section .toolbar {
+        display: flex; flex-wrap: wrap; align-items: center; gap: .6rem;
+        padding: .85rem 1.1rem; border-bottom: 1px solid var(--line);
+    }
+    #saved-posts-section .toolbar .spacer { margin-left: auto; }
+    #saved-posts-section .btn-sm {
+        display: inline-flex; align-items: center; gap: .35rem;
+        border-radius: 8px; padding: .32rem .7rem; font-size: .8rem; font-weight: 500;
+        border: 1px solid var(--line-strong); background: var(--surface); color: var(--text);
+        transition: border-color .15s ease, background-color .15s ease, color .15s ease;
+    }
+    #saved-posts-section .btn-sm:hover { border-color: var(--brand-300); background: var(--brand-50); color: var(--brand-700); }
+    #saved-posts-section .btn-sm.btn-primary { background: var(--brand-500); border-color: var(--brand-500); color: #fff; }
+    #saved-posts-section .btn-sm.btn-primary:hover { background: var(--brand-600); border-color: var(--brand-600); }
+    #saved-posts-section .btn-sm.btn-danger { border-color: var(--danger); color: var(--danger); background: #FEF2F2; }
+    #saved-posts-section .btn-sm.btn-danger:hover { background: #FEE2E2; }
+    #saved-posts-section .btn-sm.btn-warning { border-color: var(--warn-dot); color: var(--warn); background: var(--warn-bg); }
+    #saved-posts-section .btn-sm.btn-warning:hover { background: #FEF3C7; }
+    #saved-posts-section .btn-sm.btn-info { border-color: var(--brand-300); color: var(--brand-700); background: var(--brand-50); }
+    #saved-posts-section .btn-sm.btn-info:hover { background: #DBEAFE; }
+    #saved-posts-section .btn-sm.btn-success { border-color: var(--ok); color: var(--ok); background: var(--ok-bg); }
+    #saved-posts-section .btn-sm.btn-success:hover { background: #D1FAE5; }
+    #saved-posts-section #posts-filter-bar {
+        display: flex; flex-wrap: wrap; align-items: center; gap: .6rem;
+        padding: .75rem 1.1rem; border-bottom: 1px solid var(--line); margin-bottom: 0;
+        background: transparent;
+    }
+    #saved-posts-section #posts-filter-bar .form-select {
+        border-color: var(--line); border-radius: 8px; font-size: .85rem;
+        padding: .25rem .5rem; min-width: 6.5rem; color: var(--text); background: var(--surface);
+    }
+    #saved-posts-section #posts-filter-bar .form-select:focus {
+        border-color: var(--brand-400); box-shadow: 0 0 0 .2rem rgba(20,71,230,.12);
+    }
+    #saved-posts-section #posts-filter-bar .btn-sm {
+        padding: .25rem .55rem;
+    }
+    #saved-posts-section .social-copy-card {
+        border: 0; border-radius: 0; background: transparent;
+    }
+    #saved-posts-section .social-copy-body {
+        padding: 0; background: transparent;
+    }
+    #saved-posts-section .posts-container {
+        display: grid; gap: .75rem;
+    }
+    #saved-posts-section .posts-container .post-item {
+        padding: .85rem .95rem;
+        border: 1px solid var(--line); border-radius: var(--radius);
+        background: var(--surface);
+    }
+    #saved-posts-section .posts-container .post-item + .post-item {
+        margin-top: 0; padding-top: .85rem; border-top: 1px solid var(--line);
     }
 </style>
 
-<!-- 发布工作台：三栏 composer（发布到 / 编辑器 / 预览+本次发布+本地草稿）
-     下方保留整宽的「已保存帖子」管理网格。 -->
+<!-- 发布工作台：两栏 composer（左栏 = 发布到 + 预览/本次发布/本地草稿，
+     右栏 = 编辑器；已存帖子对齐编辑器列）。 -->
 <div id="composerWrap">
 <div class="composer">
 
+    {# 左栏 rail：发布到 + 预览/本次发布/本地草稿（compose-rail），
+       右栏 = 编辑器。已存帖子通过对齐编辑器列的 margin 跟右栏对齐。 #}
+    <div class="compose-rail">
     <!-- 栏1：发布到 -->
     <aside class="card compose-col" id="composeTargets" aria-label="选择发布平台">
         <div class="card-head"><b>发布到</b><span class="pill" id="selPill">已选 0</span></div>
@@ -431,14 +707,18 @@
                     ('wechat','wechat','信','公众号','#07C160'),
                     ('zhihu','zhihu','知','知乎','#0084FF'),
                     ('toutiao','toutiao','头','头条号','#ED1C24')] %}
-                {% set conn = PUBLISH_TARGETS | selectattr('platform','equalto', platform) | selectattr('account_id') | list %}
-                <label class="acct{% if not conn %} is-off{% endif %}">
+                {# 可发布与否由 heartbeat 登录态决定（login_states），而不是旧
+                   social_accounts 账号行：每平台一号，登录态就是浏览器那个号。 #}
+                {% set ls = (login_states.platforms or {}).get(platform, {}) %}
+                {% set state = ls.get('state') or 'offline' %}
+                {% set ok = (state == 'ok') %}
+                <label class="acct{% if not ok %} is-off{% endif %}">
                     <input type="checkbox" class="d-none" value="{{ platform }}" id="platform-{{ pid }}"
-                           {% if not conn %}disabled{% endif %}>
+                           {% if not ok %}disabled{% endif %}>
                     <span class="cbx" aria-hidden="true"></span>
                     <span class="pmark" style="--pc: {{ plat_color }}">{{ ch }}</span>
                     <span class="acct-txt"><span class="acct-name">{{ name }}</span>
-                        <span class="acct-sub">{% if conn %}<span class="dot dot-ok" aria-hidden="true"></span>当前登录{% else %}未登录{% endif %}</span></span>
+                        <span class="acct-sub">{% if ok %}<span class="dot dot-ok" aria-hidden="true"></span>可发布{% else %}<span class="dot dot-warn" aria-hidden="true"></span>未登录{% if ls.get('login_url') %} · <a class="linklike" href="{{ ls.login_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">去登录</a>{% endif %}{% endif %}</span></span>
                 </label>
                 {% endfor %}
             </div>
@@ -474,14 +754,34 @@
         </div>
     </aside>
 
+    <!-- 栏3：本次发布 + 本地草稿（左栏，发布到下方） -->
+    <aside class="compose-col compose-side" id="composeSide" aria-label="发布队列">
+        <div class="card" style="overflow:hidden">
+            <div class="card-head"><b>本次发布</b><span class="pill" id="queuePill">0 个平台</span></div>
+            <ul class="queue" id="queueList"></ul>
+        </div>
+        <div class="card" style="overflow:hidden">
+            <div class="card-head"><b>本地草稿</b><span class="pill" id="draftPill">{{ local_drafts|length }}</span></div>
+            <ul class="queue" id="draftList">
+                {% for d in local_drafts %}
+                <li>
+                    <span class="pmark sm" style="--pc: #475569" aria-hidden="true">草</span>
+                    <span class="draft-preview"><span class="draft-text">{{ d.content[:40] }}{% if d.content|length > 40 %}…{% endif %}</span>
+                        <span class="draft-at">{{ d.created_at.replace('T', ' ') }}</span></span>
+                    <button class="linklike" onclick="loadDraft({{ d.id }})">编辑</button>
+                </li>
+                {% endfor %}
+                {% if not local_drafts %}<li class="is-empty">暂无未使用的手动草稿</li>{% endif %}
+            </ul>
+        </div>
+    </aside>
+    </div><!-- /.compose-rail -->
+
     <!-- 栏2：编辑器 -->
-    <div class="card compose-col is-editor" style="border-radius: 12px; overflow: hidden;">
-    <div class="card-header" style="background: var(--brand-500, #1447e6); color: white;">
-        <strong>✨ Create Posts</strong>
-    </div>
+    <div class="card compose-col is-editor" style="overflow: hidden;">
     <div class="card-body position-relative" id="generator-body">
         <!-- Source Type Tabs -->
-        <ul class="nav nav-pills nav-pills-custom mb-4" id="sourceTypeTabs" role="tablist">
+        <ul class="nav nav-pills nav-pills-custom" id="sourceTypeTabs" role="tablist">
             <li class="nav-item me-2" role="presentation">
                 <button class="nav-link {% if not selected_source %}active{% endif %}" id="manual-tab" data-bs-toggle="pill" data-bs-target="#manual-content" type="button" role="tab">
                     ✍️ Write Manually
@@ -526,7 +826,7 @@
         </ul>
 
         <!-- Shared AI Provider + Model selector (applies to all generation modes) -->
-        <div class="ai-only d-flex align-items-center flex-wrap mb-3 gap-2 p-2 rounded" style="background: #f8f9fa;">
+        <div class="ai-only d-flex align-items-center flex-wrap mb-3 gap-2 p-2 rounded" style="background: var(--canvas); border:1px solid var(--line);">
             <span class="fw-bold small">AI Provider:</span>
             <div class="btn-group btn-group-sm" role="group" id="ai-provider-toggle">
                 <input type="radio" class="btn-check" name="aiProvider" id="provider-openai" value="openai" checked>
@@ -556,7 +856,7 @@
                         <span class="text-muted small">Nothing is generated: what you write here is what gets saved.</span>
                     </div>
                     <textarea class="form-control" id="manual-input" rows="6"
-                              placeholder="Write your post here...&#10;&#10;Pick where it should go below, add an image if you like, then save it."
+                              placeholder="Write your post here...&#10;&#10;Pick where it should go on the left, add an image if you like, then save it."
                               oninput="updateManualComposerCount()"></textarea>
                     <div class="small mt-2 d-flex flex-wrap gap-2 align-items-center" id="manual-charcount" aria-live="polite"></div>
                 </div>
@@ -948,19 +1248,19 @@
             <small class="text-muted">Works with every tab — including From URL and From Saved Source. This context is added to the AI prompt to guide generation.</small>
         </div>
         
-        <!-- Save Button (manual tab) -->
-        <div class="manual-only">
-            <button type="button" class="btn btn-lg btn-success" id="manual-save-btn" onclick="saveManualPost()">
-                💾 Save Post
-            </button>
-        </div>
-
-        <!-- Generate Button -->
-        <div class="d-grid ai-only">
-            <button type="button" class="btn btn-lg btn-primary" id="generate-btn"
-                    onclick="generatePosts()">
-                ✨ Generate & Save Posts
-            </button>
+        <!-- Action bar -->
+        <div class="generator-action">
+            <div class="manual-only">
+                <button type="button" class="btn btn-lg btn-success" id="manual-save-btn" onclick="saveManualPost()">
+                    💾 Save Post
+                </button>
+            </div>
+            <div class="ai-only">
+                <button type="button" class="btn btn-lg btn-primary" id="generate-btn"
+                        onclick="generatePosts()">
+                    ✨ Generate & Save Posts
+                </button>
+            </div>
         </div>
         
         <!-- Loading Overlay -->
@@ -971,60 +1271,6 @@
         </div>
     </div>
 </div>
-
-    <!-- 栏3：预览 + 本次发布 + 本地草稿 -->
-    {# 只对连接了账号的平台出预览 tab；取该平台首个账号作展示账号。 #}
-    {% set preview_accounts = {} %}
-    {% for platform in ['xiaohongshu', 'douyin', 'wechat', 'zhihu', 'toutiao'] %}
-    {% set conn = PUBLISH_TARGETS | selectattr('platform','equalto', platform) | selectattr('account_id') | list %}
-    {% if conn %}
-    {% set meta = PLATFORM_META[platform] %}
-    {% set _ = preview_accounts.update({platform: {'label': conn[0].label or meta.label,
-                                                   'ch': meta.label[0], 'color': meta.color}}) %}
-    {% endif %}
-    {% endfor %}
-    {% set kinds = {'xiaohongshu':'笔记','douyin':'短视频','wechat':'推文','zhihu':'文章','toutiao':'图文'} %}
-    {% set plat_lbl = {'xiaohongshu':'小红书','douyin':'抖音','wechat':'公众号','zhihu':'知乎','toutiao':'头条号'} %}
-    <aside class="compose-col compose-side" id="composeSide" aria-label="平台预览与发布队列">
-        <div class="card" style="overflow:hidden">
-            <div class="tabs" role="tablist" id="prevTabs" aria-label="平台预览切换">
-                {% for p, info in preview_accounts.items() %}
-                <button role="tab" id="tab-{{ p }}" aria-selected="{{ 'true' if loop.first else 'false' }}"
-                        aria-controls="prevPanel" data-platform="{{ p }}" type="button">{{ plat_lbl[p] }}</button>
-                {% endfor %}
-            </div>
-            <div class="preview" role="tabpanel" id="prevPanel">
-                <div class="prev-head">
-                    <span class="pmark lg" id="prevMark" style="--pc: #475569">—</span>
-                    <div>
-                        <div class="prev-acc" id="prevAcc">—</div>
-                        <div class="prev-plat"><span id="prevPlat">—</span> · <span id="prevKind">—</span></div>
-                    </div>
-                </div>
-                <div class="prev-title" id="prevTitle">（无标题）</div>
-                <div class="prev-body" id="prevBody">在编辑器里撰写内容，预览会实时更新。</div>
-                <div class="prev-foot">将按 <b id="prevPlatName">平台</b> 的排版格式自动转换</div>
-            </div>
-        </div>
-        <div class="card" style="overflow:hidden">
-            <div class="card-head"><b>本次发布</b><span class="pill" id="queuePill">0 个平台</span></div>
-            <ul class="queue" id="queueList"></ul>
-        </div>
-        <div class="card" style="overflow:hidden">
-            <div class="card-head"><b>本地草稿</b><span class="pill" id="draftPill">{{ local_drafts|length }}</span></div>
-            <ul class="queue" id="draftList">
-                {% for d in local_drafts %}
-                <li>
-                    <span class="pmark sm" style="--pc: #475569" aria-hidden="true">草</span>
-                    <span class="draft-preview"><span class="draft-text">{{ d.content[:40] }}{% if d.content|length > 40 %}…{% endif %}</span>
-                        <span class="draft-at">{{ d.created_at }}</span></span>
-                    <button class="linklike" onclick="loadDraft({{ d.id }})">编辑</button>
-                </li>
-                {% endfor %}
-                {% if not local_drafts %}<li class="is-empty">暂无未使用的手动草稿</li>{% endif %}
-            </ul>
-        </div>
-    </aside>
 
     </div>
 </div>
@@ -1100,54 +1346,52 @@
 
 {% if post_groups %}
 <div class="card mb-4" id="saved-posts-section">
-    <div class="card-header bg-gradient d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">
-        <strong>📬 Generated Posts</strong>
-        <span class="badge bg-light text-dark" id="posts-count">{{ group_total }} saved post{% if group_total != 1 %}s{% endif %}</span>
+    <div class="card-head">
+        <b>📬 Generated Posts</b>
+        <span class="spacer"></span>
+        <span class="pill" id="posts-count">{{ group_total }} saved post{% if group_total != 1 %}s{% endif %}</span>
+    </div>
+    <div class="toolbar">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="toggle-select-mode" onclick="toggleSelectMode()">
+            ☑️ Select
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-primary d-none select-mode-btn" id="select-all-btn" onclick="selectAllPosts()">
+            ☑️ Select All
+        </button>
+        <button type="button" class="btn btn-sm btn-primary d-none" id="add-platform-selected-btn" onclick="showBulkPlatformModal('add')"
+                title="Also post the selected posts to more platforms">
+            🌐 Add Platform (<span id="add-platform-count">0</span>)
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-primary d-none" id="remove-platform-selected-btn" onclick="showBulkPlatformModal('remove')"
+                title="Stop the selected posts going to some platforms">
+            ➖ Remove Platform (<span id="remove-platform-count">0</span>)
+        </button>
+        <button type="button" class="btn btn-sm btn-danger d-none" id="delete-selected-btn" onclick="deleteSelectedPosts()">
+            🗑️ Delete Selected (<span id="selected-count">0</span>)
+        </button>
+        <button type="button" class="btn btn-sm btn-warning d-none" id="remove-image-selected-btn" onclick="removeImageFromSelected()">
+            🖼️✕ Remove Images (<span id="remove-image-count">0</span>)
+        </button>
+        <button type="button" class="btn btn-sm btn-info d-none" id="add-image-selected-btn" onclick="showBulkAddImageModal()">
+            🖼️+ Add Image (<span id="add-image-count">0</span>)
+        </button>
+        <button type="button" class="btn btn-sm btn-secondary d-none" id="find-stock-images-btn" onclick="findStockImagesForSelected()">
+            🔍 Find Stock Images (<span id="find-stock-count">0</span>)
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-success d-none" id="mark-used-selected-btn" onclick="markUsedSelectedPosts()">
+            ✓ Mark as Used (<span id="mark-used-count">0</span>)
+        </button>
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-sm btn-outline-info" onclick="openSearchReplaceModal()">
+            🔍 Find & Replace
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearAllPosts()">
+            🗑️ Clear All
+        </button>
     </div>
     <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-            <h6 class="mb-0">💾 Saved Posts</h6>
-            <div class="d-flex gap-2 flex-wrap">
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="toggle-select-mode" onclick="toggleSelectMode()">
-                    ☑️ Select
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-primary d-none select-mode-btn" id="select-all-btn" onclick="selectAllPosts()">
-                    ☑️ Select All
-                </button>
-                <button type="button" class="btn btn-sm btn-primary d-none" id="add-platform-selected-btn" onclick="showBulkPlatformModal('add')"
-                        title="Also post the selected posts to more platforms">
-                    🌐 Add Platform (<span id="add-platform-count">0</span>)
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-primary d-none" id="remove-platform-selected-btn" onclick="showBulkPlatformModal('remove')"
-                        title="Stop the selected posts going to some platforms">
-                    ➖ Remove Platform (<span id="remove-platform-count">0</span>)
-                </button>
-                <button type="button" class="btn btn-sm btn-danger d-none" id="delete-selected-btn" onclick="deleteSelectedPosts()">
-                    🗑️ Delete Selected (<span id="selected-count">0</span>)
-                </button>
-                <button type="button" class="btn btn-sm btn-warning d-none" id="remove-image-selected-btn" onclick="removeImageFromSelected()">
-                    🖼️✕ Remove Images (<span id="remove-image-count">0</span>)
-                </button>
-                <button type="button" class="btn btn-sm btn-info d-none" id="add-image-selected-btn" onclick="showBulkAddImageModal()">
-                    🖼️+ Add Image (<span id="add-image-count">0</span>)
-                </button>
-                <button type="button" class="btn btn-sm btn-secondary d-none" id="find-stock-images-btn" onclick="findStockImagesForSelected()">
-                    🔍 Find Stock Images (<span id="find-stock-count">0</span>)
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-success d-none" id="mark-used-selected-btn" onclick="markUsedSelectedPosts()">
-                    ✓ Mark as Used (<span id="mark-used-count">0</span>)
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-info" onclick="openSearchReplaceModal()">
-                    🔍 Find & Replace
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearAllPosts()">
-                    🗑️ Clear All
-                </button>
-            </div>
-        </div>
-        
         <!-- Filter Bar -->
-        <div class="d-flex gap-2 mb-3 flex-wrap align-items-center" id="posts-filter-bar">
+        <div id="posts-filter-bar">
             <span class="text-muted small">Filter:</span>
             <select class="form-select form-select-sm" style="width: auto;" id="filter-used" onchange="applyPostFilters()">
                 <option value="">All Status</option>
@@ -1226,9 +1470,10 @@
 {% else %}
 <!-- Empty state: allow creating a first manual post -->
 <div class="card mb-4" id="saved-posts-section">
-    <div class="card-header bg-gradient d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">
-        <strong>📬 Posts</strong>
-        <span class="badge bg-light text-dark">0 posts</span>
+    <div class="card-head">
+        <b>📬 Posts</b>
+        <span class="spacer"></span>
+        <span class="pill">0 posts</span>
     </div>
     <div class="card-body">
         <p class="text-muted mb-3">No posts yet. Write or generate some above, or write one here and tick where it should go:</p>
@@ -1757,7 +2002,7 @@ function updateManualComposerCount() {
     };
     out.replaceChildren(chip(`${length} character${length === 1 ? '' : 's'}`, 'text-muted'));
     if (platforms.length === 0) {
-        out.appendChild(chip('Pick at least one platform below', 'text-danger'));
+        out.appendChild(chip('Pick at least one platform on the left', 'text-danger'));
         return;
     }
     // Each ticked platform against its own limit: one long post can be fine for
@@ -6292,23 +6537,30 @@ function importFile() {
 <script>
 // Domestic draft push: POST to the route, then poll the job until it leaves
 // the queue. The chip carries the per-platform truth, including drafts.
+// Sets the chip's text and the amber "pushing" pill together: on while the
+// push is in flight, off for every result/error state.
+function setPushChip(chip, text, pushing) {
+    chip.textContent = text;
+    chip.classList.toggle('is-pushing', !!pushing);
+}
+
 document.addEventListener('click', async (ev) => {
     const btn = ev.target.closest('.btn-agent-push');
     if (!btn || btn.disabled) return;
     const postId = btn.dataset.postId;
     const chip = document.querySelector(`.agent-push-result[data-post-id="${postId}"]`);
     btn.disabled = true;
-    chip.textContent = '推送中…';
+    setPushChip(chip, '推送中…', true);
     try {
         const form = new FormData();
         form.set('target', btn.dataset.platform);
         const r = await fetch(`/compose/post/${postId}/push`, {method: 'POST', body: form});
         const body = await r.json();
-        if (!r.ok) { chip.textContent = body.error || '推送失败'; btn.disabled = false; return; }
-        if (body.already) chip.textContent = '已在队列中…';
+        if (!r.ok) { setPushChip(chip, body.error || '推送失败'); btn.disabled = false; return; }
+        if (body.already) setPushChip(chip, '已在队列中…');
         await pollPushJob(body.job_id, chip, btn);
     } catch (e) {
-        chip.textContent = '网络错误：' + e;
+        setPushChip(chip, '网络错误：' + e);
         btn.disabled = false;
     }
 });
@@ -6324,16 +6576,16 @@ async function pollPushJob(jobId, chip, btn, tries = 80) {
         btn.disabled = false;
         return;
     }
-    chip.textContent = '仍在执行，稍后可在发布队列页查看';
+    setPushChip(chip, '仍在执行，稍后可在发布队列页查看');
     btn.disabled = false;
 }
 
 function renderPushResults(job, chip) {
     const results = JSON.parse(job.result || '[]');
-    if (!results.length) { chip.textContent = job.status === 'succeeded' ? '已完成' : '失败'; return; }
-    chip.textContent = results.map(r =>
+    if (!results.length) { setPushChip(chip, job.status === 'succeeded' ? '已完成' : '失败'); return; }
+    setPushChip(chip, results.map(r =>
         `${r.success ? '✅' : '❌'} ${r.success ? '已推入草稿，请到平台确认发布' : (r.error || '失败')}`
-    ).join('　');
+    ).join('　'));
 }
 
 // Scheduled domestic push: same route, plus run_at; queuing while the agent
@@ -6363,21 +6615,19 @@ document.addEventListener('click', async (ev) => {
 </script>
 
 <script>
-/* ---- 发布工作台右栏（预览 + 本次发布 + 本地草稿）—— 自足脚本 ----
+/* ---- 发布工作台右栏（本次发布 + 本地草稿）—— 自足脚本 ----
    只依赖本页已就绪的全局（manualPostTargets/tickedPlatforms/
    updateManualComposerCount/PLATFORM_META/bootstrap）与服务端注入的
-   PUBLISH_TARGETS/preview_accounts/local_drafts。新 ID 不与既有冲突。 */
+   PUBLISH_TARGETS/local_drafts。新 ID 不与既有冲突。 */
 (function () {
     'use strict';
     const $ = (s, r) => (r || document).querySelector(s);
     const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
 
     const PUBLISH_TARGETS = {{ PUBLISH_TARGETS | tojson }};
-    const PREVIEW_ACCOUNTS = {{ preview_accounts | tojson }};
     const LOCAL_DRAFTS = {{ local_drafts | tojson }};
     const PLATFORM_LABELS = { xiaohongshu: '小红书', douyin: '抖音', wechat: '公众号', zhihu: '知乎', toutiao: '头条号' };
     const PLATFORM_COLORS = { xiaohongshu: '#FF2442', douyin: '#FE2C55', wechat: '#07C160', zhihu: '#0084FF', toutiao: '#ED1C24' };
-    const PLATFORM_KIND = { xiaohongshu: '笔记', douyin: '短视频', wechat: '推文', zhihu: '文章', toutiao: '图文' };
     const DRAFT_ONLY = ['xiaohongshu', 'douyin', 'wechat'];
 
     const TARGET_MAP = {};
@@ -6389,14 +6639,6 @@ document.addEventListener('click', async (ev) => {
     const selPill = $('#selPill');
     const queuePill = $('#queuePill');
     const queueList = $('#queueList');
-    const prevTabs = $('#prevTabs');
-    const prevMark = $('#prevMark');
-    const prevAcc = $('#prevAcc');
-    const prevPlat = $('#prevPlat');
-    const prevKind = $('#prevKind');
-    const prevTitle = $('#prevTitle');
-    const prevBody = $('#prevBody');
-    const prevPlatName = $('#prevPlatName');
     const manualInput = $('#manual-input');
 
     // target string "platform" | "platform:account_id" -> {label, ch, color, platform, draft}
@@ -6445,35 +6687,6 @@ document.addEventListener('click', async (ev) => {
         });
     }
 
-    // 预览：手动 tab 的 textarea 即内容（无标题字段）；首非空行作标题。
-    function renderPreview() {
-        const text = manualInput ? manualInput.value : '';
-        const lines = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
-        prevTitle.textContent = (lines[0] || '').slice(0, 60) || '（无标题）';
-        prevBody.textContent = text.slice(0, 2000) || '在编辑器里撰写内容，预览会实时更新。';
-    }
-
-    function updatePreviewFor(platform) {
-        const acc = PREVIEW_ACCOUNTS[platform];
-        prevMark.textContent = acc ? acc.ch : (PLATFORM_LABELS[platform] || '—')[0];
-        prevMark.style.setProperty('--pc', acc ? acc.color : (PLATFORM_COLORS[platform] || '#475569'));
-        prevAcc.textContent = acc ? acc.label : '—';
-        prevPlat.textContent = PLATFORM_LABELS[platform] || platform;
-        prevKind.textContent = PLATFORM_KIND[platform] || '—';
-        prevPlatName.textContent = PLATFORM_LABELS[platform] || platform;
-    }
-
-    if (prevTabs) {
-        prevTabs.addEventListener('click', e => {
-            const tab = e.target.closest('[role="tab"][data-platform]');
-            if (!tab) return;
-            $$('[role="tab"]', prevTabs).forEach(t => t.setAttribute('aria-selected', String(t === tab)));
-            updatePreviewFor(tab.dataset.platform);
-        });
-        const first = prevTabs.querySelector('[role="tab"]');
-        if (first) updatePreviewFor(first.dataset.platform);
-    }
-
     // 左栏账号/平台行：手动翻转 checkbox（preventDefault 镜像 account-target-btn 模式），
     // 复用既有 updateManualComposerCount 刷新每平台字数，再刷右栏。
     $$('#composerWrap .acct').forEach(row => {
@@ -6484,14 +6697,13 @@ document.addEventListener('click', async (ev) => {
             cb.checked = !cb.checked;
             if (typeof updateManualComposerCount === 'function') updateManualComposerCount();
             renderQueue();
-            renderPreview();
         });
     });
     if (manualInput) {
-        manualInput.addEventListener('input', () => { renderPreview(); renderQueue(); });
+        manualInput.addEventListener('input', () => { renderQueue(); });
     }
 
-    // 本地草稿载入：回填 textarea → 切到手动 tab → 刷新。
+    // 本地草稿载入：回填 textarea → 切到手动 tab → 刷新队列。
     window.loadDraft = function (id) {
         const d = (LOCAL_DRAFTS || []).find(x => x.id === id);
         if (!d) return;
@@ -6501,13 +6713,12 @@ document.addEventListener('click', async (ev) => {
             bootstrap.Tab.getOrCreateInstance(manualTab).show();
         }
         if (typeof updateManualComposerCount === 'function') updateManualComposerCount();
-        renderQueue(); renderPreview();
+        renderQueue();
         const editor = $('#composerWrap .is-editor');
         if (editor) editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
     renderQueue();
-    renderPreview();
 })();
 </script>
 {% endblock %}
