@@ -80,6 +80,7 @@ from database import (
     list_articles,
     update_article,
     delete_article,
+    delete_social_posts_for_article,
     update_feed_metadata,
     # Standalone posts functions (Command Center)
     add_standalone_post,
@@ -1707,7 +1708,7 @@ def parse_feed_with_fallback(url: str):
     return parsed
 
 
-def refresh_feed_metadata(feed_id: int, feed_url: str) -> dict:
+def refresh_feed_metadata(feed_id: int, feed_url: str, user_id: int) -> dict:
     """Fetch feed and update cached metadata. Returns the metadata dict."""
     try:
         feed_data = parse_feed_with_fallback(feed_url)
@@ -1739,7 +1740,7 @@ def refresh_feed_metadata(feed_id: int, feed_url: str) -> dict:
         item_count = len(feed_data.entries)
         
         # Save to database
-        update_feed_metadata(feed_id, feed_type, last_post_str, item_count)
+        update_feed_metadata(feed_id, feed_type, last_post_str, item_count, user_id)
         
         return {
             'type': feed_type,
@@ -1752,6 +1753,7 @@ def refresh_feed_metadata(feed_id: int, feed_url: str) -> dict:
 @app.route('/', methods=['GET', 'POST'])
 def index():
     """List stored podcast feeds and allow new ones to be added."""
+    uid = current_user()['id']
     if request.method == 'POST':
         feed_url = request.form['feed_url']
 
@@ -1763,8 +1765,8 @@ def index():
                 if rss_url:
                     feed = feedparser.parse(rss_url)
                     title = feed.feed.get('title', feed_url)
-                    feed_id = add_feed(rss_url, title)
-                    update_feed_metadata(feed_id, 'youtube', None, len(feed.entries))
+                    feed_id = add_feed(rss_url, title, uid)
+                    update_feed_metadata(feed_id, 'youtube', None, len(feed.entries), uid)
                     return redirect(url_for('view_feed', feed_id=feed_id))
 
             if yt_kind == "video":
@@ -1784,22 +1786,23 @@ def index():
                 add_url_source(
                     url=feed_url, title=title,
                     description=description, content="", og_image=og_image,
+                    user_id=uid,
                 )
                 return redirect(url_for('sources_page'))
 
         feed = parse_feed_with_fallback(feed_url)
         title = feed.feed.get('title', feed_url)
-        feed_id = add_feed(feed_url, title)
-        refresh_feed_metadata(feed_id, feed_url)
+        feed_id = add_feed(feed_url, title, uid)
+        refresh_feed_metadata(feed_id, feed_url, uid)
         return redirect(url_for('view_feed', feed_id=feed_id))
-    
+
     # Get filter and sort parameters
     filter_type = request.args.get('type', '')
     sort_by = request.args.get('sort', 'title')
     sort_order = request.args.get('order', 'asc')
     search_query = request.args.get('q', '').lower()
-    
-    raw_feeds = list_feeds()
+
+    raw_feeds = list_feeds(uid)
     feeds_with_meta = []
     
     for f in raw_feeds:
@@ -1866,7 +1869,7 @@ def index():
 @app.route('/feed/<int:feed_id>/delete', methods=['POST'])
 def remove_feed(feed_id: int):
     """Delete a feed and all its associated data."""
-    delete_feed(feed_id)
+    delete_feed(feed_id, current_user()['id'])
     return redirect(url_for('index'))
 
 @app.route('/feeds/bulk-delete', methods=['POST'])
@@ -1874,27 +1877,31 @@ def bulk_delete_feeds():
     """Delete multiple feeds at once."""
     feed_ids = request.form.getlist('feed_ids', type=int)
     if feed_ids:
-        delete_feeds_bulk(feed_ids)
+        delete_feeds_bulk(feed_ids, current_user()['id'])
     return redirect(url_for('index'))
 
 @app.route('/feed/<int:feed_id>/refresh')
 def refresh_feed(feed_id: int):
     """Refresh metadata for a specific feed."""
-    feed = get_feed_by_id(feed_id)
-    if feed:
-        refresh_feed_metadata(feed_id, feed['url'])
+    uid = current_user()['id']
+    feed = get_feed_by_id(feed_id, uid)
+    if not feed:
+        abort(404)
+    refresh_feed_metadata(feed_id, feed['url'], uid)
     return redirect(url_for('index'))
 
 @app.route('/feeds/refresh-all')
 def refresh_all_feeds():
     """Refresh metadata for all feeds (runs in background thread)."""
+    uid = current_user()['id']
+
     def refresh_worker():
-        for f in list_feeds():
+        for f in list_feeds(uid):
             try:
-                refresh_feed_metadata(f['id'], f['url'])
+                refresh_feed_metadata(f['id'], f['url'], uid)
             except Exception:
                 pass
-    
+
     thread = threading.Thread(target=refresh_worker, daemon=True)
     thread.start()
     return redirect(url_for('index'))
@@ -1902,9 +1909,10 @@ def refresh_all_feeds():
 @app.route('/feed/<int:feed_id>')
 def view_feed(feed_id: int):
     """Display episodes/articles for a particular feed with pagination."""
-    feed = get_feed_by_id(feed_id)
+    uid = current_user()['id']
+    feed = get_feed_by_id(feed_id, uid)
     if not feed:
-        return redirect(url_for('index'))
+        abort(404)
 
     is_youtube_feed = feed['feed_type'] == 'youtube'
 
@@ -1916,7 +1924,7 @@ def view_feed(feed_id: int):
     all_episodes = []
     is_text_feed = True
 
-    refresh_feed_metadata(feed_id, feed['url'])
+    refresh_feed_metadata(feed_id, feed['url'], uid)
     feed_data = parse_feed_with_fallback(feed['url'])
 
     audio_extensions = ('.mp3', '.m4a', '.wav', '.ogg', '.aac', '.flac')
@@ -1942,7 +1950,7 @@ def view_feed(feed_id: int):
             if url_check.endswith(audio_extensions):
                 is_text_feed = False
                 item_type = 'audio'
-        ep_db = get_episode(url)
+        ep_db = get_episode(url, uid)
         status = {
             'transcribed': ep_db is not None and bool(ep_db['transcript']),
             'summarized': ep_db is not None and bool(ep_db['summary']),
@@ -2030,7 +2038,10 @@ def enqueue_episode():
     published = request.args.get('published')
     if not audio_url or feed_id is None:
         return redirect(url_for('index'))
-    queue_episode(audio_url, title, feed_id, published)
+    uid = current_user()['id']
+    if not get_feed_by_id(feed_id, uid):
+        abort(404)
+    queue_episode(audio_url, title, feed_id, published, uid)
     _user = current_user()
     task_queue.put({'url': audio_url, 'title': title, 'feed_id': feed_id, 'published': published,
                     'user_id': _user['id'] if _user else None,
@@ -2050,25 +2061,28 @@ def process_text_article():
     if not article_url:
         return redirect(url_for('index'))
 
+    uid = current_user()['id']
+
     app.logger.info("Processing text article: %s", article_url)
 
     # Fetch content from the feed first
     if feed_id:
-        feed = get_feed_by_id(feed_id)
-        if feed:
-            feed_data = parse_feed_with_fallback(feed['url'])
-            for entry in feed_data.entries:
-                entry_url = entry.get('link', entry.get('id', ''))
-                if entry_url == article_url:
-                    desc = entry.get('summary') or entry.get('description', '')
-                    description = strip_html(desc)
-                    # Get full content from feed
-                    if hasattr(entry, 'content') and entry.content:
-                        content = entry.content[0].get('value', '')
-                    if not content:
-                        content = desc
-                    content = strip_html(content)
-                    break
+        feed = get_feed_by_id(feed_id, uid)
+        if not feed:
+            abort(404)
+        feed_data = parse_feed_with_fallback(feed['url'])
+        for entry in feed_data.entries:
+            entry_url = entry.get('link', entry.get('id', ''))
+            if entry_url == article_url:
+                desc = entry.get('summary') or entry.get('description', '')
+                description = strip_html(desc)
+                # Get full content from feed
+                if hasattr(entry, 'content') and entry.content:
+                    content = entry.content[0].get('value', '')
+                if not content:
+                    content = desc
+                content = strip_html(content)
+                break
     
     # If RSS content is too short (likely just metadata/link), fetch the actual article
     MIN_CONTENT_LENGTH = 500  # Minimum chars to consider content "full"
@@ -2082,12 +2096,12 @@ def process_text_article():
             app.logger.warning("Could not fetch better content from URL")
 
     # Reuse previously processed data if available
-    existing = get_episode(article_url)
+    existing = get_episode(article_url, uid)
     if existing:
         transcript = existing["transcript"]
         summary = existing["summary"]
         actions = existing["action_items"].splitlines()
-        articles = [dict(a) for a in list_articles(existing["id"])]
+        articles = [dict(a) for a in list_articles(existing["id"], uid)]
         return render_template(
             'result.html',
             title=existing["title"],
@@ -2120,7 +2134,8 @@ def process_text_article():
     app.logger.info("Action item extraction complete")
 
     # Persist results
-    save_episode(article_url, title, transcript, summary, actions, feed_id, published)
+    save_episode(article_url, title, transcript, summary, actions, feed_id, published,
+                 user_id=uid)
 
     return render_template(
         'result.html',
@@ -2147,26 +2162,28 @@ def process_episode():
     description = ""
     if not audio_url:
         return redirect(url_for('index'))
+    uid = current_user()['id']
     app.logger.info("Processing episode: %s", audio_url)
     if not description and feed_id:
-        feed = get_feed_by_id(feed_id)
-        if feed:
-            feed_data = parse_feed_with_fallback(feed['url'])
-            for entry in feed_data.entries:
-                entry_url = entry.get('link', entry.get('id', ''))
-                enclosure_url = entry.enclosures[0].href if entry.get('enclosures') else None
-                if enclosure_url == audio_url or entry_url == audio_url:
-                    desc = entry.get('summary') or entry.get('description', '')
-                    description = strip_html(desc)
-                    break
+        feed = get_feed_by_id(feed_id, uid)
+        if not feed:
+            abort(404)
+        feed_data = parse_feed_with_fallback(feed['url'])
+        for entry in feed_data.entries:
+            entry_url = entry.get('link', entry.get('id', ''))
+            enclosure_url = entry.enclosures[0].href if entry.get('enclosures') else None
+            if enclosure_url == audio_url or entry_url == audio_url:
+                desc = entry.get('summary') or entry.get('description', '')
+                description = strip_html(desc)
+                break
     # Reuse previously processed data if available
-    existing = get_episode(audio_url)
+    existing = get_episode(audio_url, uid)
     if existing:
         # Already processed - read results from the DB
         transcript = existing["transcript"]
         summary = existing["summary"]
         actions = existing["action_items"].splitlines()
-        articles = [dict(a) for a in list_articles(existing["id"])]
+        articles = [dict(a) for a in list_articles(existing["id"], uid)]
         return render_template(
             'result.html',
             title=existing["title"],
@@ -2208,7 +2225,8 @@ def process_episode():
         app.logger.info("Extracting action items")
         actions = extract_action_items(transcript, lang=g.lang)
         app.logger.info("Action item extraction complete")
-        save_episode(audio_url, title, transcript, summary, actions, feed_id, published, channel=channel)
+        save_episode(audio_url, title, transcript, summary, actions, feed_id, published, channel=channel,
+                     user_id=uid)
         if is_youtube_url(audio_url):
             _backfill_youtube_source(audio_url, transcript, summary)
     finally:
@@ -2417,8 +2435,9 @@ def status_page():
     else:
         order_by = 'id'
     
-    all_episodes = list_all_episodes(order_by=order_by)
-    feeds_list = list_feeds()
+    uid = current_user()['id']
+    all_episodes = list_all_episodes(order_by=order_by, user_id=uid)
+    feeds_list = list_feeds(uid)
     feeds = {f["id"]: f["title"] for f in feeds_list}
 
     ep_channels = {
@@ -2471,9 +2490,10 @@ def status_page():
 @app.route('/episode/<int:episode_id>/reprocess')
 def reprocess_episode(episode_id: int):
     """Reprocess an episode - clears existing data and requeues."""
-    episode = get_episode_by_id(episode_id)
+    uid = current_user()['id']
+    episode = get_episode_by_id(episode_id, uid)
     if not episode:
-        return redirect(url_for('status_page'))
+        abort(404)
 
     audio_extensions = ('.mp3', '.m4a', '.wav', '.ogg', '.aac', '.flac')
     is_audio = (
@@ -2481,7 +2501,7 @@ def reprocess_episode(episode_id: int):
         or is_youtube_url(episode['url'])
     )
 
-    reset_episode_for_reprocess(episode_id)
+    reset_episode_for_reprocess(episode_id, uid)
 
     if is_audio:
         # Queue for background processing
@@ -2508,7 +2528,10 @@ def reprocess_episode(episode_id: int):
 @app.route('/episode/<int:episode_id>/delete')
 def delete_episode(episode_id: int):
     """Delete an episode and all associated data."""
-    delete_episode_by_id(episode_id)
+    uid = current_user()['id']
+    if not get_episode_by_id(episode_id, uid):
+        abort(404)
+    delete_episode_by_id(episode_id, uid)
     return redirect(url_for('status_page'))
 
 @app.route('/episodes/bulk-delete', methods=['POST'])
@@ -2516,7 +2539,7 @@ def bulk_delete_episodes():
     """Delete multiple episodes at once."""
     episode_ids = request.form.getlist('episode_ids', type=int)
     if episode_ids:
-        delete_episodes_bulk(episode_ids)
+        delete_episodes_bulk(episode_ids, current_user()['id'])
     return redirect(url_for('status_page'))
 
 @app.route('/episodes/backfill-channels', methods=['POST'])
@@ -2546,9 +2569,10 @@ def create_article():
     if not episode_url or not topic:
         return redirect(request.referrer or url_for('index'))
 
-    episode = get_episode(episode_url)
+    uid = current_user()['id']
+    episode = get_episode(episode_url, uid)
     if not episode:
-        return redirect(url_for('index'))
+        abort(404)
 
     # Detect if this is a text article (not an audio file)
     audio_extensions = ('.mp3', '.m4a', '.wav', '.ogg', '.aac', '.flac')
@@ -2578,6 +2602,7 @@ def create_article():
             topic=topic,
             style=style,
             content=article_content,
+            user_id=uid,
         )
         return redirect(url_for('view_article', article_id=article_id))
     except Exception as exc:
@@ -2592,34 +2617,39 @@ def create_article():
 @app.route('/article/<int:article_id>')
 def view_article(article_id: int):
     """Display a generated article."""
-    article = get_article(article_id)
+    article = get_article(article_id, current_user()['id'])
     if not article:
-        return redirect(url_for('index'))
-    
+        abort(404)
+
     return render_template('article.html', article=dict(article))
 
 @app.route('/article/<int:article_id>/edit', methods=['GET', 'POST'])
 def edit_article(article_id: int):
     """Edit an existing article."""
-    article = get_article(article_id)
+    uid = current_user()['id']
+    article = get_article(article_id, uid)
     if not article:
-        return redirect(url_for('view_articles'))
-    
+        abort(404)
+
     if request.method == 'POST':
         topic = request.form.get('topic', '').strip()
         style = request.form.get('style', '').strip()
         content = request.form.get('content', '').strip()
-        
+
         if topic and content:
-            update_article(article_id, topic=topic, style=style, content=content)
+            update_article(article_id, uid, topic=topic, style=style, content=content)
             return redirect(url_for('view_article', article_id=article_id))
-    
+
     return render_template('article_edit.html', article=dict(article))
 
 @app.route('/article/<int:article_id>/delete', methods=['POST'])
 def remove_article(article_id: int):
     """Delete an article."""
-    delete_article(article_id)
+    uid = current_user()['id']
+    if not get_article(article_id, uid):
+        abort(404)
+    delete_social_posts_for_article(article_id, uid)
+    delete_article(article_id, uid)
     return redirect(url_for('view_articles'))
 
 @app.route('/posts/bulk-replace', methods=['POST'])
@@ -2657,6 +2687,7 @@ def bulk_replace_posts():
             find_text=find_text,
             replace_text=replace_text,
             post_type=post_type,
+            user_id=current_user()['id'],
             case_sensitive=case_sensitive,
             whole_word=whole_word,
             post_ids=post_ids,
@@ -2674,14 +2705,14 @@ def bulk_replace_posts():
 @app.route('/article/<int:article_id>/refine', methods=['POST'])
 def refine_article_with_ai(article_id: int):
     """Refine an article using AI based on user feedback."""
-    article = get_article(article_id)
+    article = get_article(article_id, current_user()['id'])
     if not article:
         return {"error": "Article not found"}, 404
-    
+
     feedback = request.form.get('feedback', '').strip()
     if not feedback:
         return {"error": "Please provide feedback for how to refine the article"}, 400
-    
+
     try:
         refined_content = refine_article(
             current_content=article['content'],
@@ -2689,11 +2720,11 @@ def refine_article_with_ai(article_id: int):
             article_topic=article['topic'],
             lang=g.lang,
         )
-        
+
         # Optionally auto-save the refined content
         auto_save = request.form.get('auto_save', 'false') == 'true'
         if auto_save:
-            update_article(article_id, content=refined_content)
+            update_article(article_id, current_user()['id'], content=refined_content)
         
         return {"success": True, "refined_content": refined_content, "saved": auto_save}
     except Exception as exc:
@@ -2709,7 +2740,7 @@ def view_articles():
     filter_podcast = request.args.get('podcast', '')
     search_query = request.args.get('q', '').lower()
     
-    raw_articles = [dict(a) for a in list_articles()]
+    raw_articles = [dict(a) for a in list_articles(None, current_user()['id'])]
     
     # Collect unique styles and podcasts for filter dropdowns
     all_styles = set()
