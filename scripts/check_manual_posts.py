@@ -58,6 +58,7 @@ def connect_draft_account(database, platform, external_id, label):
 
 def rig():
     directory, database, web, publisher, client = isolated_app()
+    uid = database.get_user_by_username('gate')['id']
     # Creating a post fires a background og:image fetch that uploads to the
     # real Cloudinary when the repo .env is found; a gate must not.
     web._maybe_attach_link_image = lambda *a, **k: None
@@ -67,7 +68,7 @@ def rig():
         "douyin": connect_draft_account(database, "douyin", "dy-1", "Douyin"),
         "wechat": connect_draft_account(database, "wechat", "wx-1", "WeChat"),
     }
-    return database, web, client, ids
+    return database, web, client, ids, uid
 
 
 def post(client, targets, content="A post written by hand", image=None):
@@ -80,7 +81,7 @@ def post(client, targets, content="A post written by hand", image=None):
 # ── route ────────────────────────────────────────────────────────────────
 
 def section_route():
-    database, web, client, ids = rig()
+    database, web, client, ids, uid = rig()
     image = "https://example.test/pic.jpg"
     response = post(client, [f"xiaohongshu:{ids['xhs_work']}", f"xiaohongshu:{ids['xhs_studio']}",
                              "douyin"],
@@ -89,7 +90,7 @@ def section_route():
     check(response.status_code == 200 and body.get("success"), f"create failed: {body}")
     check(len(body["post_ids"]) == 3, f"expected one row per target, got {body['post_ids']}")
 
-    rows = [dict(database.get_standalone_post(i, db_path=database.DB_PATH)) for i in body["post_ids"]]
+    rows = [dict(database.get_standalone_post(i, user_id=uid, db_path=database.DB_PATH)) for i in body["post_ids"]]
     check({r["source_type"] for r in rows} == {"manual"}, "a hand-written post must be source_type 'manual'")
     check({r["content"] for r in rows} == {"A post written by hand"}, "every row must carry the same copy")
     check({r["image_url"] for r in rows} == {image}, "every row must carry the chosen image")
@@ -101,11 +102,11 @@ def section_route():
           "a bare platform name must land on that platform's default account")
 
     groups = web._group_standalone_posts(
-        database.list_standalone_posts(db_path=database.DB_PATH))
+        database.list_standalone_posts(user_id=uid, db_path=database.DB_PATH))
     check(len(groups) == 1, f"three rows of one post must show as ONE card, got {len(groups)}")
 
     # Rejections: each must say why and write nothing.
-    before = len(database.list_standalone_posts(db_path=database.DB_PATH))
+    before = len(database.list_standalone_posts(user_id=uid, db_path=database.DB_PATH))
     empty = post(client, ["douyin"], content="   ")
     check(empty.status_code == 400 and "Content" in empty.get_json()["error"],
           "blank copy must be refused")
@@ -123,7 +124,7 @@ def section_route():
     check(west_p.status_code == 400
           and west_p.get_json()["error"] == "Invalid platform. Must be one of: xiaohongshu, douyin, wechat, zhihu, toutiao",
           f"a Western platform in the platform list must be refused with the offer: {west_p.get_json()}")
-    check(len(database.list_standalone_posts(db_path=database.DB_PATH)) == before,
+    check(len(database.list_standalone_posts(user_id=uid, db_path=database.DB_PATH)) == before,
           "a refused request must not write any row")
 
     # The trio is draft-only: there is no posting API to queue into, so every
@@ -147,11 +148,11 @@ def section_route():
           f"queueing the card must skip every draft-only row with the way out: {qbody}")
     one = client.post(f"/compose/post/{first}/queue",
                       data={"platform": "xiaohongshu", "scheduled_for": "2099-01-01T00:00:00"})
-    check(one.status_code == 400 and not database.list_scheduled_posts(db_path=database.DB_PATH),
+    check(one.status_code == 400 and not database.list_scheduled_posts(user_id=uid, db_path=database.DB_PATH),
           f"the single-post queue route must not take a draft-only row either: {one.get_json()}")
 
     # The Recent Prompts list is built from freeform source_content only.
-    check(not database.list_recent_prompts(db_path=database.DB_PATH),
+    check(not database.list_recent_prompts(user_id=uid, db_path=database.DB_PATH),
           "hand-written posts leaked into the recent-prompts list")
     print("manual create: one row per ticked account, one card, Western platforms refused, "
           "draft-only rows cannot be queued")
@@ -176,7 +177,7 @@ def tag_containing(html, marker):
 
 
 def section_wiring():
-    database, web, client, ids = rig()
+    database, web, client, ids, uid = rig()
     html = client.get("/compose").get_data(as_text=True)
     check(client.get("/compose").status_code == 200, "/compose did not render")
 
@@ -194,7 +195,8 @@ def section_wiring():
           "two panes are shown at once")
 
     # A "use this saved source" link must still win over the manual default.
-    src = database.add_url_source("https://example.test/a", "T", "D", "body", db_path=database.DB_PATH)
+    src = database.add_url_source("https://example.test/a", "T", "D", "body", user_id=uid,
+                            db_path=database.DB_PATH)
     linked = client.get(f"/compose?source_id={src}").get_data(as_text=True)
     check("active" in tag_containing(linked, 'id="saved-tab"'), "source_id no longer opens the saved tab")
     check("active" not in tag_containing(linked, 'id="manual-tab"'),
@@ -268,7 +270,7 @@ def section_wiring():
 def section_targets():
     node = shutil.which("node")
     check(node, "node is required for this gate and was not found on PATH")
-    database, web, client, ids = rig()
+    database, web, client, ids, uid = rig()
     html = client.get("/compose").get_data(as_text=True)
     source = function_body(html, "manualPostTargets")
 
@@ -384,7 +386,7 @@ const reset = () => {
 def section_video():
     node = shutil.which("node")
     check(node, "node is required for this gate and was not found on PATH")
-    database, web, client, ids = rig()
+    database, web, client, ids, uid = rig()
     html = client.get("/compose").get_data(as_text=True)
 
     def body(name):
@@ -515,12 +517,12 @@ def section_video():
     response = client.post("/compose/post/create", data=replay, content_type="multipart/form-data")
     body_json = response.get_json()
     check(response.status_code == 200 and body_json.get("success"), f"the route refused what Save sends: {body_json}")
-    rows = [dict(r) for r in database.list_standalone_posts(db_path=database.DB_PATH)
+    rows = [dict(r) for r in database.list_standalone_posts(user_id=uid, db_path=database.DB_PATH)
             if r["content"] == "Replayed manual video post"]
     check(len(rows) == 2 and all(r["video_url"] == "http://93.184.216.34/clip.mp4" and not r["image_url"]
                                  and r["source_type"] == "manual" for r in rows),
           f"every ticked account's row should carry the video and no image: {rows}")
-    check(len(web._group_standalone_posts(database.list_standalone_posts(db_path=database.DB_PATH))) == 1,
+    check(len(web._group_standalone_posts(database.list_standalone_posts(user_id=uid, db_path=database.DB_PATH))) == 1,
           "the video post should be one card")
     check(not created, "a post with a video must not go looking for a link image")
 
@@ -529,14 +531,14 @@ def section_video():
     # platform: the attach route has to keep serving them.
     legacy_id = database.add_standalone_post(
         source_type="manual", source_content="Manual post", platform="linkedin",
-        content="A legacy Western draft", db_path=database.DB_PATH)
+        content="A legacy Western draft", user_id=uid, db_path=database.DB_PATH)
     attach = client.post(f"/compose/post/{legacy_id}/video",
                          data={"video_url": "http://93.184.216.34/old.mp4"})
     attach_body = attach.get_json()
     check(attach.status_code == 200 and attach_body.get("updated_ids") == [legacy_id]
           and attach_body.get("video_url") == "http://93.184.216.34/old.mp4",
           f"a legacy Western row must still take a video at the row level: {attach_body}")
-    check(dict(database.get_standalone_post(legacy_id, db_path=database.DB_PATH))["video_url"]
+    check(dict(database.get_standalone_post(legacy_id, user_id=uid, db_path=database.DB_PATH))["video_url"]
           == "http://93.184.216.34/old.mp4", "the attached video must land on the row")
     print("video: the tab validates, excludes file/URL, sends the video instead of the image, and the route takes it")
     print("MANUAL_POSTS_VIDEO_OK")

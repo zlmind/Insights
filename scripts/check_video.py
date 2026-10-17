@@ -62,19 +62,23 @@ def trim(value, limit=240):
 def section_schema():
     from _accounts_gate import isolated_app
     directory, database, web, publisher, client = isolated_app()
+    uid = database.get_user_by_username('gate')['id']
     P = database.DB_PATH
 
     # A saved post carries a video, and it reads back, changes and clears.
-    pid = database.add_standalone_post("manual", "gate", "linkedin", "Copy", video_url=VIDEO, db_path=P)
-    check(database.get_standalone_post(pid, db_path=P)["video_url"] == VIDEO,
+    pid = database.add_standalone_post("manual", "gate", "linkedin", "Copy", user_id=uid,
+                                       video_url=VIDEO, db_path=P)
+    check(database.get_standalone_post(pid, user_id=uid, db_path=P)["video_url"] == VIDEO,
           "video_url did not persist on a new post")
-    database.update_standalone_post_video(pid, "https://cdn.example.test/other.mp4", db_path=P)
-    check(database.get_standalone_post(pid, db_path=P)["video_url"] == "https://cdn.example.test/other.mp4",
+    database.update_standalone_post_video(pid, "https://cdn.example.test/other.mp4",
+                                          user_id=uid, db_path=P)
+    check(database.get_standalone_post(pid, user_id=uid, db_path=P)["video_url"] == "https://cdn.example.test/other.mp4",
           "video_url did not update")
-    database.update_standalone_post_video(pid, None, db_path=P)
-    check(database.get_standalone_post(pid, db_path=P)["video_url"] is None, "video_url did not clear")
-    plain = database.add_standalone_post("manual", "gate", "linkedin", "No video", db_path=P)
-    check(database.get_standalone_post(plain, db_path=P)["video_url"] is None,
+    database.update_standalone_post_video(pid, None, user_id=uid, db_path=P)
+    check(database.get_standalone_post(pid, user_id=uid, db_path=P)["video_url"] is None, "video_url did not clear")
+    plain = database.add_standalone_post("manual", "gate", "linkedin", "No video",
+                                         user_id=uid, db_path=P)
+    check(database.get_standalone_post(plain, user_id=uid, db_path=P)["video_url"] is None,
           "a post saved without a video should have none")
 
     # An install from before videos existed upgrades in place and keeps its rows.
@@ -97,9 +101,10 @@ def section_schema():
     # The video is part of what makes a card: same words + different video are
     # different cards, same words + same video (or none) are one.
     def rows(*specs):
-        ids = [database.add_standalone_post("manual", "g", plat, "Shared words", video_url=vid, db_path=P)
+        ids = [database.add_standalone_post("manual", "g", plat, "Shared words",
+                                            user_id=uid, video_url=vid, db_path=P)
                for plat, vid in specs]
-        return [database.get_standalone_post(i, db_path=P) for i in ids]
+        return [database.get_standalone_post(i, user_id=uid, db_path=P) for i in ids]
 
     same = web._group_standalone_posts(rows(("threads", VIDEO), ("twitter", VIDEO)))
     check(len(same) == 1 and len(same[0]["platforms"]) == 2,
@@ -699,6 +704,7 @@ class _IgClient:
 def section_instagram():
     from _accounts_gate import isolated_app, connect
     directory, database, web, publisher, client = isolated_app()
+    uid = database.get_user_by_username('gate')['id']
     P = database.DB_PATH
     web._maybe_attach_link_image = lambda *a, **k: None
     account = connect(database, "instagram", "ig-1", "brandco")
@@ -712,16 +718,17 @@ def section_instagram():
     web.get_image_for_post = lambda *a, **k: stock_lookups.append(a) or None
 
     def row(**fields):
-        pid = database.add_standalone_post("manual", "g", "instagram", "Caption", db_path=P,
-                                           account_id=account, **{k: v for k, v in fields.items()
-                                                                   if k in ("image_url", "video_url")})
+        pid = database.add_standalone_post("manual", "g", "instagram", "Caption", user_id=uid,
+                                           db_path=P, account_id=account,
+                                           **{k: v for k, v in fields.items()
+                                              if k in ("image_url", "video_url")})
         if "ig_post_type" in fields:
             database.set_standalone_post_media(pid, fields["ig_post_type"], fields.get("media_items"), db_path=P)
         return pid
 
     def publish(pid, **kwargs):
         ig.calls.clear()
-        post = database.get_standalone_post(pid, db_path=P)
+        post = database.get_standalone_post(pid, user_id=uid, db_path=P)
         return publisher.publish("instagram", account, content="Caption", image_url=post["image_url"],
                                  video_url=post["video_url"], standalone_post_id=pid, **kwargs)
 
@@ -764,8 +771,8 @@ def section_instagram():
     check(error and "requires an image" in error, f"control: a post with no media must still be refused: {error}")
 
     # queueing: the queue guard accepts a video-only row, and refuses the control
-    with_video = database.get_standalone_post(row(video_url=VIDEO), db_path=P)
-    without = database.get_standalone_post(row(), db_path=P)
+    with_video = database.get_standalone_post(row(video_url=VIDEO), user_id=uid, db_path=P)
+    without = database.get_standalone_post(row(), user_id=uid, db_path=P)
     queued, skipped, _ = web._queue_unscheduled_rows("instagram", [with_video])
     check((queued, skipped) == (1, 0), f"a video-only Instagram row should queue: queued={queued} skipped={skipped}")
     queued, skipped, _ = web._queue_unscheduled_rows("instagram", [without])
@@ -791,7 +798,7 @@ def _rig():
 def section_routes():
     import io
     rig = _rig()
-    db, P, web, client = rig.database, rig.P, rig.web, rig.client
+    db, P, web, client, uid = rig.database, rig.P, rig.web, rig.client, rig.uid
     sizes = {"value": 5 * MB}
     web.video_media.head_size = lambda url: sizes["value"]  # no network in a gate
     # The library route also lists the uploads folder; point it at the throwaway
@@ -803,7 +810,7 @@ def section_routes():
     other = rig.card("Somebody else's post", ["linkedin"], image_url=None)
 
     def videos(row_ids):
-        return [db.get_standalone_post(i, db_path=P)["video_url"] for i in row_ids]
+        return [db.get_standalone_post(i, user_id=uid, db_path=P)["video_url"] for i in row_ids]
 
     def post_video(post_id, **form):
         response = client.post(f"/compose/post/{post_id}/video", data=form)
@@ -931,14 +938,14 @@ def section_routes():
 def section_fanout():
     from datetime import datetime, timedelta
     rig = _rig()
-    db, P, web, client = rig.database, rig.P, rig.web, rig.client
+    db, P, web, client, uid = rig.database, rig.P, rig.web, rig.client, rig.uid
     platforms = ("linkedin", "threads", "twitter", "facebook", "instagram")
     clients = {p: getattr(rig.publisher, f"get_{p}_client")() for p in platforms}
 
     def card(content, video):
         ids = rig.card(content, list(platforms), image_url="https://x.test/i.jpg")
         for row_id in ids.values():
-            db.update_standalone_post_video(row_id, video, db_path=P)
+            db.update_standalone_post_video(row_id, video, user_id=uid, db_path=P)
         return ids
 
     def last(platform):
@@ -974,8 +981,8 @@ def section_fanout():
     check(res["partial"] and res["published"] == 4 and not by["twitter"]["success"]
           and "X refused the video" in by["twitter"]["error"], f"partial failure not reported: {trim(res)}")
     check(all(by[p]["success"] for p in platforms if p != "twitter"), "a failing target stopped the others")
-    check(not db.get_standalone_post(ids["twitter"], db_path=P)["used"]
-          and db.get_standalone_post(ids["linkedin"], db_path=P)["used"], "used flags do not reflect what landed")
+    check(not db.get_standalone_post(ids["twitter"], user_id=uid, db_path=P)["used"]
+          and db.get_standalone_post(ids["linkedin"], user_id=uid, db_path=P)["used"], "used flags do not reflect what landed")
     clients["twitter"].fail = False
 
     # the queue: every way of reading a scheduled entry carries the video, and
@@ -988,12 +995,12 @@ def section_fanout():
     for p in platforms:
         queued[p] = db.add_scheduled_post(social_post_id=None, article_id=None, standalone_post_id=ids[p],
                                           post_type="standalone", platform=p, scheduled_for=past,
-                                          status="pending", db_path=P)
+                                          status="pending", user_id=uid, db_path=P)
     due = {row["id"]: row for row in db.get_pending_scheduled_posts(db_path=P)}
-    listed = {row["id"]: row for row in db.list_scheduled_posts(db_path=P)}
+    listed = {row["id"]: row for row in db.list_scheduled_posts(user_id=uid, db_path=P)}
     for p, sid in queued.items():
         check(sid in due and sid in listed, f"the queued {p} entry is missing from the worker's or the schedule's query")
-        for source, row in (("get_scheduled_post", db.get_scheduled_post(sid, db_path=P)),
+        for source, row in (("get_scheduled_post", db.get_scheduled_post(sid, user_id=uid, db_path=P)),
                             ("get_pending_scheduled_posts", due[sid]),
                             ("list_scheduled_posts", listed[sid])):
             content, image, video, error = web._scheduled_post_content(row)
@@ -1004,7 +1011,7 @@ def section_fanout():
         check(result["success"], f"queued {p} publish failed: {result}")
         check(len(clients[p].calls) == before + 1 and last(p)["kind"] == "video" and last(p)["video"] == VIDEO,
               f"the scheduler did not send {p} the video: {last(p)}")
-        check(db.get_scheduled_post(sid, db_path=P)["status"] == "posted", f"queued {p} was not marked posted")
+        check(db.get_scheduled_post(sid, user_id=uid, db_path=P)["status"] == "posted", f"queued {p} was not marked posted")
 
     # control: a card without a video still sends the image, so "video" above is not a default
     ids = card("No video here", None)
@@ -1024,7 +1031,7 @@ def section_fanout():
 
 def section_copy():
     rig = _rig()
-    db, P, web, client = rig.database, rig.P, rig.web, rig.client
+    db, P, web, client, uid = rig.database, rig.P, rig.web, rig.client, rig.uid
 
     def card_of(content):
         return [g for g in rig.cards() if g["head"]["content"] == content]
@@ -1036,7 +1043,7 @@ def section_copy():
     studio = db.upsert_social_account("xiaohongshu", "xhs-studio", label="Studio", db_path=P)
     ids = rig.card("Copy with video", [("xiaohongshu", default)], image_url=None)
     (xhs,) = ids.values()                     # the card's primary row
-    db.update_standalone_post_video(xhs, VIDEO, db_path=P)
+    db.update_standalone_post_video(xhs, VIDEO, user_id=uid, db_path=P)
     plain = rig.card("Copy without video", [("xiaohongshu", default)], image_url=None)
     (plain_xhs,) = plain.values()
 
@@ -1295,6 +1302,7 @@ def section_reelopts():
     #    and a post without them calls the client exactly as before.
     from _accounts_gate import isolated_app, connect
     directory, database, web, publisher, test_client = isolated_app()
+    uid = database.get_user_by_username('gate')['id']
     P = database.DB_PATH
     web._maybe_attach_link_image = lambda *a, **k: None
     account = connect(database, "instagram", "ig-1", "brandco")
@@ -1304,14 +1312,14 @@ def section_reelopts():
 
     def publish(pid):
         ig.calls.clear()
-        post = database.get_standalone_post(pid, db_path=P)
+        post = database.get_standalone_post(pid, user_id=uid, db_path=P)
         return publisher.publish("instagram", account, content="Caption", image_url=post["image_url"],
                                  video_url=post["video_url"], standalone_post_id=pid)
 
-    with_opts = database.add_standalone_post("manual", "g", "instagram", "Caption", db_path=P,
-                                             account_id=account, video_url=VIDEO)
-    without = database.add_standalone_post("manual", "g", "instagram", "Other", db_path=P,
-                                           account_id=account, video_url=VIDEO)
+    with_opts = database.add_standalone_post("manual", "g", "instagram", "Caption", user_id=uid,
+                                             db_path=P, account_id=account, video_url=VIDEO)
+    without = database.add_standalone_post("manual", "g", "instagram", "Other", user_id=uid,
+                                           db_path=P, account_id=account, video_url=VIDEO)
 
     # the route validates and stores
     r = test_client.post(f"/compose/post/{with_opts}/reel-options",
@@ -1327,7 +1335,7 @@ def section_reelopts():
         r = test_client.post(f"/compose/post/{with_opts}/reel-options", json=bad)
         check(r.status_code == 400 and why in r.get_json().get("error", ""),
               f"route should refuse {bad}: {r.status_code} {r.get_json()}")
-    stored = database.get_standalone_post(with_opts, db_path=P)["ig_reel_options"]
+    stored = database.get_standalone_post(with_opts, user_id=uid, db_path=P)["ig_reel_options"]
     check(json.loads(stored)["thumb_offset_ms"] == 3600, f"a refused request overwrote the options: {stored}")
 
     publish(with_opts)
@@ -1339,7 +1347,7 @@ def section_reelopts():
 
     # an empty body clears them
     r = test_client.post(f"/compose/post/{with_opts}/reel-options", json={})
-    check(r.status_code == 200 and database.get_standalone_post(with_opts, db_path=P)["ig_reel_options"] is None,
+    check(r.status_code == 200 and database.get_standalone_post(with_opts, user_id=uid, db_path=P)["ig_reel_options"] is None,
           f"an empty body should clear the options: {r.get_json()}")
     publish(with_opts)
     check(ig.calls == [{"kind": "reel", "url": VIDEO}], f"cleared options still sent: {ig.calls}")

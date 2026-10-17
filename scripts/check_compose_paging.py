@@ -42,15 +42,16 @@ from check_accounts_js import inline_scripts, node_path  # noqa: E402
 def seeded_app(threads=120, linkedin=40):
     """A Compose page with ``threads`` Threads-only cards and ``linkedin`` LinkedIn-only."""
     directory, database, web, publisher, client = isolated_app()
+    uid = database.get_user_by_username('gate')['id']
     install_fake_clients(publisher, web)
     web._maybe_attach_link_image = lambda *a, **k: None
     connect(database, "linkedin", "li-work", "Work")
     for i in range(linkedin):
         database.add_standalone_post("manual", "gate", "linkedin", f"LinkedIn card {i:03d}",
-                                     db_path=database.DB_PATH)
+                                     user_id=uid, db_path=database.DB_PATH)
     for i in range(threads):
         database.add_standalone_post("manual", "gate", "threads", f"Threads card {i:03d}",
-                                     db_path=database.DB_PATH)
+                                     user_id=uid, db_path=database.DB_PATH)
     return database, web, client
 
 

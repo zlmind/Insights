@@ -17,16 +17,17 @@ from _accounts_gate import isolated_app, check  # noqa: E402
 
 def main():
     directory, database, web, publisher, client = isolated_app()
+    uid = database.get_user_by_username('gate')['id']
     import agent_hub
     database.set_setting("WECHATSYNC_ENABLED_PLATFORMS", "wechat,zhihu,toutiao")
 
     post_id = database.add_standalone_post("freeform", "gate-seed", "wechat",
-                                           "正文")
+                                           "正文", user_id=uid)
     # The login check below needs a row of a platform the heartbeat reports
     # logged out: push buttons render per saved card row (one per platform),
     # so a wechat-only card has no zhihu button to carry the warning.
     database.add_standalone_post("freeform", "gate-seed", "zhihu",
-                                 "正文")
+                                 "正文", user_id=uid)
 
     # --- offline first: the button exists and says why it is disabled ---
     html = client.get("/compose").get_data(as_text=True)

@@ -40,11 +40,13 @@ from _accounts_gate import (  # noqa: E402
 def rendered_scripts():
     """The inline scripts of the real /compose page, as source strings."""
     directory, database, web, publisher, client = isolated_app()
+    uid = database.get_user_by_username('gate')['id']
     install_fake_clients(publisher, web)
     web._maybe_attach_link_image = lambda *a, **k: None
     connect(database, "linkedin", "li-work", "Work")
     database.add_standalone_post(
-        "manual", "gate", "linkedin", "Script gate card", db_path=database.DB_PATH)
+        "manual", "gate", "linkedin", "Script gate card", user_id=uid,
+        db_path=database.DB_PATH)
     html = client.get("/compose").get_data(as_text=True)
     blocks = []
     for match in re.finditer(r"<script([^>]*)>(.*?)</script>", html, re.S | re.I):

@@ -50,6 +50,7 @@ class World:
     def __init__(self):
         (self.directory, self.database, self.web,
          self.publisher, self.client) = isolated_app()
+        self.uid = self.database.get_user_by_username('gate')['id']
         install_fake_clients(self.publisher, self.web)
         self.web._maybe_attach_link_image = lambda *a, **k: None
         self.db = self.database.DB_PATH
@@ -57,17 +58,18 @@ class World:
     def post(self, content, platform="threads", image=None, video=None):
         return self.database.add_standalone_post(
             "freeform", "gate", platform, content, image_url=image,
-            video_url=video, db_path=self.db)
+            video_url=video, user_id=self.uid, db_path=self.db)
 
     def queue(self, post_id, platform, when, status="pending", url=None,
               error=None, account_id=None):
         sid = self.database.add_scheduled_post(
             scheduled_for=when, post_type="standalone", standalone_post_id=post_id,
-            platform=platform, account_id=account_id, db_path=self.db)
+            platform=platform, account_id=account_id, user_id=self.uid,
+            db_path=self.db)
         if status != "pending":
             self.database.update_scheduled_post_status(
-                sid, status=status, linkedin_post_urn=url, error_message=error,
-                db_path=self.db)
+                sid, self.uid, status=status, linkedin_post_urn=url,
+                error_message=error, db_path=self.db)
         return sid
 
     def copies(self, content, platforms, when, **kw):
@@ -76,14 +78,14 @@ class World:
                 for platform in platforms]
 
     def rows(self, **filters):
-        return self.database.list_scheduled_posts(db_path=self.db, **filters)
+        return self.database.list_scheduled_posts(self.uid, db_path=self.db, **filters)
 
     def groups(self, **filters):
         return [[r["id"] for r in g]
                 for g in self.database.group_scheduled_rows(self.rows(**filters))]
 
     def times(self, ids):
-        return {i: self.database.get_scheduled_post(i, db_path=self.db)["scheduled_for"]
+        return {i: self.database.get_scheduled_post(i, user_id=self.uid, db_path=self.db)["scheduled_for"]
                 for i in ids}
 
 
@@ -185,21 +187,28 @@ def section_group():
 
     # an article is one post by its article id
     w = World()
-    art = w.database.add_article(None, "Topic one", "style", "Body", db_path=w.db)
-    other = w.database.add_article(None, "Topic two", "style", "Body", db_path=w.db)
-    a1 = w.database.add_scheduled_post(T1, "article", article_id=art, platform="linkedin", db_path=w.db)
-    a2 = w.database.add_scheduled_post(T1, "article", article_id=art, platform="threads", db_path=w.db)
-    a3 = w.database.add_scheduled_post(T1, "article", article_id=other, platform="threads", db_path=w.db)
+    art = w.database.add_article(None, "Topic one", "style", "Body", user_id=w.uid,
+                                db_path=w.db)
+    other = w.database.add_article(None, "Topic two", "style", "Body", user_id=w.uid,
+                                  db_path=w.db)
+    a1 = w.database.add_scheduled_post(T1, "article", article_id=art, platform="linkedin",
+                                       user_id=w.uid, db_path=w.db)
+    a2 = w.database.add_scheduled_post(T1, "article", article_id=art, platform="threads",
+                                       user_id=w.uid, db_path=w.db)
+    a3 = w.database.add_scheduled_post(T1, "article", article_id=other, platform="threads",
+                                       user_id=w.uid, db_path=w.db)
     check(sorted(map(sorted, w.groups())) == sorted([[a1, a2], [a3]]),
           f"article entries group by article id, got {w.groups()}")
 
     # social posts group on their copy too
     w = World()
-    art = w.database.add_article(None, "Topic", "style", "Body", db_path=w.db)
-    s1 = w.database.add_social_post(art, "linkedin", "Social copy", db_path=w.db)
-    s2 = w.database.add_social_post(art, "threads", "Social copy", db_path=w.db)
-    s3 = w.database.add_social_post(art, "twitter", "Different social copy", db_path=w.db)
-    ids = [w.database.add_scheduled_post(T1, "social", social_post_id=s, platform=p, db_path=w.db)
+    art = w.database.add_article(None, "Topic", "style", "Body", user_id=w.uid, db_path=w.db)
+    s1 = w.database.add_social_post(art, "linkedin", "Social copy", user_id=w.uid, db_path=w.db)
+    s2 = w.database.add_social_post(art, "threads", "Social copy", user_id=w.uid, db_path=w.db)
+    s3 = w.database.add_social_post(art, "twitter", "Different social copy", user_id=w.uid,
+                                    db_path=w.db)
+    ids = [w.database.add_scheduled_post(T1, "social", social_post_id=s, platform=p,
+                                         user_id=w.uid, db_path=w.db)
            for s, p in ((s1, "linkedin"), (s2, "threads"), (s3, "twitter"))]
     check(sorted(map(sorted, w.groups())) == sorted([[ids[0], ids[1]], [ids[2]]]),
           f"social entries group by copy, got {w.groups()}")
@@ -209,8 +218,9 @@ def section_group():
     gone1 = w.queue(w.post("Soon deleted"), "threads", T1)
     gone2 = w.queue(w.post("Soon deleted", "twitter"), "twitter", T1)
     for entry in (gone1, gone2):
-        sp = w.database.get_scheduled_post(entry, db_path=w.db)
-        w.database.delete_standalone_post(sp["standalone_post_id"], db_path=w.db)
+        sp = w.database.get_scheduled_post(entry, user_id=w.uid, db_path=w.db)
+        w.database.delete_standalone_post(sp["standalone_post_id"], user_id=w.uid,
+                                      db_path=w.db)
     check(sorted(map(sorted, w.groups())) == sorted([[gone1], [gone2]]),
           f"entries with no copy must stay separate, got {w.groups()}")
 
@@ -224,10 +234,10 @@ def section_group():
     check(desc == asc[::-1], f"descending is ascending reversed: {desc} vs {asc}")
     for key, ids in s.items():
         for i in ids:
-            got = w.database.get_scheduled_group_ids(i, db_path=w.db)
+            got = w.database.get_scheduled_group_ids(i, user_id=w.uid, db_path=w.db)
             check(sorted(got) == sorted(ids) or key == "delta",
                   f"get_scheduled_group_ids({i}) = {got}, expected {ids}")
-    check(w.database.get_scheduled_group_ids(999999, db_path=w.db) == [999999],
+    check(w.database.get_scheduled_group_ids(999999, user_id=w.uid, db_path=w.db) == [999999],
           "an id that does not exist is its own group")
 
     # positive control for every negative above: the standard world really does
@@ -389,7 +399,8 @@ def section_page():
                       f"platforms line up with ids: {e[1]}")
     content_btn = [e[1] for e in alpha_row["cells"][7]["els"]
                    if e[0] == "button" and "edit-content-btn" in e[1]["class"]][0]
-    sources = [w.database.get_scheduled_post(i, db_path=w.db)["standalone_post_id"] for i in s["alpha"]]
+    sources = [w.database.get_scheduled_post(i, user_id=w.uid,
+                                             db_path=w.db)["standalone_post_id"] for i in s["alpha"]]
     check(content_btn["data-post-ids"] == ",".join(map(str, sources)),
           f"Edit Content must carry the saved posts behind the row: {content_btn}")
 
@@ -488,34 +499,36 @@ def intact(w, expected_groups):
 
 
 def moments(w, ids):
-    return {w.database.get_scheduled_post(i, db_path=w.db)["scheduled_for"] for i in ids}
+    return {w.database.get_scheduled_post(i, user_id=w.uid,
+                db_path=w.db)["scheduled_for"] for i in ids}
 
 
 def section_order():
     # reorder: groups of 3, 1 and 2 swap places without splitting
     w, x, y, z = seed_ordering_world()
-    check(w.database.reorder_scheduled_posts([y[0], x[0], z[0]], db_path=w.db), "reorder returned false")
+    check(w.database.reorder_scheduled_posts([y[0], x[0], z[0]], user_id=w.uid,
+                                             db_path=w.db), "reorder returned false")
     check(intact(w, [x, y, z]), f"reorder split a group: {w.groups(status='pending')}")
     check(moments(w, y) == {T1} and moments(w, x) == {T2} and moments(w, z) == {T3},
           f"Y,X,Z must take T1,T2,T3: {w.times(x + y + z)}")
 
     # naming a non-first member moves the same group
     w, x, y, z = seed_ordering_world()
-    w.database.reorder_scheduled_posts([z[1], y[0], x[2]], db_path=w.db)
+    w.database.reorder_scheduled_posts([z[1], y[0], x[2]], user_id=w.uid, db_path=w.db)
     check(intact(w, [x, y, z]), "reorder by a later member split a group")
     check(moments(w, z) == {T1} and moments(w, y) == {T2} and moments(w, x) == {T3},
           f"Z,Y,X must take T1,T2,T3: {w.times(x + y + z)}")
 
     # a stale or unknown id is ignored, not mistaken for a position
     w, x, y, z = seed_ordering_world()
-    w.database.reorder_scheduled_posts([999999, y[0], x[0]], db_path=w.db)
+    w.database.reorder_scheduled_posts([999999, y[0], x[0]], user_id=w.uid, db_path=w.db)
     check(intact(w, [x, y, z]) and moments(w, y) == {T1} and moments(w, x) == {T2}
           and moments(w, z) == {T3}, "an unknown id must not shift the others")
 
     # one group named: nothing to reorder
     w, x, y, z = seed_ordering_world()
     before = w.times(x + y + z)
-    w.database.reorder_scheduled_posts([x[0], x[1], x[2]], db_path=w.db)
+    w.database.reorder_scheduled_posts([x[0], x[1], x[2]], user_id=w.uid, db_path=w.db)
     check(w.times(x + y + z) == before, "reordering one group must change nothing")
 
     # singletons behave as they always did: times are swapped
@@ -523,42 +536,42 @@ def section_order():
     a = w.queue(w.post("Single A"), "threads", T1)
     b = w.queue(w.post("Single B"), "threads", T2)
     c = w.queue(w.post("Single C"), "threads", T3)
-    w.database.reorder_scheduled_posts([c, a, b], db_path=w.db)
+    w.database.reorder_scheduled_posts([c, a, b], user_id=w.uid, db_path=w.db)
     t = w.times([a, b, c])
     check(t[c] == T1 and t[a] == T2 and t[b] == T3, f"singleton reorder regressed: {t}")
 
     # a posted entry is never touched
     w, x, y, z = seed_ordering_world()
     done = w.queue(w.post("Already out"), "threads", T1, status="posted", url="https://x.test/1")
-    w.database.reorder_scheduled_posts([y[0], done, x[0]], db_path=w.db)
+    w.database.reorder_scheduled_posts([y[0], done, x[0]], user_id=w.uid, db_path=w.db)
     check(w.times([done]) == {done: T1}, "a posted entry must keep its time")
 
     # move to top / bottom
     w, x, y, z = seed_ordering_world()
-    w.database.move_posts_to_position([z[1]], "top", db_path=w.db)
+    w.database.move_posts_to_position([z[1]], w.uid, "top", db_path=w.db)
     check(intact(w, [x, y, z]) and moments(w, z) == {T1} and moments(w, x) == {T2}
           and moments(w, y) == {T3}, f"move Z to top: {w.times(x + y + z)}")
     # now Z, X, Y: sending X to the bottom leaves Z, Y, X
-    w.database.move_posts_to_position([x[0]], "bottom", db_path=w.db)
+    w.database.move_posts_to_position([x[0]], w.uid, "bottom", db_path=w.db)
     check(intact(w, [x, y, z]) and moments(w, z) == {T1} and moments(w, y) == {T2}
           and moments(w, x) == {T3}, f"move X to bottom: {w.times(x + y + z)}")
 
     w, x, y, z = seed_ordering_world()
-    w.database.move_posts_to_position([y[0]], "top", db_path=w.db)
+    w.database.move_posts_to_position([y[0]], w.uid, "top", db_path=w.db)
     check(intact(w, [x, y, z]) and moments(w, y) == {T1} and moments(w, x) == {T2}
           and moments(w, z) == {T3},
           f"moving the 1-entry group above a 3-entry group must not split it: {w.times(x + y + z)}")
 
     # several selected groups keep their relative order
     w, x, y, z = seed_ordering_world()
-    w.database.move_posts_to_position([z[0], y[0]], "top", db_path=w.db)
+    w.database.move_posts_to_position([z[0], y[0]], w.uid, "top", db_path=w.db)
     check(intact(w, [x, y, z]) and moments(w, y) == {T1} and moments(w, z) == {T2}
           and moments(w, x) == {T3}, f"selected groups keep their order: {w.times(x + y + z)}")
 
     # no selection / unknown selection: no change
     w, x, y, z = seed_ordering_world()
     before = w.times(x + y + z)
-    w.database.move_posts_to_position([999999], "top", db_path=w.db)
+    w.database.move_posts_to_position([999999], w.uid, "top", db_path=w.db)
     check(w.times(x + y + z) == before, "an unknown selection must change nothing")
 
     # through the routes, exactly as the page sends them
@@ -574,7 +587,8 @@ def section_order():
     w, x, y, z = seed_ordering_world()
     only_threads = [r["id"] for r in w.rows(status="pending", platform="threads")]
     check(len(only_threads) == 3, "control: three threads entries")
-    w.database.reorder_scheduled_posts(list(reversed(only_threads)), db_path=w.db)
+    w.database.reorder_scheduled_posts(list(reversed(only_threads)), user_id=w.uid,
+                                      db_path=w.db)
     check(intact(w, [x, y, z]), "reordering a filtered view must not split a post")
     check(moments(w, z) == {T1} and moments(w, y) == {T2} and moments(w, x) == {T3},
           f"reversing the threads view reverses the groups: {w.times(x + y + z)}")
@@ -756,9 +770,11 @@ def section_parity():
     w, s = standard_world()
     # an article, two accounts on one platform, a video and an image, quotes and
     # markup in the copy, so the escaping paths are compared too
-    art = w.database.add_article(None, "Topic <b>one</b>", "style", "Body", db_path=w.db)
+    art = w.database.add_article(None, "Topic <b>one</b>", "style", "Body",
+                                    user_id=w.uid, db_path=w.db)
     for platform in ("linkedin", "threads"):
-        w.database.add_scheduled_post(T2, "article", article_id=art, platform=platform, db_path=w.db)
+        w.database.add_scheduled_post(T2, "article", article_id=art, platform=platform,
+                                          user_id=w.uid, db_path=w.db)
     work = connect(w.database, "linkedin", "li-work", "Work & Co")
     studio = connect(w.database, "linkedin", "li-studio", "Studio")
     w.queue(w.post('He said "hi" & <left> it\'s 100% done', "linkedin", image="https://img.test/a.png?x=1&y=2"),

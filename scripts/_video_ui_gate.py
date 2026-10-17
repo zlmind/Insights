@@ -213,15 +213,15 @@ def section_ui():
     node = shutil.which("node")
     check(node, "node is required for this gate and was not found on PATH")
     rig = Rig()
-    db, P, web, client = rig.database, rig.P, rig.web, rig.client
+    db, P, web, client, uid = rig.database, rig.P, rig.web, rig.client, rig.uid
 
     with_video = rig.card("Card that carries a video", ["linkedin", "instagram"], image_url=None)
     for row_id in with_video.values():
-        db.update_standalone_post_video(row_id, VIDEO, db_path=P)
+        db.update_standalone_post_video(row_id, VIDEO, user_id=uid, db_path=P)
     without = rig.card("Card with no video", ["linkedin"], image_url=None)
 
     html = client.get("/compose").get_data(as_text=True)
-    vid = db.get_standalone_post(with_video["instagram"], db_path=P)["id"]   # the IG row is the card's primary
+    vid = db.get_standalone_post(with_video["instagram"], user_id=uid, db_path=P)["id"]   # the IG row is the card's primary
     plain = without["linkedin"]
 
     def region(marker_id):
@@ -360,12 +360,13 @@ def section_ui():
 
     # --- the schedule page marks a video post ---------------------------
     queued = rig.card("Queued with a video", ["linkedin"], image_url=None)
-    db.update_standalone_post_video(queued["linkedin"], VIDEO, db_path=P)
+    db.update_standalone_post_video(queued["linkedin"], VIDEO, user_id=uid, db_path=P)
     queued_plain = rig.card("Queued without a video", ["linkedin"], image_url=None)
     for row_id in (queued["linkedin"], queued_plain["linkedin"]):
         db.add_scheduled_post(social_post_id=None, article_id=None, standalone_post_id=row_id,
                               post_type="standalone", platform="linkedin",
-                              scheduled_for="2099-01-01T09:00:00", status="pending", db_path=P)
+                              scheduled_for="2099-01-01T09:00:00", status="pending",
+                              user_id=uid, db_path=P)
     page = client.get("/schedule").get_data(as_text=True)
     markup = re.sub(r"<script.*?</script>", "", page, flags=re.S | re.I)
     cells = re.findall(r'<td class="description-cell"[^>]*>(.*?)</td>', markup, re.S)
@@ -540,7 +541,7 @@ def section_newpost():
         clip = fh.read()
 
     def rows():
-        return [dict(r) for r in db.list_standalone_posts(db_path=P)]
+        return [dict(r) for r in db.list_standalone_posts(user_id=uid, db_path=P)]
 
     def create(content="A brand new post", targets=("xiaohongshu", "douyin"), **fields):
         data = {"content": content, "targets": list(targets), **fields}
@@ -548,7 +549,7 @@ def section_newpost():
         return response.status_code, (response.get_json(silent=True) or {})
 
     def cards():
-        return web._group_standalone_posts(db.list_standalone_posts(db_path=P))
+        return web._group_standalone_posts(db.list_standalone_posts(user_id=uid, db_path=P))
 
     # --- a video by URL lands on every ticked account's post ---------------
     url = "http://93.184.216.34/new-post.mp4"

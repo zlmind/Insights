@@ -37,6 +37,7 @@ FEATURE_FUNCTIONS = (
 
 def rig(with_posts=True):
     directory, database, web, publisher, client = isolated_app()
+    uid = database.get_user_by_username('gate')['id']
     install_fake_clients(publisher, web)
     web._maybe_attach_link_image = lambda *a, **k: None
     ids = {}
@@ -49,7 +50,8 @@ def rig(with_posts=True):
     if with_posts:
         for i in range(2):
             database.add_standalone_post(
-                "manual", "gate", "wechat", f"Wiring card {i}", db_path=database.DB_PATH)
+                "manual", "gate", "wechat", f"Wiring card {i}", user_id=uid,
+                db_path=database.DB_PATH)
     return database, web, client, ids
 
 

@@ -15,6 +15,7 @@ from _accounts_gate import (  # noqa: E402
 )
 
 directory, database, web, publisher, client = isolated_app()
+uid = database.get_user_by_username('gate')['id']
 P = database.DB_PATH
 install_fake_clients(publisher, web)
 
@@ -63,13 +64,13 @@ check(client.get("/accounts").status_code == 200,
 ids = [
     database.add_standalone_post(
         source_type="manual", source_content="gate", platform="linkedin",
-        content="Ready to go out everywhere", account_id=work, db_path=P),
+        content="Ready to go out everywhere", account_id=work, user_id=uid, db_path=P),
     database.add_standalone_post(
         source_type="manual", source_content="gate", platform="linkedin",
-        content="Ready to go out everywhere", account_id=studio, db_path=P),
+        content="Ready to go out everywhere", account_id=studio, user_id=uid, db_path=P),
     database.add_standalone_post(
         source_type="manual", source_content="gate", platform="threads",
-        content="Ready to go out everywhere", account_id=threads, db_path=P),
+        content="Ready to go out everywhere", account_id=threads, user_id=uid, db_path=P),
 ]
 
 compose = client.get("/compose").get_data(as_text=True)
@@ -122,13 +123,13 @@ check("function newPostTargets" in compose,
       "the manual composer does not collect per-account targets")
 
 # --- the target chips actually move rows, not just styling ----------------
-before = len(database.list_standalone_posts(db_path=P))
+before = len(database.list_standalone_posts(user_id=uid, db_path=P))
 added = client.post(f"/compose/post/{ids[0]}/platform", data={
     "platform": "wechat", "action": "add",
     "post_ids": ",".join(str(i) for i in ids),
 }).get_json()
 check(added and added.get("success"), f"ticking a target failed: {added}")
-after = len(database.list_standalone_posts(db_path=P))
+after = len(database.list_standalone_posts(user_id=uid, db_path=P))
 check(after == before + 1, "ticking a target did not create its row")
 
 # --- the accounts JSON the composer reads is real -------------------------

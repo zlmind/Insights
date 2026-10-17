@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _accounts_gate import isolated_app, connect, check  # noqa: E402
 
 directory, database, web, publisher, client = isolated_app()
+uid = database.get_user_by_username('gate')['id']
 P = database.DB_PATH
 
 # --- several accounts per platform ---------------------------------------
@@ -74,12 +75,12 @@ check(database.get_default_social_account("linkedin", db_path=P)["id"] == work,
 second = connect(database, "linkedin", "li-second", "Second")
 post_id = database.add_standalone_post(
     source_type="manual", source_content="gate", platform="linkedin",
-    content="hello", account_id=second, db_path=P,
+    content="hello", account_id=second, user_id=uid, db_path=P,
 )
-check(database.get_standalone_post(post_id, db_path=P)["account_id"] == second,
+check(database.get_standalone_post(post_id, user_id=uid, db_path=P)["account_id"] == second,
       "the saved post did not record its account")
 database.delete_social_account(second, db_path=P)
-check(database.get_standalone_post(post_id, db_path=P)["account_id"] is None,
+check(database.get_standalone_post(post_id, user_id=uid, db_path=P)["account_id"] is None,
       "a saved post still points at a disconnected account")
 
 print(f"accounts model: {database.count_social_accounts(db_path=P)} accounts, "

@@ -66,13 +66,14 @@ def rig(accounts=1):
     recording client sees is what the app really passes to Instagram's client.
     """
     directory, database, web, publisher, client = isolated_app()
+    uid = database.get_user_by_username('gate')['id']
     web._maybe_attach_link_image = lambda *a, **k: None
     web.get_image_for_post = lambda *a, **k: None   # never look for a stock photo
     ids = [connect(database, "instagram", f"ig-{n}", f"brand{n}") for n in range(1, accounts + 1)]
     recorder = RecordingClient("instagram")
     web.get_instagram_client = lambda: recorder
     publisher.get_instagram_client = lambda: recorder
-    return database, web, publisher, client, ids, recorder
+    return database, web, publisher, client, ids, recorder, uid
 
 
 def token_of(n=1):
@@ -82,9 +83,10 @@ def token_of(n=1):
 def make_row(database, account, fmt, content="Caption", platform="instagram"):
     """One saved Instagram post in the format ``fmt``; returns its id."""
     P = database.DB_PATH
+    uid = database.get_user_by_username('gate')['id']
     fields = {"reel": {}, "reel_card": {"video_url": VIDEO}, "feed_video": {"video_url": VIDEO},
               "image": {"image_url": IMAGE}, "carousel": {}, "story": {"image_url": IMAGE}}[fmt]
-    pid = database.add_standalone_post("manual", "g", platform, content, db_path=P,
+    pid = database.add_standalone_post("manual", "g", platform, content, user_id=uid, db_path=P,
                                        account_id=account, **fields)
     if fmt == "reel":
         database.set_standalone_post_media(pid, "reel", [{"url": VIDEO, "kind": "video"}], db_path=P)
@@ -263,7 +265,7 @@ def section_none():
     check(graph.signature() != GOLDEN["reel"], "control: a collaborator must change the request")
 
     # the dispatcher: a post without people calls the client the way it always did
-    database, web, publisher, client, ids, ig = rig()
+    database, web, publisher, client, ids, ig, uid = rig()
     P = database.DB_PATH
     expect = {
         "reel": {"kind": "video", "token": token_of(), "text": "Caption", "video": VIDEO},
@@ -273,13 +275,13 @@ def section_none():
     }
     for fmt, want in expect.items():
         pid = make_row(database, ids[0], fmt)
-        post = database.get_standalone_post(pid, db_path=P)
+        post = database.get_standalone_post(pid, user_id=uid, db_path=P)
         ig.calls.clear()
         result = publisher.publish("instagram", ids[0], content="Caption", image_url=post["image_url"],
                                    video_url=post["video_url"], standalone_post_id=pid)
         check(result["success"], f"{fmt}: publish failed: {result}")
         check(ig.calls == [want], f"{fmt}: a post with no people must call the client as before:\n  want {[want]}\n  got  {ig.calls}")
-        row = database.get_standalone_post(pid, db_path=P)
+        row = database.get_standalone_post(pid, user_id=uid, db_path=P)
         check(row["ig_collaborators"] is None and row["ig_reel_tags"] is None,
               f"{fmt}: a new post must store no people (NULL), got {row['ig_collaborators']!r}")
 
@@ -344,13 +346,13 @@ def section_refuse():
     check(result.get("success"), f"control: 3 collaborators and 20 tags are allowed: {result}")
 
     # --- the dispatcher: a stored bad list fails the post before the client is called
-    database, web, publisher, client, ids, ig = rig()
+    database, web, publisher, client, ids, ig, uid = rig()
     P = database.DB_PATH
     for stored, needle in ((["john doe"], "john doe"), (["a1", "b2", "c3", "d4"], "at most 3")):
         pid = make_row(database, ids[0], "reel")
         database.set_standalone_post_ig_people(pid, stored, None, db_path=P)
         ig.calls.clear()
-        post = database.get_standalone_post(pid, db_path=P)
+        post = database.get_standalone_post(pid, user_id=uid, db_path=P)
         result = publisher.publish("instagram", ids[0], content="Caption", image_url=None,
                                    video_url=post["video_url"], standalone_post_id=pid)
         check(not result["success"] and result["permanent"] and needle in result["error"],
@@ -358,7 +360,7 @@ def section_refuse():
         check(ig.calls == [], f"{stored}: the client was called despite the bad list: {ig.calls}")
     pid = make_row(database, ids[0], "reel")
     database.set_standalone_post_ig_people(pid, ["amy"], ["bad tag"], db_path=P)
-    post = database.get_standalone_post(pid, db_path=P)
+    post = database.get_standalone_post(pid, user_id=uid, db_path=P)
     result = publisher.publish("instagram", ids[0], content="Caption", image_url=None,
                                video_url=post["video_url"], standalone_post_id=pid)
     check(not result["success"] and "bad tag" in result["error"] and ig.calls == [],
@@ -376,7 +378,7 @@ def section_refuse():
     # --- the routes: refuse, say why, and change nothing
     pid = make_row(database, ids[0], "reel")
     set_people(client, pid, "carol", "erin")
-    before = dict(database.get_standalone_post(pid, db_path=P))
+    before = dict(database.get_standalone_post(pid, user_id=uid, db_path=P))
     for payload, needle in (
         ({"ig_collaborators": "john doe"}, "john doe"),
         ({"ig_collaborators": "a1,b2,c3,d4"}, "at most 3"),
@@ -387,7 +389,7 @@ def section_refuse():
         reply = client.post(f"/compose/post/{pid}/ig-people", data=payload)
         check(reply.status_code == 400 and needle in reply.get_json()["error"],
               f"{payload}: expected a 400 naming {needle!r}, got {reply.status_code} {reply.get_data(as_text=True)[:200]}")
-        check(dict(database.get_standalone_post(pid, db_path=P)) == before,
+        check(dict(database.get_standalone_post(pid, user_id=uid, db_path=P)) == before,
               f"{payload}: a refused request must leave the saved post exactly as it was")
     reply = client.post(f"/compose/post/{pid}/ig-people", data={})
     check(reply.status_code == 400, "a request with neither field is refused")
@@ -395,7 +397,7 @@ def section_refuse():
     # create: the people are read before any row is written, so a bad handle --
     # and a list with no Instagram target on the card, which is every create now
     # that the composer offers only the domestic platforms -- leaves nothing behind
-    count = lambda: len(database.list_standalone_posts(db_path=P))
+    count = lambda: len(database.list_standalone_posts(user_id=uid, db_path=P))
     base = count()
     for payload in ({"ig_collaborators": "john doe"}, {"ig_collaborators": "a1,b2,c3,d4"},
                     {"ig_reel_tags": "x y"}):
@@ -423,7 +425,7 @@ def section_refuse():
           "control: a create with no people still makes its row")
 
     # a card with no Instagram row has nowhere to put them
-    other = database.add_standalone_post("manual", "g", "threads", "Only threads", db_path=P)
+    other = database.add_standalone_post("manual", "g", "threads", "Only threads", user_id=uid, db_path=P)
     reply = client.post(f"/compose/post/{other}/ig-people", data={"ig_collaborators": "amy"})
     check(reply.status_code == 400 and "Instagram" in reply.get_json()["error"],
           f"people on a card that does not go to Instagram must be refused: {reply.get_json()}")
@@ -438,7 +440,7 @@ def section_refuse():
     fd = {"ig_post_type": "story", "media_items": json.dumps([{"url": IMAGE, "kind": "image"}])}
     reply = client.post(f"/compose/post/{reel}/media", data=fd)
     check(reply.status_code == 400 and "Stories" in reply.get_json()["error"]
-          and database.get_standalone_post(reel, db_path=P)["ig_post_type"] == "reel",
+          and database.get_standalone_post(reel, user_id=uid, db_path=P)["ig_post_type"] == "reel",
           f"switching a post with collaborators to Story must be refused and change nothing: {reply.get_data(as_text=True)[:200]}")
 
     print("refuse: a handle with spaces, bad characters, too many collaborators or tags is refused "
@@ -533,7 +535,7 @@ def section_reject():
     check("rate limit" in result["friendly"] and "@amy" not in result["friendly"], f"rate limit mis-blamed: {result}")
 
     # --- end to end: real publisher + dispatcher + client, via Post now and the scheduler
-    database, web, publisher, client, ids, _ = rig()
+    database, web, publisher, client, ids, _, uid = rig()
     P = database.DB_PATH
     import instagram_client
     for n, fmt in enumerate(("reel", "image", "carousel")):
@@ -549,12 +551,12 @@ def section_reject():
             check(reply.status_code == 400 and not body["success"] and "@zed" in body["error"],
                   f"{fmt}: Post now must report the rejected collaborator by name: {reply.status_code} {body}")
             check(graph.publishes() == [], f"{fmt}: Post now published despite the rejection")
-            check(not database.get_standalone_post(pid, db_path=P)["used"],
+            check(not database.get_standalone_post(pid, user_id=uid, db_path=P)["used"],
                   f"{fmt}: a rejected post must not be marked used")
 
             sid = database.add_scheduled_post(
                 scheduled_for="2000-01-01T00:00:00", post_type="standalone", standalone_post_id=pid,
-                platform="instagram", account_id=ids[0], db_path=P)
+                platform="instagram", account_id=ids[0], user_id=uid, db_path=P)
             due = [r for r in database.get_pending_scheduled_posts(db_path=P) if r["id"] == sid]
             check(due, f"{fmt}: the queued post should be due")
             result = web._publish_scheduled_entry(due[0])
@@ -576,6 +578,7 @@ def section_reject():
 def section_persist():
     import tempfile
     directory, database, web, publisher, client = isolated_app()
+    uid = database.get_user_by_username('gate')['id']
     web._maybe_attach_link_image = lambda *a, **k: None
 
     # --- an existing database without the columns migrates, keeps every row, repeats cleanly
@@ -639,34 +642,34 @@ def section_persist():
           f"when both hold collaborators the new column must win: {both}")
     # the queue's joined queries still read, and expose the columns
     sid = database.add_scheduled_post("2099-01-01T00:00:00", "standalone", standalone_post_id=1,
-                                      platform="instagram", db_path=path)
-    for label, row in (("get_scheduled_post", database.get_scheduled_post(sid, db_path=path)),
-                       ("list_scheduled_posts", database.list_scheduled_posts(db_path=path)[0])):
+                                      platform="instagram", user_id=uid, db_path=path)
+    for label, row in (("get_scheduled_post", database.get_scheduled_post(sid, user_id=uid, db_path=path)),
+                       ("list_scheduled_posts", database.list_scheduled_posts(user_id=uid, db_path=path)[0])):
         check("standalone_ig_collaborators" in row.keys() and "standalone_ig_reel_tags" in row.keys()
               and "standalone_ig_post_type" in row.keys(), f"{label} must expose the new columns")
     sid_due = database.add_scheduled_post("2000-01-01T00:00:00", "standalone", standalone_post_id=1,
-                                          platform="instagram", db_path=path)
+                                          platform="instagram", user_id=uid, db_path=path)
     due = database.get_pending_scheduled_posts(db_path=path)
     check(due and "standalone_ig_collaborators" in due[0].keys(),
           "get_pending_scheduled_posts (the scheduler's query) must expose the new columns")
 
     # --- routes round-trip, as entered -> normalised -> stored
-    database, web, publisher, client, ids, ig = rig(accounts=2)
+    database, web, publisher, client, ids, ig, uid = rig(accounts=2)
     P = database.DB_PATH
     pid = make_row(database, ids[0], "reel")
     reply = set_people(client, pid)
     check(reply["ig_collaborators"] == ENTERED_CLEAN and reply["ig_reel_tags"] == TAGS_CLEAN,
           f"the route must answer with the cleaned lists: {reply}")
-    row = database.get_standalone_post(pid, db_path=P)
+    row = database.get_standalone_post(pid, user_id=uid, db_path=P)
     check(json.loads(row["ig_collaborators"]) == ENTERED_CLEAN and json.loads(row["ig_reel_tags"]) == TAGS_CLEAN,
           f"the cleaned lists must be stored as JSON: {row['ig_collaborators']!r} {row['ig_reel_tags']!r}")
     # a field left out is left alone; one sent empty is cleared
     set_people(client, pid, "zoe", None)
-    row = database.get_standalone_post(pid, db_path=P)
+    row = database.get_standalone_post(pid, user_id=uid, db_path=P)
     check(json.loads(row["ig_collaborators"]) == ["zoe"] and json.loads(row["ig_reel_tags"]) == TAGS_CLEAN,
           "saving only collaborators must leave the tags as they were")
     set_people(client, pid, "", "")
-    row = database.get_standalone_post(pid, db_path=P)
+    row = database.get_standalone_post(pid, user_id=uid, db_path=P)
     check(row["ig_collaborators"] is None and row["ig_reel_tags"] is None,
           "empty fields must clear both, back to NULL")
     # JSON body and JSON-list string forms are accepted too
@@ -678,9 +681,10 @@ def section_persist():
     # --- card-wide: every Instagram row of the card, no other platform's
     a = make_row(database, ids[0], "image", content="Shared copy")
     b = make_row(database, ids[1], "image", content="Shared copy")
-    t = database.add_standalone_post("manual", "g", "threads", "Shared copy", image_url=IMAGE, db_path=P)
+    t = database.add_standalone_post("manual", "g", "threads", "Shared copy", user_id=uid,
+                                    image_url=IMAGE, db_path=P)
     set_people(client, a, ENTERED, None, post_ids=[a, b, t])
-    ra, rb, rt = (database.get_standalone_post(i, db_path=P) for i in (a, b, t))
+    ra, rb, rt = (database.get_standalone_post(i, user_id=uid, db_path=P) for i in (a, b, t))
     check(json.loads(ra["ig_collaborators"]) == ENTERED_CLEAN and json.loads(rb["ig_collaborators"]) == ENTERED_CLEAN,
           "both Instagram accounts of a card must get the collaborators")
     check(rt["ig_collaborators"] is None, "another platform's row must not get Instagram collaborators")
@@ -689,13 +693,14 @@ def section_persist():
     # cover frame to itself; a key it is not sent stays as it was; an empty body clears both
     c1 = make_row(database, ids[0], "reel_card", content="Cover copy")
     c2 = make_row(database, ids[1], "reel_card", content="Cover copy")
-    ct = database.add_standalone_post("manual", "g", "threads", "Cover copy", video_url=VIDEO, db_path=P)
+    ct = database.add_standalone_post("manual", "g", "threads", "Cover copy", user_id=uid,
+                                     video_url=VIDEO, db_path=P)
     both_ids = f"{c1},{c2},{ct}"
     reply = client.post(f"/compose/post/{c1}/reel-options", json={
         "thumb_offset_ms": 2500, "collaborators": "Amy, bob", "post_ids": both_ids})
     check(reply.status_code == 200 and reply.get_json()["reel_options"] ==
           {"thumb_offset_ms": 2500, "collaborators": ["amy", "bob"]}, f"reel-options reply: {reply.get_json()}")
-    r1, r2, rt = (database.get_standalone_post(i, db_path=P) for i in (c1, c2, ct))
+    r1, r2, rt = (database.get_standalone_post(i, user_id=uid, db_path=P) for i in (c1, c2, ct))
     check(json.loads(r1["ig_collaborators"]) == ["amy", "bob"] and json.loads(r2["ig_collaborators"]) == ["amy", "bob"]
           and rt["ig_collaborators"] is None,
           "reel-options must write the collaborators to every Instagram row of the card and no other")
@@ -705,17 +710,17 @@ def section_persist():
     card = client.post(f"/compose/post/{c1}/card", data={"post_ids": both_ids}).get_json()["html"]
     check('value="@amy, @bob"' in card, "the card must show collaborators set through reel-options")
     client.post(f"/compose/post/{c1}/reel-options", json={"thumb_offset_ms": 100, "post_ids": both_ids})
-    r1 = database.get_standalone_post(c1, db_path=P)
+    r1 = database.get_standalone_post(c1, user_id=uid, db_path=P)
     check(json.loads(r1["ig_collaborators"]) == ["amy", "bob"] and json.loads(r1["ig_reel_options"]) == {"thumb_offset_ms": 100},
           "sending only a cover frame must leave the collaborators alone")
     client.post(f"/compose/post/{c1}/reel-options", json={"collaborators": "", "post_ids": both_ids})
-    r1, r2 = (database.get_standalone_post(i, db_path=P) for i in (c1, c2))
+    r1, r2 = (database.get_standalone_post(i, user_id=uid, db_path=P) for i in (c1, c2))
     check(r1["ig_collaborators"] is None and r2["ig_collaborators"] is None
           and json.loads(r1["ig_reel_options"]) == {"thumb_offset_ms": 100},
           "sending blank collaborators must clear them card-wide and keep the cover frame")
     set_people(client, c1, "again", None, post_ids=[c1, c2])
     client.post(f"/compose/post/{c1}/reel-options", json={"post_ids": both_ids})
-    r1, r2 = (database.get_standalone_post(i, db_path=P) for i in (c1, c2))
+    r1, r2 = (database.get_standalone_post(i, user_id=uid, db_path=P) for i in (c1, c2))
     check(r1["ig_collaborators"] is None and r2["ig_collaborators"] is None and r1["ig_reel_options"] is None,
           "an empty body must clear the cover frame and the collaborators")
     reply = client.post(f"/compose/post/{ct}/reel-options", json={"collaborators": "amy"})
@@ -727,7 +732,7 @@ def section_persist():
           f"reel-options collaborators on a Story must be refused: {reply.get_json()}")
     for bad in ({"collaborators": "john doe"}, {"collaborators": "a1,b2,c3,d4"}):
         reply = client.post(f"/compose/post/{c1}/reel-options", json=bad)
-        check(reply.status_code == 400 and database.get_standalone_post(c1, db_path=P)["ig_collaborators"] is None,
+        check(reply.status_code == 400 and database.get_standalone_post(c1, user_id=uid, db_path=P)["ig_collaborators"] is None,
               f"reel-options must refuse {bad} and change nothing: {reply.get_json()}")
 
     # --- adding a platform to a card. The domestic ones are offered and never
@@ -736,36 +741,36 @@ def section_persist():
     # tick -- the people live on the rows a legacy card already has.
     solo = make_row(database, ids[0], "image", content="Solo copy")
     set_people(client, solo, "keep, these")
-    before = len(database.list_standalone_posts(db_path=P))
+    before = len(database.list_standalone_posts(user_id=uid, db_path=P))
     reply = client.post(f"/compose/post/{solo}/platform", data={"platform": "instagram", "action": "add",
                                                                  "account_id": str(ids[1]), "post_ids": f"{solo}"})
     check(reply.status_code == 400 and "Must be one of: xiaohongshu, douyin, wechat" in reply.get_json()["error"],
           f"ticking the retired platform must be refused with the ones on offer: {reply.status_code} {reply.get_json()}")
-    check(len(database.list_standalone_posts(db_path=P)) == before,
+    check(len(database.list_standalone_posts(user_id=uid, db_path=P)) == before,
           "a refused tick must not create the row it refused to create")
-    check(json.loads(database.get_standalone_post(solo, db_path=P)["ig_collaborators"] or "[]") == ["keep", "these"],
+    check(json.loads(database.get_standalone_post(solo, user_id=uid, db_path=P)["ig_collaborators"] or "[]") == ["keep", "these"],
           "a refused tick must leave the people already saved exactly as they were")
     # a platform the composer does offer can still be ticked, and gets no people
     reply = client.post(f"/compose/post/{solo}/platform", data={"platform": "douyin", "action": "add",
                                                                  "post_ids": f"{solo}"})
     check(reply.status_code == 200, f"ticking an offered platform failed: {reply.get_data(as_text=True)[:200]}")
-    nr = database.get_standalone_post(reply.get_json()["post_id"], db_path=P)
+    nr = database.get_standalone_post(reply.get_json()["post_id"], user_id=uid, db_path=P)
     check(nr["platform"] == "douyin" and nr["ig_collaborators"] is None,
           f"a row added for another platform must carry no Instagram people: {dict(nr)}")
     # bulk Add Platform, same rules
     bulk_src = make_row(database, ids[0], "image", content="Bulk copy")
     set_people(client, bulk_src, "bulky")
-    before = len(database.list_standalone_posts(db_path=P))
+    before = len(database.list_standalone_posts(user_id=uid, db_path=P))
     reply = client.post("/compose/posts/bulk-add-platform",
                         json={"post_ids": [bulk_src], "targets": [f"instagram:{ids[1]}"], "queue": False})
     check(reply.status_code == 400 and "Invalid platform: instagram" in reply.get_json()["error"],
           f"bulk Add Platform must refuse a retired platform: {reply.status_code} {reply.get_json()}")
-    check(len(database.list_standalone_posts(db_path=P)) == before, "a refused bulk add must create no row")
+    check(len(database.list_standalone_posts(user_id=uid, db_path=P)) == before, "a refused bulk add must create no row")
     reply = client.post("/compose/posts/bulk-add-platform",
                         json={"post_ids": [bulk_src], "targets": ["wechat"], "queue": False})
     check(reply.status_code == 200 and reply.get_json().get("success"),
           f"bulk add failed: {reply.status_code} {reply.get_data(as_text=True)[:300]}")
-    rows = [r for r in database.list_standalone_posts(db_path=P) if r["content"] == "Bulk copy"]
+    rows = [r for r in database.list_standalone_posts(user_id=uid, db_path=P) if r["content"] == "Bulk copy"]
     made = [r for r in rows if r["platform"] == "wechat"]
     kept = [r for r in rows if r["platform"] == "instagram"]
     check(len(made) == 1 and made[0]["ig_collaborators"] is None,
@@ -776,14 +781,14 @@ def section_persist():
     # --- Write Manually: people with no Instagram target on the card -- which is
     # every create now -- are refused rather than dropped, and the retired
     # platforms are refused before them
-    before = len(database.list_standalone_posts(db_path=P))
+    before = len(database.list_standalone_posts(user_id=uid, db_path=P))
     reply = client.post("/compose/post/create", data={
         "content": "Fresh post", "targets": ["xiaohongshu", "douyin"],
         "ig_collaborators": ENTERED, "ig_reel_tags": TAGS_ENTERED})
     body = reply.get_json()
     check(reply.status_code == 400 and "Instagram" in body["error"],
           f"create must refuse people with no Instagram target on the card: {body}")
-    check(len(database.list_standalone_posts(db_path=P)) == before,
+    check(len(database.list_standalone_posts(user_id=uid, db_path=P)) == before,
           "a refused create must write no row")
     reply = client.post("/compose/post/create", data={
         "content": "Fresh post", "targets": [f"instagram:{ids[0]}", f"instagram:{ids[1]}"],
@@ -823,7 +828,7 @@ def want_call(fmt, collaborators=None, tags=None, n=1):
 
 
 def section_publish():
-    database, web, publisher, client, ids, ig = rig()
+    database, web, publisher, client, ids, ig, uid = rig()
     P = database.DB_PATH
 
     def post_now(pid):
@@ -835,7 +840,7 @@ def section_publish():
     def scheduler(pid):
         sid = database.add_scheduled_post(
             scheduled_for="2000-01-01T00:00:00", post_type="standalone", standalone_post_id=pid,
-            platform="instagram", account_id=ids[0], db_path=P)
+            platform="instagram", account_id=ids[0], user_id=uid, db_path=P)
         due = [r for r in database.get_pending_scheduled_posts(db_path=P) if r["id"] == sid]
         check(len(due) == 1, "the queued post should be due")
         return web._publish_scheduled_entry(due[0])
@@ -861,7 +866,7 @@ def section_publish():
                       f"{fmt} via {route_name} (people={with_people}):\n  want {[want]}\n  got  {ig.calls}")
 
     # a post on the second account is published with that account's token AND its people
-    database, web, publisher, client, ids, ig = rig(accounts=2)
+    database, web, publisher, client, ids, ig, uid = rig(accounts=2)
     P = database.DB_PATH
     pid = make_row(database, ids[1], "reel")
     set_people(client, pid, "second", None)
@@ -909,7 +914,8 @@ def section_publish():
               f"a Story with collaborators must be refused by {route_name} without calling Instagram: "
               f"{reply.status_code} {reply.get_data(as_text=True)[:200]} {ig.calls}")
     sid = database.add_scheduled_post(scheduled_for="2000-01-01T00:00:00", post_type="standalone",
-                                      standalone_post_id=pid, platform="instagram", account_id=ids[0], db_path=P)
+                                      standalone_post_id=pid, platform="instagram", account_id=ids[0],
+                                      user_id=uid, db_path=P)
     due = [r for r in database.get_pending_scheduled_posts(db_path=P) if r["id"] == sid]
     ig.calls.clear()
     result = web._publish_scheduled_entry(due[0])
@@ -949,7 +955,7 @@ def block(html, element_id):
 
 
 def section_ui():
-    database, web, publisher, client, ids, ig = rig()
+    database, web, publisher, client, ids, ig, uid = rig()
     P = database.DB_PATH
     reel = make_row(database, ids[0], "reel_card", content="Reel copy")
     feed = make_row(database, ids[0], "image", content="Feed copy")
@@ -1001,22 +1007,25 @@ def section_ui():
 
     # --- the schedule page: a queued post visibly carries them
     when = "2099-03-01T09:00:00"
-    th_reel = database.add_standalone_post("manual", "g", "threads", "Reel copy", video_url=VIDEO, db_path=P)
+    th_reel = database.add_standalone_post("manual", "g", "threads", "Reel copy", user_id=uid,
+                                              video_url=VIDEO, db_path=P)
     for pid, platform in ((reel, "instagram"), (th_reel, "threads"), (feed, "instagram"), (story, "instagram")):
         database.add_scheduled_post(when, "standalone", standalone_post_id=pid, platform=platform,
-                                    account_id=ids[0] if platform == "instagram" else None, db_path=P)
+                                    account_id=ids[0] if platform == "instagram" else None,
+                                    user_id=uid, db_path=P)
     # a post whose Threads entry is queued BEFORE its Instagram one: the row is built from
     # the first entry, so the Instagram people must be found on a later member
-    first_threads = database.add_standalone_post("manual", "g", "threads", "Order copy", db_path=P)
+    first_threads = database.add_standalone_post("manual", "g", "threads", "Order copy",
+                                                     user_id=uid, db_path=P)
     later_ig = make_row(database, ids[0], "carousel", content="Order copy")
     set_people(client, later_ig, "zed.last", None)
     database.add_scheduled_post("2099-03-03T09:00:00", "standalone", standalone_post_id=first_threads,
-                                platform="threads", db_path=P)
+                                platform="threads", user_id=uid, db_path=P)
     database.add_scheduled_post("2099-03-03T09:00:00", "standalone", standalone_post_id=later_ig,
-                                platform="instagram", account_id=ids[0], db_path=P)
+                                platform="instagram", account_id=ids[0], user_id=uid, db_path=P)
     database.set_standalone_post_ig_people(vid, None, None, db_path=P)
     database.add_scheduled_post("2099-03-02T09:00:00", "standalone", standalone_post_id=vid,
-                                platform="instagram", account_id=ids[0], db_path=P)
+                                platform="instagram", account_id=ids[0], user_id=uid, db_path=P)
     page = client.get("/schedule?status=pending").get_data(as_text=True)
     body = re.search(r'<tbody id="schedule-tbody">(.*?)</tbody>', page, re.S).group(1)
     rows = re.split(r'(?=<tr data-post-id)', body)
@@ -1108,7 +1117,7 @@ const reset = () => { toasts.length = 0; alerts.length = 0; sent.length = 0; };
 def section_js():
     node = shutil.which("node")
     check(node, "node is required for this gate and was not found on PATH")
-    database, web, publisher, client, ids, ig = rig()
+    database, web, publisher, client, ids, ig, uid = rig()
     P = database.DB_PATH
     # a real post so the page renders the real functions
     reel = make_row(database, ids[0], "reel", content="Reel copy")

@@ -17,11 +17,12 @@ from _accounts_gate import isolated_app, check  # noqa: E402
 
 def main():
     directory, database, web, publisher, client = isolated_app()
+    uid = database.get_user_by_username('gate')['id']
     import agent_hub
 
     # A wechat card to push.
     post_id = database.add_standalone_post("freeform", "gate-seed", "wechat",
-                                           "正文")
+                                           "正文", user_id=uid)
 
     # --- agent offline: refuse with a readable error ---
     r = client.post(f"/compose/post/{post_id}/push", data={"target": "wechat"})
@@ -45,7 +46,7 @@ def main():
     # Date#getTimezoneOffset() in minutes (UTC+8 -> -480), so the server never
     # guesses the zone from where it happens to run.
     tz_post = database.add_standalone_post("freeform", "gate-seed", "wechat",
-                                           "正文")
+                                           "正文", user_id=uid)
     r = client.post(f"/compose/post/{tz_post}/push",
                     data={"target": "wechat", "run_at": "2099-01-01T09:30",
                           "tz_offset": "-480"})
@@ -55,7 +56,7 @@ def main():
     check(job["run_after"] and job["run_after"].startswith("2099-01-01T01:30"),
           "a UTC+8 browser's 09:30 lands as 01:30Z whatever the server runs")
     utc_post = database.add_standalone_post("freeform", "gate-seed", "wechat",
-                                            "正文")
+                                            "正文", user_id=uid)
     r = client.post(f"/compose/post/{utc_post}/push",
                     data={"target": "wechat", "run_at": "2099-01-01T09:30",
                           "tz_offset": "0"})
@@ -93,7 +94,7 @@ def main():
 
     # --- a platform the admin did not enable is refused ---
     zhihu_post = database.add_standalone_post("freeform", "gate-seed", "zhihu",
-                                              "正文")
+                                              "正文", user_id=uid)
     database.set_setting("WECHATSYNC_ENABLED_PLATFORMS", "wechat",
                          db_path=database.DB_PATH)
     r = client.post(f"/compose/post/{zhihu_post}/push",

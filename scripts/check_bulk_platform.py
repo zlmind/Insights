@@ -65,6 +65,7 @@ class Rig:
     def __init__(self, platforms=("linkedin", "threads", "twitter", "facebook", "instagram"),
                  slot_platforms=None):
         self.directory, self.database, self.web, self.publisher, self.client = isolated_app()
+        self.uid = self.database.get_user_by_username('gate')['id']
         self.P = self.database.DB_PATH
         install_fake_clients(self.publisher, self.web)
 
@@ -111,17 +112,17 @@ class Rig:
             row_id = self.database.add_standalone_post(
                 source_type="manual", source_content="gate", platform=platform,
                 content=content, image_url=image_url, brief_id=brief_id,
-                account_id=account_id, db_path=self.P)
+                account_id=account_id, user_id=self.uid, db_path=self.P)
             ids[platform if account_id is None else f"{platform}:{account_id}"] = row_id
         return ids
 
     # --- reading -----------------------------------------------------------
     def rows(self):
-        return [dict(r) for r in self.database.list_standalone_posts(db_path=self.P)]
+        return [dict(r) for r in self.database.list_standalone_posts(user_id=self.uid, db_path=self.P)]
 
     def cards(self):
         return self.web._group_standalone_posts(
-            self.database.list_standalone_posts(db_path=self.P))
+            self.database.list_standalone_posts(user_id=self.uid, db_path=self.P))
 
     def rows_for(self, content):
         return [r for r in self.rows() if r["content"] == content]
@@ -130,7 +131,7 @@ class Rig:
         return sorted((r["platform"], r["account_id"]) for r in self.rows_for(content))
 
     def pending(self):
-        return [dict(s) for s in self.database.list_scheduled_posts(status="pending", db_path=self.P)]
+        return [dict(s) for s in self.database.list_scheduled_posts(user_id=self.uid, status="pending", db_path=self.P)]
 
     def pending_for(self, row_id):
         return [s for s in self.pending() if s["standalone_post_id"] == row_id]
@@ -161,10 +162,10 @@ def by_target(res):
 # ===========================================================================
 def section_guard():
     rig = Rig()
-    db, P = rig.database, rig.P
+    db, P, uid = rig.database, rig.P, rig.uid
     linkedin_default = rig.accounts["linkedin"]
 
-    brief = db.create_content_brief("Gate brief", "make posts", db_path=P)
+    brief = db.create_content_brief("Gate brief", "make posts", user_id=uid, db_path=P)
     ids = rig.card("Guarded card", ["linkedin", "threads"], brief_id=brief)
     li, th = ids["linkedin"], ids["threads"]
     card_ids = ",".join(str(i) for i in ids.values())
@@ -174,7 +175,7 @@ def section_guard():
         "platform": "wechat", "action": "add", "post_ids": card_ids}).get_json()
     check(res and res["success"] and res["action"] == "add", f"tick wechat failed: {trim(res)}")
     wc = res["post_id"]
-    row = dict(db.get_standalone_post(wc, db_path=P))
+    row = dict(db.get_standalone_post(wc, user_id=uid, db_path=P))
     check(row["content"] == "Guarded card" and row["image_url"] == IMAGE,
           f"ticked row did not copy the card's copy/image: {row}")
     check(row["brief_id"] == brief, "ticked row lost the card's brief")
@@ -236,7 +237,7 @@ def section_guard():
     body = res.get_json()
     check(res.status_code == 400 and "Invalid platform" in body.get("error", ""),
           f"a queued legacy row was not protected from an untick: {res.status_code} {body}")
-    check(db.get_standalone_post(tw, db_path=P) is not None and len(rig.pending_for(tw)) == 1,
+    check(db.get_standalone_post(tw, user_id=uid, db_path=P) is not None and len(rig.pending_for(tw)) == 1,
           "the refused untick still deleted the row or its queue entry")
 
     # -- queueing a draft-only row is refused, in the same words everywhere: it
@@ -308,9 +309,9 @@ def section_guard():
 # ===========================================================================
 def section_add():
     rig = Rig()
-    db, P = rig.database, rig.P
+    db, P, uid = rig.database, rig.P, rig.uid
 
-    brief = db.create_content_brief("Gate brief", "make posts", db_path=P)
+    brief = db.create_content_brief("Gate brief", "make posts", user_id=uid, db_path=P)
     # Four cards: a wechat-only one, a wechat+xiaohongshu one, one that already
     # has douyin, and one that is not selected.
     a = rig.card("Copy A", ["wechat"], brief_id=brief)
@@ -419,23 +420,24 @@ def section_queue():
     # Slots exist for the legacy Western platforms only. The offered trio can
     # never take one — that is what draft-only means.
     rig = Rig(slot_platforms=("linkedin", "threads", "twitter", "instagram"))
-    db, P = rig.database, rig.P
+    db, P, uid = rig.database, rig.P, rig.uid
 
     A = rig.card("Q-A plain", ["wechat"])
     B = rig.card("Q-B used", ["wechat"])
     C = rig.card("Q-C queued", ["wechat"])
     D = rig.card("Q-D posted", ["wechat"])
     E = rig.card("Q-E legacy", ["linkedin"])
-    db.mark_standalone_post_used(B["wechat"], True, db_path=P)
+    db.mark_standalone_post_used(B["wechat"], True, user_id=uid, db_path=P)
     # A draft-only row cannot be queued through the app, so its queue and
     # posted states are seeded at the database level, the way a legacy row
     # carries them. What is pinned is the order the skips are decided in:
     # already queued first, then published, then used, then draft-only.
     db.add_scheduled_post(scheduled_for="2099-01-01T09:00:00", post_type="standalone",
-                          standalone_post_id=C["wechat"], platform="wechat", db_path=P)
+                          standalone_post_id=C["wechat"], platform="wechat", user_id=uid,
+                          db_path=P)
     db.add_scheduled_post(scheduled_for="2020-01-01T09:00:00", post_type="standalone",
                           standalone_post_id=D["wechat"], platform="wechat", status="posted",
-                          db_path=P)
+                          user_id=uid, db_path=P)
     anchors = [A["wechat"], B["wechat"], C["wechat"], D["wechat"], E["linkedin"]]
 
     # -- add a trio target with queue: every card gets the row, none of it queues
@@ -612,12 +614,12 @@ def section_select():
     # earlier rig is finished with before this one is built.
     # "Select all across every page": the server re-derives the cards from filters.
     rig2 = Rig()
-    P2, db2 = rig2.P, rig2.database
+    P2, db2, uid2 = rig2.P, rig2.database, rig2.uid
     rig2.card("F-1 unused", ["wechat"])
     rig2.card("F-2 unused", ["wechat", "xiaohongshu"])
     used = rig2.card("F-3 used", ["wechat"])
     rig2.card("F-4 xiaohongshu", ["xiaohongshu"])
-    db2.mark_standalone_post_used(used["wechat"], True, db_path=P2)
+    db2.mark_standalone_post_used(used["wechat"], True, user_id=uid2, db_path=P2)
 
     expected = {g["head"]["content"] for g in rig2.web._filtered_post_groups({"used": "unused"})[0]}
     check(expected == {"F-1 unused", "F-2 unused", "F-4 xiaohongshu"},
@@ -647,13 +649,13 @@ def section_select():
 # ===========================================================================
 def section_remove():
     rig = Rig()
-    db, P = rig.database, rig.P
+    db, P, uid = rig.database, rig.P, rig.uid
 
     def remove(anchors, targets, **extra):
         return rig.post({"post_ids": anchors, "targets": targets, **extra}, url=BULK_REMOVE)
 
     def gone(row_id):
-        return db.get_standalone_post(row_id, db_path=P) is None
+        return db.get_standalone_post(row_id, user_id=uid, db_path=P) is None
 
     def orphans():
         """Pending queue entries whose saved post no longer exists."""
@@ -710,7 +712,7 @@ def section_remove():
 
     # -- a used row is just a row: used is not a queue state
     F = rig.card("R-F used", ["wechat", "douyin"])
-    db.mark_standalone_post_used(F["douyin"], True, db_path=P)
+    db.mark_standalone_post_used(F["douyin"], True, user_id=uid, db_path=P)
     status, res = remove([F["wechat"]], ["douyin"])
     check(status == 200 and res["removed"] == 1 and gone(F["douyin"]), f"a used row was not removable: {trim(res)}")
 
@@ -720,7 +722,8 @@ def section_remove():
     #    database holds, and it must keep holding it.
     D = rig.card("R-D queued", ["wechat", "douyin"])
     db.add_scheduled_post(scheduled_for="2099-01-01T09:00:00", post_type="standalone",
-                          standalone_post_id=D["douyin"], platform="douyin", db_path=P)
+                          standalone_post_id=D["douyin"], platform="douyin", user_id=uid,
+                          db_path=P)
     status, res = remove([D["wechat"]], ["douyin"])
     check(status == 200 and res["removed"] == 0 and res["skipped_count"] == 1
           and res["skipped"][0]["code"] == "queued", f"a queued row was not kept: {trim(res)}")
@@ -735,7 +738,7 @@ def section_remove():
     E = rig.card("R-E posted", ["wechat", "douyin"])
     db.add_scheduled_post(scheduled_for="2020-01-01T09:00:00", post_type="standalone",
                           standalone_post_id=E["douyin"], platform="douyin", status="posted",
-                          db_path=P)
+                          user_id=uid, db_path=P)
     status, res = remove([E["wechat"]], ["douyin"])
     check(status == 200 and res["removed"] == 0 and res["skipped"][0]["code"] == "published",
           f"a published row was not kept: {trim(res)}")
@@ -743,7 +746,7 @@ def section_remove():
     status, res = remove([E["wechat"]], ["douyin"], force="true")
     check(status == 200 and res["removed"] == 1 and gone(E["douyin"]),
           f"a forced remove (string flag) did not remove the published row: {trim(res)}")
-    history = [h for h in db.list_scheduled_posts(status="posted", db_path=P)
+    history = [h for h in db.list_scheduled_posts(user_id=uid, status="posted", db_path=P)
                if h["standalone_post_id"] == E["douyin"]]
     check(len(history) == 1, "removing a published row erased its posting history")
 
@@ -751,7 +754,8 @@ def section_remove():
     K = rig.card("R-K both queued", ["wechat", "douyin"])
     for platform in ("wechat", "douyin"):
         db.add_scheduled_post(scheduled_for="2099-02-01T09:00:00", post_type="standalone",
-                              standalone_post_id=K[platform], platform=platform, db_path=P)
+                              standalone_post_id=K[platform], platform=platform, user_id=uid,
+                              db_path=P)
     status, res = remove([K["wechat"]], ["wechat", "douyin"], force=True)
     check(status == 200 and res["removed"] == 0 and res["unqueued"] == 0
           and {s_["code"] for s_ in res["skipped"]} == {"last"},
@@ -762,7 +766,8 @@ def section_remove():
     # -- a kept (queued) row means the card is not emptied, so the rest can go
     M = rig.card("R-M partly queued", ["wechat", "douyin"])
     db.add_scheduled_post(scheduled_for="2099-03-01T09:00:00", post_type="standalone",
-                          standalone_post_id=M["wechat"], platform="wechat", db_path=P)
+                          standalone_post_id=M["wechat"], platform="wechat", user_id=uid,
+                          db_path=P)
     status, res = remove([M["wechat"]], ["wechat", "douyin"])
     check(status == 200 and res["removed"] == 1 and res["skipped_count"] == 1
           and res["skipped"][0]["code"] == "queued" and gone(M["douyin"]) and not gone(M["wechat"]),
@@ -864,13 +869,13 @@ def section_removeselect():
     # Every Rig repoints the app's default database at its own directory, so the
     # earlier rig is finished with before this one is built.
     rig2 = Rig()
-    db2, P2 = rig2.database, rig2.P
+    db2, P2, uid2 = rig2.database, rig2.P, rig2.uid
     rig2.card("RF-1 unused", ["wechat", "douyin"])
     rig2.card("RF-2 unused", ["wechat", "douyin"])
     used = rig2.card("RF-3 used", ["wechat", "douyin"])
     rig2.card("RF-4 wechat only", ["wechat"])
-    db2.mark_standalone_post_used(used["wechat"], True, db_path=P2)
-    db2.mark_standalone_post_used(used["douyin"], True, db_path=P2)
+    db2.mark_standalone_post_used(used["wechat"], True, user_id=uid2, db_path=P2)
+    db2.mark_standalone_post_used(used["douyin"], True, user_id=uid2, db_path=P2)
 
     expected = {g["head"]["content"] for g in rig2.web._filtered_post_groups({"used": "unused"})[0]}
     check(expected == {"RF-1 unused", "RF-2 unused", "RF-4 wechat only"},

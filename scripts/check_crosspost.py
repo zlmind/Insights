@@ -17,6 +17,7 @@ from _accounts_gate import (  # noqa: E402
 )
 
 directory, database, web, publisher, client = isolated_app()
+uid = database.get_user_by_username('gate')['id']
 P = database.DB_PATH
 clients = install_fake_clients(publisher)
 
@@ -37,32 +38,32 @@ post_ids = [
     database.add_standalone_post(
         source_type="manual", source_content="gate", platform="linkedin",
         content=COPY, image_url="https://example.test/pic.jpg",
-        account_id=work, db_path=P),
+        account_id=work, user_id=uid, db_path=P),
     database.add_standalone_post(
         source_type="manual", source_content="gate", platform="linkedin",
         content=COPY, image_url="https://example.test/pic.jpg",
-        account_id=studio, db_path=P),
+        account_id=studio, user_id=uid, db_path=P),
     database.add_standalone_post(
         source_type="manual", source_content="gate", platform="threads",
         content=COPY, image_url="https://example.test/pic.jpg",
-        account_id=threads, db_path=P),
+        account_id=threads, user_id=uid, db_path=P),
     database.add_standalone_post(
         source_type="manual", source_content="gate", platform="twitter",
         content=COPY, image_url="https://example.test/pic.jpg",
-        account_id=twitter, db_path=P),
+        account_id=twitter, user_id=uid, db_path=P),
     database.add_standalone_post(
         source_type="manual", source_content="gate", platform="facebook",
         content=COPY, image_url="https://example.test/pic.jpg",
-        account_id=facebook, db_path=P),
+        account_id=facebook, user_id=uid, db_path=P),
     database.add_standalone_post(
         source_type="manual", source_content="gate", platform="instagram",
         content=COPY, image_url="https://example.test/pic.jpg",
-        account_id=instagram, db_path=P),
+        account_id=instagram, user_id=uid, db_path=P),
 ]
 check(len(post_ids) == 6, f"expected 6 rows for 6 targets, got {len(post_ids)}")
 
 # The rows are one card, not six: same copy, one row per target.
-rows = [database.get_standalone_post(pid, db_path=P) for pid in post_ids]
+rows = [database.get_standalone_post(pid, user_id=uid, db_path=P) for pid in post_ids]
 check(all(r["content"] == COPY for r in rows), "the rows do not share their copy")
 targets = {(r["platform"], r["account_id"]) for r in rows}
 check(len(targets) == 6, f"rows collapsed onto shared targets: {targets}")
@@ -100,16 +101,17 @@ for platform, expected in (("threads", "token-threads-th-1"),
           f"{platform} published with {tokens}, expected [{expected}]")
 
 # --- publishing recorded the account it went out as ------------------------
-history = database.list_scheduled_posts(status="posted", db_path=P)
+history = database.list_scheduled_posts(user_id=uid, status="posted", db_path=P)
 check(len(history) == 6, f"expected 6 history rows, got {len(history)}")
 history_targets = {(h["platform"], h["account_id"]) for h in history}
 check(history_targets == targets,
       f"history does not record the accounts that published: {history_targets}")
-check(all(database.get_standalone_post(pid, db_path=P)["used"] for pid in post_ids),
+check(all(database.get_standalone_post(pid, user_id=uid, db_path=P)["used"] for pid in post_ids),
       "published rows were not marked used")
 
 # --- one failing target does not stop the rest -----------------------------
 directory, database, web, publisher, client = isolated_app()
+uid = database.get_user_by_username('gate')['id']
 P = database.DB_PATH
 clients = install_fake_clients(
     publisher,
@@ -122,13 +124,13 @@ twitter = connect(database, "twitter", "tw-1", "brandco")
 ids = [
     database.add_standalone_post(
         source_type="manual", source_content="gate", platform="linkedin",
-        content="Partial fan-out", account_id=work, db_path=P),
+        content="Partial fan-out", account_id=work, user_id=uid, db_path=P),
     database.add_standalone_post(
         source_type="manual", source_content="gate", platform="linkedin",
-        content="Partial fan-out", account_id=studio, db_path=P),
+        content="Partial fan-out", account_id=studio, user_id=uid, db_path=P),
     database.add_standalone_post(
         source_type="manual", source_content="gate", platform="twitter",
-        content="Partial fan-out", account_id=twitter, db_path=P),
+        content="Partial fan-out", account_id=twitter, user_id=uid, db_path=P),
 ]
 result = client.post(f"/compose/post/{ids[0]}/publish", data={
     "post_ids": ",".join(str(i) for i in ids),
@@ -148,6 +150,7 @@ check(len([c for c in clients["linkedin"].calls if c["kind"] != "refresh"]) == 2
 
 # --- a card can be published to a subset of its targets ---------------------
 directory, database, web, publisher, client = isolated_app()
+uid = database.get_user_by_username('gate')['id']
 P = database.DB_PATH
 clients = install_fake_clients(publisher)
 work = connect(database, "linkedin", "li-work", "Work")
@@ -155,10 +158,10 @@ studio = connect(database, "linkedin", "li-studio", "Studio")
 ids = [
     database.add_standalone_post(
         source_type="manual", source_content="gate", platform="linkedin",
-        content="Only one of these", account_id=work, db_path=P),
+        content="Only one of these", account_id=work, user_id=uid, db_path=P),
     database.add_standalone_post(
         source_type="manual", source_content="gate", platform="linkedin",
-        content="Only one of these", account_id=studio, db_path=P),
+        content="Only one of these", account_id=studio, user_id=uid, db_path=P),
 ]
 result = client.post(f"/compose/post/{ids[0]}/publish", data={
     "post_ids": ",".join(str(i) for i in ids),
@@ -175,12 +178,15 @@ check(published == ["token-linkedin-li-studio"],
 # account the same way, or a second account would work in the composer and
 # silently publish as the first from the Articles page.
 directory, database, web, publisher, client = isolated_app()
+uid = database.get_user_by_username('gate')['id']
 P = database.DB_PATH
 clients = install_fake_clients(publisher)
 work = connect(database, "linkedin", "li-work", "Work")
 studio = connect(database, "linkedin", "li-studio", "Studio")
-article_id = database.add_article(None, "A topic", "brief", "Body of the article", db_path=P)
-social_id = database.add_social_post(article_id, "linkedin", "From an article", db_path=P)
+article_id = database.add_article(None, "A topic", "brief", "Body of the article", user_id=uid,
+                                  db_path=P)
+social_id = database.add_social_post(article_id, "linkedin", "From an article", user_id=uid,
+                                     db_path=P)
 response = client.post(f"/linkedin/post/{social_id}",
                        data={"account_id": str(studio)}).get_json()
 check(response and response.get("success"),

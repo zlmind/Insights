@@ -18,6 +18,7 @@ from _accounts_gate import isolated_app, check  # noqa: E402
 
 def main():
     directory, database, web, publisher, client = isolated_app()
+    uid = database.get_user_by_username('gate')['id']
 
     html = client.get("/compose").get_data(as_text=True)
     check('id="platform-checkboxes"' in html, "the compose channel picker renders")
@@ -26,7 +27,8 @@ def main():
     check(not re.search(r'id="platform-[a-z]+"[^>]*checked', html),
           "no compose channel input ships pre-ticked")
 
-    article_id = database.add_article(None, "gate topic", "style", "gate body")
+    article_id = database.add_article(None, "gate topic", "style", "gate body",
+                                      user_id=uid)
     page = client.get(f"/article/{article_id}").get_data(as_text=True)
     check('id="platform-checkboxes"' in page, "the article channel picker renders")
     check(not re.search(r'id="platform-[a-z]+"[^>]*checked', page),

@@ -28,6 +28,7 @@ PLATFORMS = ("linkedin", "threads", "twitter", "facebook", "instagram")
 # ---------------------------------------------------------------------------
 
 directory, database, web, publisher, client = isolated_app()
+uid = database.get_user_by_username('gate')['id']
 P = database.DB_PATH
 
 GET = {
@@ -142,7 +143,8 @@ for platform in PLATFORMS:
     ph2 = placeholders(platform)[0]["id"]
     post = database.add_standalone_post(
         source_type="manual", source_content="gate", platform=platform,
-        content="queued against the placeholder", account_id=ph2, db_path=P)
+        content="queued against the placeholder", account_id=ph2,
+        user_id=uid, db_path=P)
     check(promote(platform, ph2, second_id),
           f"{platform}: configuring a re-authorisation was refused")
     check(len(accounts(platform)) == 2,
@@ -152,7 +154,7 @@ for platform in PLATFORMS:
           f"{platform}: a pending account was left behind by the merge")
     check(get(ph, db_path=P)["access_token"] == "token-NOID3",
           f"{platform}: the merge did not keep the newest credentials")
-    check(database.get_standalone_post(post, db_path=P)["account_id"] == ph,
+    check(database.get_standalone_post(post, user_id=uid, db_path=P)["account_id"] == ph,
           f"{platform}: a post aimed at the merged placeholder was orphaned")
     check(get(first, db_path=P)["access_token"] == first_token,
           f"{platform}: the merge reached the first account")
@@ -175,6 +177,7 @@ for platform in PLATFORMS:
 # logins added from it must each survive, or the second silently destroys the
 # first while the user is looking at a page that says "Connect another".
 directory, database, web, publisher, client = isolated_app()
+uid = database.get_user_by_username('gate')['id']
 P = database.DB_PATH
 for platform in PLATFORMS:
     get = GET[platform]
@@ -205,6 +208,7 @@ for platform in PLATFORMS:
 
 # --- a placeholder never holds the default against a real account ---------
 directory, database, web, publisher, client = isolated_app()
+uid = database.get_user_by_username('gate')['id']
 P = database.DB_PATH
 save_without_identity("linkedin", "token-NOID")
 placeholder_id = placeholders("linkedin")[0]["id"]
@@ -221,6 +225,7 @@ check(not database.get_social_account(placeholder_id, db_path=P)["is_default"],
 # ---------------------------------------------------------------------------
 
 directory, database, web, publisher, client = isolated_app()
+uid = database.get_user_by_username('gate')['id']
 P = database.DB_PATH
 
 
@@ -371,6 +376,7 @@ def page(page_id):
 
 
 directory, database, web, publisher, client = isolated_app()
+uid = database.get_user_by_username('gate')['id']
 P = database.DB_PATH
 
 facebook_callback([page("page-1")], "one")
@@ -446,6 +452,7 @@ class FakeOAuth:
 
 
 directory, database, web, publisher, client = isolated_app()
+uid = database.get_user_by_username('gate')['id']
 P = database.DB_PATH
 
 for platform, factory, three in (

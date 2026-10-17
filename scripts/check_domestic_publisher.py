@@ -14,16 +14,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _accounts_gate import isolated_app, check  # noqa: E402
 
 
-def _seed_post(database, content="# 标题\n\n正文段落，含引号\"和换行。\n"):
-    pid = database.add_standalone_post("freeform", "gate-seed", "wechat", content)
-    return database.get_standalone_post(pid)
+def _seed_post(database, uid, content="# 标题\n\n正文段落，含引号\"和换行。\n"):
+    pid = database.add_standalone_post("freeform", "gate-seed", "wechat", content,
+                                       user_id=uid)
+    return database.get_standalone_post(pid, user_id=uid)
 
 
 def main():
     directory, database, web, publisher, client = isolated_app()
+    uid = database.get_user_by_username('gate')['id']
     import domestic_publisher as dp
 
-    row = _seed_post(database)
+    row = _seed_post(database, uid)
 
     first = dp.enqueue_card_push(row)
     check(first["already"] is False, "first push queues a job")
@@ -38,11 +40,11 @@ def main():
     # picture and the publisher adapters re-host it per platform.
     import sqlite3 as _s3
     img_pid = database.add_standalone_post("freeform", "gate-img", "xiaohongshu",
-                                           "有图卡片")
+                                           "有图卡片", user_id=uid)
     with _s3.connect(database.DB_PATH) as conn:
         conn.execute("UPDATE standalone_posts SET image_url = ? WHERE id = ?",
                      ("http://localhost:5001/static/uploads/gate.png", img_pid))
-    img_row = database.get_standalone_post(img_pid)
+    img_row = database.get_standalone_post(img_pid, user_id=uid)
     img_push = dp.enqueue_card_push(img_row)
     img_payload = json.loads(database.get_agent_job(img_push["job_id"])["payload"])
     check(img_payload["items"][0]["image_url"] == img_row["image_url"],
@@ -63,7 +65,7 @@ def main():
           "a finished job no longer dedupes")
 
     # An edited card is a different payload: no dedupe even while queued.
-    row2 = _seed_post(database)
+    row2 = _seed_post(database, uid)
     a = dp.enqueue_card_push(row2)
     edited = dict(row2)
     edited["content"] = row2["content"] + "\n追加段落"
@@ -75,7 +77,7 @@ def main():
     # while two pushes of the same class dedupe even when their run_after
     # strings differ in shape — a server retry rewrites the stored value in
     # its own format, and that must not split the lane in two.
-    row3 = _seed_post(database)
+    row3 = _seed_post(database, uid)
     scheduled = dp.enqueue_card_push(row3, run_after="2099-01-01T01:30:00+00:00")
     check(scheduled["already"] is False, "a scheduled push queues")
     again = dp.enqueue_card_push(row3, run_after="2099-01-01T01:30:00")
@@ -89,21 +91,22 @@ def main():
     # --- executor stamping: a graduated platform's jobs are marked for the
     # extension, everyone else's stay on the old agent lane ---
     database.set_setting("DOMESTIC_EXECUTORS", json.dumps({"wechat": "extension"}))
-    row4 = _seed_post(database)
+    row4 = _seed_post(database, uid)
     stamped = dp.enqueue_card_push(row4)
     payload = json.loads(database.get_agent_job(stamped["job_id"])["payload"])
     check(payload.get("executor") == "extension",
           "a graduated platform's payload is stamped for the extension")
 
-    row5 = database.add_standalone_post("freeform", "gate-seed", "zhihu", "正文")
-    row5 = database.get_standalone_post(row5)
+    row5 = database.add_standalone_post("freeform", "gate-seed", "zhihu", "正文",
+                                        user_id=uid)
+    row5 = database.get_standalone_post(row5, user_id=uid)
     unstamped = dp.enqueue_card_push(row5)
     payload = json.loads(database.get_agent_job(unstamped["job_id"])["payload"])
     check("executor" not in payload,
           "an ungraduated platform's payload stays on the old agent lane")
 
     database.set_setting("DOMESTIC_EXECUTORS", "{not json")
-    row6 = _seed_post(database)
+    row6 = _seed_post(database, uid)
     broken = dp.enqueue_card_push(row6)
     payload = json.loads(database.get_agent_job(broken["job_id"])["payload"])
     check("executor" not in payload,
@@ -111,7 +114,7 @@ def main():
 
     # Dedupe still holds with stamping on: same setting, same payload string.
     database.set_setting("DOMESTIC_EXECUTORS", json.dumps({"wechat": "extension"}))
-    row7 = _seed_post(database)
+    row7 = _seed_post(database, uid)
     a = dp.enqueue_card_push(row7)
     b = dp.enqueue_card_push(row7)
     check(b["already"] is True and b["job_id"] == a["job_id"],

@@ -17,6 +17,7 @@ from _accounts_gate import (  # noqa: E402
 )
 
 directory, database, web, publisher, client = isolated_app()
+uid = database.get_user_by_username('gate')['id']
 P = database.DB_PATH
 clients = install_fake_clients(publisher, web)
 
@@ -49,11 +50,11 @@ database.save_threads_token(
 )
 post_id = database.add_standalone_post(
     source_type="manual", source_content="old", platform="linkedin",
-    content="An old post", db_path=P,
+    content="An old post", user_id=uid, db_path=P,
 )
 queue_id = database.add_scheduled_post(
     scheduled_for="2099-01-01T09:00:00", post_type="standalone",
-    standalone_post_id=post_id, platform="linkedin", db_path=P,
+    standalone_post_id=post_id, platform="linkedin", user_id=uid, db_path=P,
 )
 legacy_state()
 
@@ -86,9 +87,9 @@ check(database.get_linkedin_token(linkedin["id"], db_path=P)["access_token"] == 
       "the token is not reachable by its account either")
 
 # --- old posts and queue rows now name that account -----------------------
-check(database.get_standalone_post(post_id, db_path=P)["account_id"] == linkedin["id"],
+check(database.get_standalone_post(post_id, user_id=uid, db_path=P)["account_id"] == linkedin["id"],
       "an existing saved post was not pointed at the migrated account")
-check(database.get_scheduled_post(queue_id, db_path=P)["account_id"] == linkedin["id"],
+check(database.get_scheduled_post(queue_id, user_id=uid, db_path=P)["account_id"] == linkedin["id"],
       "an existing queue entry was not pointed at the migrated account")
 
 # --- the migration is safe to run again -----------------------------------
@@ -102,16 +103,16 @@ check(database.get_linkedin_token(db_path=P)["access_token"] == "legacy-li",
 # --- callers written before accounts existed still behave the same --------
 plain_post = database.add_standalone_post(
     source_type="manual", source_content="new", platform="linkedin",
-    content="Written without naming an account", db_path=P,
+    content="Written without naming an account", user_id=uid, db_path=P,
 )
-check(database.get_standalone_post(plain_post, db_path=P)["account_id"] == linkedin["id"],
+check(database.get_standalone_post(plain_post, user_id=uid, db_path=P)["account_id"] == linkedin["id"],
       "a post saved without an account did not land on the default account")
 
 plain_queue = database.add_scheduled_post(
     scheduled_for="2099-01-01T10:00:00", post_type="standalone",
-    standalone_post_id=plain_post, platform="linkedin", db_path=P,
+    standalone_post_id=plain_post, platform="linkedin", user_id=uid, db_path=P,
 )
-check(database.get_scheduled_post(plain_queue, db_path=P)["account_id"] == linkedin["id"],
+check(database.get_scheduled_post(plain_queue, user_id=uid, db_path=P)["account_id"] == linkedin["id"],
       "a queue entry made without an account did not land on the default account")
 
 response = client.post(f"/compose/post/{plain_post}/linkedin").get_json()
