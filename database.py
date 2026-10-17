@@ -1152,6 +1152,7 @@ def add_article(
     topic: str,
     style: str,
     content: str,
+    user_id: int,
     db_path: str = DB_PATH,
     brief_id: Optional[int] = None,
     brief_run_id: Optional[int] = None,
@@ -1163,20 +1164,22 @@ def add_article(
     tied to a podcast/RSS episode. ``brief_id``/``brief_run_id``/``source_type``
     tag drafts produced by the content agent.
     """
+    uid = _require_user(user_id)
     created_at = datetime.utcnow().isoformat(timespec="seconds")
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
             """
-            INSERT INTO articles (episode_id, topic, style, content, created_at, brief_id, brief_run_id, source_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO articles (episode_id, topic, style, content, created_at, brief_id, brief_run_id, source_type, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (episode_id, topic, style, content, created_at, brief_id, brief_run_id, source_type),
+            (episode_id, topic, style, content, created_at, brief_id, brief_run_id, source_type, uid),
         )
         conn.commit()
         return cur.lastrowid
 
-def get_article(article_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
-    """Retrieve a single article by its id."""
+def get_article(article_id: int, user_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+    """Retrieve a single article by its id, scoped to its owner."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
@@ -1186,20 +1189,22 @@ def get_article(article_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row
             FROM articles a
             LEFT JOIN episodes e ON a.episode_id = e.id
             LEFT JOIN feeds f ON e.feed_id = f.id
-            WHERE a.id = ?
+            WHERE a.id = ? AND a.user_id = ?
             """,
-            (article_id,),
+            (article_id, uid),
         )
         return cur.fetchone()
 
 def update_article(
     article_id: int,
+    user_id: int,
     topic: str | None = None,
     style: str | None = None,
     content: str | None = None,
     db_path: str = DB_PATH,
 ) -> None:
-    """Update an existing article's fields."""
+    """Update an existing article's fields, scoped to its owner."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         # Build update query dynamically based on provided fields
         updates = []
@@ -1213,27 +1218,39 @@ def update_article(
         if content is not None:
             updates.append("content = ?")
             params.append(content)
-        
+
         if updates:
             params.append(article_id)
+            params.append(uid)
             conn.execute(
-                f"UPDATE articles SET {', '.join(updates)} WHERE id = ?",
+                f"UPDATE articles SET {', '.join(updates)} WHERE id = ? AND user_id = ?",
                 params,
             )
             conn.commit()
 
-def delete_article(article_id: int, db_path: str = DB_PATH) -> None:
-    """Delete an article and its social posts by its id."""
+def delete_article(article_id: int, user_id: int, db_path: str = DB_PATH) -> None:
+    """Delete an article and its social posts by its id, scoped to its owner."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
-        # Delete associated social posts first
-        conn.execute("DELETE FROM social_posts WHERE article_id = ?", (article_id,))
-        conn.execute("DELETE FROM articles WHERE id = ?", (article_id,))
+        # Delete associated social posts first, only for articles this user owns
+        conn.execute(
+            """
+            DELETE FROM social_posts WHERE article_id IN (
+                SELECT id FROM articles WHERE id = ? AND user_id = ?
+            )
+            """,
+            (article_id, uid),
+        )
+        conn.execute("DELETE FROM articles WHERE id = ? AND user_id = ?", (article_id, uid))
         conn.commit()
 
 def list_articles(
-    episode_id: Optional[int] = None, db_path: str = DB_PATH
+    episode_id: Optional[int] = None,
+    user_id: Optional[int] = None,
+    db_path: str = DB_PATH,
 ) -> List[sqlite3.Row]:
-    """List articles, optionally filtered by episode."""
+    """List a user's articles, optionally filtered by episode."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         if episode_id is None:
@@ -1244,8 +1261,10 @@ def list_articles(
                 FROM articles a
                 LEFT JOIN episodes e ON a.episode_id = e.id
                 LEFT JOIN feeds f ON e.feed_id = f.id
+                WHERE a.user_id = ?
                 ORDER BY a.created_at DESC
-                """
+                """,
+                (uid,),
             )
         else:
             cur = conn.execute(
@@ -1255,10 +1274,10 @@ def list_articles(
                 FROM articles a
                 LEFT JOIN episodes e ON a.episode_id = e.id
                 LEFT JOIN feeds f ON e.feed_id = f.id
-                WHERE a.episode_id = ?
+                WHERE a.episode_id = ? AND a.user_id = ?
                 ORDER BY a.created_at DESC
                 """,
-                (episode_id,),
+                (episode_id, uid),
             )
         return cur.fetchall()
 
@@ -1268,26 +1287,31 @@ def add_social_post(
     article_id: int,
     platform: str,
     content: str,
+    user_id: int,
     image_url: Optional[str] = None,
     db_path: str = DB_PATH,
 ) -> int:
     """Save a generated social media post and return its id."""
+    uid = _require_user(user_id)
     created_at = datetime.utcnow().isoformat(timespec="seconds")
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
             """
-            INSERT INTO social_posts (article_id, platform, content, image_url, created_at, used)
-            VALUES (?, ?, ?, ?, ?, 0)
+            INSERT INTO social_posts (article_id, platform, content, image_url, created_at, used, user_id)
+            VALUES (?, ?, ?, ?, ?, 0, ?)
             """,
-            (article_id, platform, content, image_url, created_at),
+            (article_id, platform, content, image_url, created_at, uid),
         )
         conn.commit()
         return cur.lastrowid
 
 def list_social_posts(
-    article_id: Optional[int] = None, db_path: str = DB_PATH
+    article_id: Optional[int] = None,
+    user_id: Optional[int] = None,
+    db_path: str = DB_PATH,
 ) -> List[sqlite3.Row]:
-    """List social posts, optionally filtered by article."""
+    """List a user's social posts, optionally filtered by article."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         if article_id is None:
@@ -1296,8 +1320,10 @@ def list_social_posts(
                 SELECT sp.*, a.topic AS article_topic
                 FROM social_posts sp
                 JOIN articles a ON sp.article_id = a.id
+                WHERE sp.user_id = ?
                 ORDER BY sp.created_at DESC
-                """
+                """,
+                (uid,),
             )
         else:
             cur = conn.execute(
@@ -1305,15 +1331,16 @@ def list_social_posts(
                 SELECT sp.*, a.topic AS article_topic
                 FROM social_posts sp
                 JOIN articles a ON sp.article_id = a.id
-                WHERE sp.article_id = ?
+                WHERE sp.article_id = ? AND sp.user_id = ?
                 ORDER BY sp.platform, sp.id
                 """,
-                (article_id,),
+                (article_id, uid),
             )
         return cur.fetchall()
 
-def get_social_post(post_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
-    """Retrieve a single social post by its id, including the article topic."""
+def get_social_post(post_id: int, user_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+    """Retrieve a single social post by its id, scoped to its owner."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
@@ -1321,56 +1348,66 @@ def get_social_post(post_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Ro
             SELECT sp.*, a.topic AS article_topic
             FROM social_posts sp
             LEFT JOIN articles a ON sp.article_id = a.id
-            WHERE sp.id = ?
+            WHERE sp.id = ? AND sp.user_id = ?
             """,
-            (post_id,),
+            (post_id, uid),
         )
         return cur.fetchone()
 
-def delete_social_post(post_id: int, db_path: str = DB_PATH) -> None:
-    """Delete a social post by its id."""
+def delete_social_post(post_id: int, user_id: int, db_path: str = DB_PATH) -> None:
+    """Delete a social post by its id, scoped to its owner."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
-        conn.execute("DELETE FROM social_posts WHERE id = ?", (post_id,))
+        conn.execute("DELETE FROM social_posts WHERE id = ? AND user_id = ?", (post_id, uid))
         conn.commit()
 
-def delete_social_posts_bulk(post_ids: List[int], db_path: str = DB_PATH) -> int:
-    """Delete multiple social posts. Returns count deleted."""
+def delete_social_posts_bulk(post_ids: List[int], user_id: int, db_path: str = DB_PATH) -> int:
+    """Delete multiple of a user's social posts. Returns count deleted."""
+    uid = _require_user(user_id)
     if not post_ids:
         return 0
     placeholders = ",".join("?" * len(post_ids))
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
-            f"DELETE FROM social_posts WHERE id IN ({placeholders})",
-            post_ids,
+            f"DELETE FROM social_posts WHERE id IN ({placeholders}) AND user_id = ?",
+            (*post_ids, uid),
         )
         conn.commit()
         return cur.rowcount
 
-def delete_social_posts_for_article(article_id: int, db_path: str = DB_PATH) -> int:
-    """Delete all social posts for an article. Returns count deleted."""
+def delete_social_posts_for_article(article_id: int, user_id: int, db_path: str = DB_PATH) -> int:
+    """Delete a user's social posts for an article. Returns count deleted."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
-            "DELETE FROM social_posts WHERE article_id = ?",
-            (article_id,),
+            "DELETE FROM social_posts WHERE article_id = ? AND user_id = ?",
+            (article_id, uid),
         )
         conn.commit()
         return cur.rowcount
 
-def mark_social_post_used(post_id: int, used: bool = True, db_path: str = DB_PATH) -> None:
-    """Mark a social post as used or unused."""
+def mark_social_post_used(
+    post_id: int,
+    used: bool = True,
+    user_id: Optional[int] = None,
+    db_path: str = DB_PATH,
+) -> None:
+    """Mark a social post as used or unused, scoped to its owner."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE social_posts SET used = ? WHERE id = ?",
-            (1 if used else 0, post_id),
+            "UPDATE social_posts SET used = ? WHERE id = ? AND user_id = ?",
+            (1 if used else 0, post_id, uid),
         )
         conn.commit()
 
-def update_social_post(post_id: int, content: str, db_path: str = DB_PATH) -> None:
-    """Update the content of a social post."""
+def update_social_post(post_id: int, content: str, user_id: int, db_path: str = DB_PATH) -> None:
+    """Update the content of a social post, scoped to its owner."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE social_posts SET content = ? WHERE id = ?",
-            (content, post_id),
+            "UPDATE social_posts SET content = ? WHERE id = ? AND user_id = ?",
+            (content, post_id, uid),
         )
         conn.commit()
 
@@ -1378,43 +1415,49 @@ def bulk_replace_post_content(
     find_text: str,
     replace_text: str,
     post_type: str,
+    user_id: int,
     case_sensitive: bool = False,
     whole_word: bool = False,
     post_ids: Optional[List[int]] = None,
     excluded_matches: Optional[Dict[str, bool]] = None,
     db_path: str = DB_PATH,
 ) -> int:
-    """Replace text in posts of a given type, optionally filtered by post IDs.
-    
+    """Replace text in a user's posts of a given type, optionally filtered by post IDs.
+
     Args:
         find_text: The text to search for
         replace_text: The text to replace with
         post_type: 'social' for social_posts or 'standalone' for standalone_posts
+        user_id: Owner of the posts; replacement never crosses users
         case_sensitive: Whether to do case-sensitive matching
         whole_word: Whether to match whole words only
         post_ids: Optional list of post IDs to limit replacement to
         excluded_matches: Optional dict of excluded matches {"postId-matchIndex": True}
-        
+
     Returns:
         Number of posts that were modified
     """
     import re
-    
+
+    uid = _require_user(user_id)
     table_name = "social_posts" if post_type == "social" else "standalone_posts"
     excluded_matches = excluded_matches or {}
-    
+
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        
+
         # Get posts with their content, optionally filtered by post_ids
         if post_ids:
             placeholders = ",".join("?" for _ in post_ids)
             cur = conn.execute(
-                f"SELECT id, content FROM {table_name} WHERE id IN ({placeholders})",
-                post_ids
+                f"SELECT id, content FROM {table_name} WHERE id IN ({placeholders}) AND user_id = ?",
+                (*post_ids, uid)
             )
         else:
-            cur = conn.execute(f"SELECT id, content FROM {table_name}")
+            cur = conn.execute(
+                f"SELECT id, content FROM {table_name} WHERE user_id = ?",
+                (uid,)
+            )
         posts = cur.fetchall()
         
         affected_count = 0
@@ -1466,8 +1509,8 @@ def bulk_replace_post_content(
             
             if new_content != content:
                 conn.execute(
-                    f"UPDATE {table_name} SET content = ? WHERE id = ?",
-                    (new_content, post_id),
+                    f"UPDATE {table_name} SET content = ? WHERE id = ? AND user_id = ?",
+                    (new_content, post_id, uid),
                 )
                 affected_count += 1
         
@@ -2802,18 +2845,21 @@ def update_standalone_post_video(
 def update_social_post_image(
     post_id: int,
     image_url: Optional[str],
+    user_id: int,
     db_path: str = DB_PATH,
 ) -> None:
-    """Update only the image URL of a social post.
+    """Update only the image URL of a social post, scoped to its owner.
 
     Args:
         post_id: The post ID
         image_url: New image URL (or None to remove image)
+        user_id: Owner of the post
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE social_posts SET image_url = ? WHERE id = ?",
-            (image_url, post_id),
+            "UPDATE social_posts SET image_url = ? WHERE id = ? AND user_id = ?",
+            (image_url, post_id, uid),
         )
         conn.commit()
 
