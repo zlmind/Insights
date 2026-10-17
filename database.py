@@ -2565,6 +2565,7 @@ def add_standalone_post(
     source_content: str,
     platform: str,
     content: str,
+    user_id: int,
     image_url: Optional[str] = None,
     repost: bool = False,
     db_path: str = DB_PATH,
@@ -2576,12 +2577,13 @@ def add_standalone_post(
     ig_reel_tags: Optional[list] = None,
 ) -> int:
     """Save a standalone post (not tied to an article) and return its id.
-    
+
     Args:
         source_type: 'freeform', 'url', or 'text'
         source_content: The original prompt, URL, or text used to generate
         platform: Target platform (e.g. 'xiaohongshu', 'douyin')
         content: The generated post content
+        user_id: Owner of the post
         image_url: Optional URL of an image to attach to the post
         video_url: Optional URL of a video to attach. A post with a video
             publishes the video and ignores the image.
@@ -2592,33 +2594,38 @@ def add_standalone_post(
             as. Left out, it resolves to that platform's default account, so a
             card ticked for "小红书" still lands somewhere concrete while a card
             ticked for a named second account keeps its own row.
-        
+
     Returns:
         The ID of the newly created post
     """
+    uid = _require_user(user_id)
     created_at = datetime.utcnow().isoformat(timespec="seconds")
     if account_id is None:
         account_id = resolve_account_id(platform, db_path=db_path)
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
             """
-            INSERT INTO standalone_posts (source_type, source_content, platform, content, image_url, created_at, used, repost, brief_id, brief_run_id, account_id, video_url, ig_collaborators, ig_reel_tags)
-            VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO standalone_posts (source_type, source_content, platform, content, user_id, image_url, created_at, used, repost, brief_id, brief_run_id, account_id, video_url, ig_collaborators, ig_reel_tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (source_type, source_content, platform, content, image_url, created_at, 1 if repost else 0, brief_id, brief_run_id, account_id, video_url,
+            (source_type, source_content, platform, content, uid, image_url, created_at, 1 if repost else 0, brief_id, brief_run_id, account_id, video_url,
              json.dumps(ig_collaborators) if ig_collaborators else None,
              json.dumps(ig_reel_tags) if ig_reel_tags else None),
         )
         conn.commit()
         return cur.lastrowid
 
-def get_existing_standalone_content(db_path: str = DB_PATH) -> dict:
-    """Return a dict mapping (platform, content) -> post id for all standalone posts.
+def get_existing_standalone_content(user_id: int, db_path: str = DB_PATH) -> dict:
+    """Return a dict mapping (platform, content) -> post id for a user's standalone posts.
 
-    Used by the import route to skip duplicates.
+    Used by the import route to skip duplicates (per user).
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
-        cur = conn.execute("SELECT id, platform, content FROM standalone_posts")
+        cur = conn.execute(
+            "SELECT id, platform, content FROM standalone_posts WHERE user_id = ?",
+            (uid,),
+        )
         result = {}
         for row in cur.fetchall():
             key = (row[1], row[2])
@@ -2627,15 +2634,17 @@ def get_existing_standalone_content(db_path: str = DB_PATH) -> dict:
         return result
 
 def list_standalone_posts(
+    user_id: int,
     source_type: Optional[str] = None,
     platform: Optional[str] = None,
     limit: Optional[int] = None,
     offset: Optional[int] = None,
     db_path: str = DB_PATH,
 ) -> List[sqlite3.Row]:
-    """List standalone posts, optionally filtered by source type and/or platform.
+    """List a user's standalone posts, optionally filtered by source type and/or platform.
 
     Args:
+        user_id: Owner of the posts
         source_type: Optional filter by source type ('freeform', 'url', 'text')
         platform: Optional filter by platform
         limit: Optional max rows to return (for pagination)
@@ -2644,11 +2653,12 @@ def list_standalone_posts(
     Returns:
         List of standalone post rows, newest first
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
 
-        conditions = []
-        params = []
+        conditions = ["user_id = ?"]
+        params = [uid]
 
         if source_type:
             conditions.append("source_type = ?")
@@ -2678,28 +2688,31 @@ def list_standalone_posts(
         )
         return cur.fetchall()
 
-def get_standalone_post(post_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
-    """Retrieve a single standalone post by its id.
-    
+def get_standalone_post(post_id: int, user_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+    """Retrieve a single standalone post by its id, scoped to its owner.
+
     Args:
         post_id: The post ID
-        
+        user_id: Owner of the post
+
     Returns:
-        The post row or None if not found
+        The post row or None if not found (or owned by another user)
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
-            "SELECT * FROM standalone_posts WHERE id = ?",
-            (post_id,),
+            "SELECT * FROM standalone_posts WHERE id = ? AND user_id = ?",
+            (post_id, uid),
         )
         return cur.fetchone()
 
 def list_standalone_posts_by_source_url(
     url: str,
+    user_id: int,
     db_path: str = DB_PATH,
 ) -> List[sqlite3.Row]:
-    """List standalone posts generated from a given saved source URL.
+    """List a user's standalone posts generated from a given saved source URL.
 
     Posts generated from saved sources store the originating URL (truncated to
     1000 chars) in ``source_content`` with a ``source_type`` of ``'saved_source'``
@@ -2709,41 +2722,47 @@ def list_standalone_posts_by_source_url(
 
     Args:
         url: The source URL to match against.
+        user_id: Owner of the posts.
 
     Returns:
         List of standalone post rows, most recent first.
     """
     if not url:
         return []
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
             """
             SELECT * FROM standalone_posts
-            WHERE source_type IN ('saved_source', 'url', 'agent')
+            WHERE user_id = ?
+              AND source_type IN ('saved_source', 'url', 'agent')
               AND source_content = ?
             ORDER BY created_at DESC
             """,
-            (url[:1000],),
+            (uid, url[:1000]),
         )
         return cur.fetchall()
 
 def count_standalone_posts_by_source_urls(
     urls: List[str],
+    user_id: int,
     db_path: str = DB_PATH,
 ) -> dict:
-    """Count standalone posts grouped by their source URL.
+    """Count a user's standalone posts grouped by their source URL.
 
     Returns a dict mapping each provided URL (original, untruncated) to the
-    number of standalone posts whose ``source_content`` matches it. URLs are
-    matched against the stored (truncated to 1000 chars) value.
+    number of that user's standalone posts whose ``source_content`` matches it.
+    URLs are matched against the stored (truncated to 1000 chars) value.
 
     Args:
         urls: List of source URLs to count posts for.
+        user_id: Owner of the posts.
 
     Returns:
         Dict of ``{url: count}`` (URLs with no posts map to 0).
     """
+    uid = _require_user(user_id)
     counts = {u: 0 for u in urls}
     if not urls:
         return counts
@@ -2761,11 +2780,12 @@ def count_standalone_posts_by_source_urls(
             f"""
             SELECT source_content, COUNT(*) AS cnt
             FROM standalone_posts
-            WHERE source_type IN ('saved_source', 'url', 'agent')
+            WHERE user_id = ?
+              AND source_type IN ('saved_source', 'url', 'agent')
               AND source_content IN ({placeholders})
             GROUP BY source_content
             """,
-            truncated_keys,
+            (uid, *truncated_keys),
         )
         for row in cur.fetchall():
             for original in truncated_to_originals.get(row[0], []):
@@ -2774,70 +2794,79 @@ def count_standalone_posts_by_source_urls(
 
 def update_standalone_post(
     post_id: int,
+    user_id: int,
     content: str,
     image_url: Optional[str] = None,
     clear_image: bool = False,
     db_path: str = DB_PATH,
 ) -> None:
     """Update the content and optionally the image of a standalone post.
-    
+
     Args:
         post_id: The post ID
+        user_id: Owner of the post
         content: New content for the post
         image_url: Optional new image URL (only updated if provided or clear_image is True)
         clear_image: If True, remove the image (set to NULL)
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         if clear_image:
             conn.execute(
-                "UPDATE standalone_posts SET content = ?, image_url = NULL WHERE id = ?",
-                (content, post_id),
+                "UPDATE standalone_posts SET content = ?, image_url = NULL WHERE id = ? AND user_id = ?",
+                (content, post_id, uid),
             )
         elif image_url is not None:
             conn.execute(
-                "UPDATE standalone_posts SET content = ?, image_url = ? WHERE id = ?",
-                (content, image_url, post_id),
+                "UPDATE standalone_posts SET content = ?, image_url = ? WHERE id = ? AND user_id = ?",
+                (content, image_url, post_id, uid),
             )
         else:
             conn.execute(
-                "UPDATE standalone_posts SET content = ? WHERE id = ?",
-                (content, post_id),
+                "UPDATE standalone_posts SET content = ? WHERE id = ? AND user_id = ?",
+                (content, post_id, uid),
             )
         conn.commit()
 
 def update_standalone_post_image(
     post_id: int,
     image_url: Optional[str],
+    user_id: int,
     db_path: str = DB_PATH,
 ) -> None:
-    """Update only the image URL of a standalone post.
-    
+    """Update only the image URL of a standalone post, scoped to its owner.
+
     Args:
         post_id: The post ID
         image_url: New image URL (or None to remove image)
+        user_id: Owner of the post
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE standalone_posts SET image_url = ? WHERE id = ?",
-            (image_url, post_id),
+            "UPDATE standalone_posts SET image_url = ? WHERE id = ? AND user_id = ?",
+            (image_url, post_id, uid),
         )
         conn.commit()
 
 def update_standalone_post_video(
     post_id: int,
     video_url: Optional[str],
+    user_id: int,
     db_path: str = DB_PATH,
 ) -> None:
-    """Set (or with None, clear) the video of a standalone post.
+    """Set (or with None, clear) the video of a standalone post, scoped to its owner.
 
     Args:
         post_id: The post ID
         video_url: Public URL of the video, or None to remove it
+        user_id: Owner of the post
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE standalone_posts SET video_url = ? WHERE id = ?",
-            (video_url, post_id),
+            "UPDATE standalone_posts SET video_url = ? WHERE id = ? AND user_id = ?",
+            (video_url, post_id, uid),
         )
         conn.commit()
 
@@ -2863,47 +2892,54 @@ def update_social_post_image(
         )
         conn.commit()
 
-def delete_standalone_post(post_id: int, db_path: str = DB_PATH) -> None:
-    """Delete a standalone post by its id.
-    
+def delete_standalone_post(post_id: int, user_id: int, db_path: str = DB_PATH) -> None:
+    """Delete a standalone post by its id, scoped to its owner.
+
     Args:
         post_id: The post ID to delete
+        user_id: Owner of the post
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
-        conn.execute("DELETE FROM standalone_posts WHERE id = ?", (post_id,))
+        conn.execute("DELETE FROM standalone_posts WHERE id = ? AND user_id = ?", (post_id, uid))
         conn.commit()
 
-def delete_standalone_posts_bulk(post_ids: List[int], db_path: str = DB_PATH) -> int:
-    """Delete multiple standalone posts. Returns count deleted.
-    
+def delete_standalone_posts_bulk(post_ids: List[int], user_id: int, db_path: str = DB_PATH) -> int:
+    """Delete multiple of a user's standalone posts. Returns count deleted.
+
     Args:
         post_ids: List of post IDs to delete
-        
+        user_id: Owner of the posts
+
     Returns:
         Number of posts deleted
     """
+    uid = _require_user(user_id)
     if not post_ids:
         return 0
     placeholders = ",".join("?" * len(post_ids))
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
-            f"DELETE FROM standalone_posts WHERE id IN ({placeholders})",
-            post_ids,
+            f"DELETE FROM standalone_posts WHERE id IN ({placeholders}) AND user_id = ?",
+            (*post_ids, uid),
         )
         conn.commit()
         return cur.rowcount
 
-def mark_standalone_post_used(post_id: int, used: bool = True, db_path: str = DB_PATH) -> None:
-    """Mark a standalone post as used or unused.
-    
+def mark_standalone_post_used(post_id: int, used: bool = True, user_id: Optional[int] = None, db_path: str = DB_PATH) -> None:
+    """Mark a standalone post as used or unused, scoped to its owner.
+
     Args:
         post_id: The post ID
         used: True to mark as used, False to mark as unused
+        user_id: Owner of the post (required; Optional only because ``used``
+            precedes it in the signature)
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE standalone_posts SET used = ? WHERE id = ?",
-            (1 if used else 0, post_id),
+            "UPDATE standalone_posts SET used = ? WHERE id = ? AND user_id = ?",
+            (1 if used else 0, post_id, uid),
         )
         conn.commit()
 
@@ -3172,125 +3208,142 @@ def get_uploaded_image(image_id: int, db_path: str = DB_PATH) -> Optional[sqlite
 # Recent Prompts Functions
 # =============================================================================
 
-def list_recent_prompts(limit: int = 20, db_path: str = DB_PATH) -> List[sqlite3.Row]:
-    """Get unique recent freeform prompts from standalone_posts.
-    
-    Returns distinct prompts ordered by most recently used, so users can
+def list_recent_prompts(user_id: int, limit: int = 20, db_path: str = DB_PATH) -> List[sqlite3.Row]:
+    """Get a user's unique recent freeform prompts from standalone_posts.
+
+    Returns distinct prompts ordered by most recently used, so the user can
     easily reuse previous prompts in the Command Center.
-    
+
     Args:
+        user_id: Owner of the posts
         limit: Maximum number of prompts to return (default 20)
-        
+
     Returns:
         List of rows with 'source_content' and 'created_at' fields
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
             """
             SELECT source_content, MAX(created_at) as created_at
             FROM standalone_posts
-            WHERE source_type = 'freeform'
+            WHERE user_id = ?
+            AND source_type = 'freeform'
             AND source_content IS NOT NULL
             AND source_content != ''
             GROUP BY source_content
             ORDER BY MAX(created_at) DESC
             LIMIT ?
             """,
-            (limit,),
+            (uid, limit),
         )
         return cur.fetchall()
 
-def list_recent_image_prompts(limit: int = 10, db_path: str = DB_PATH) -> List[sqlite3.Row]:
-    """Get recent image generation sessions (prompt + image URL).
+def list_recent_image_prompts(user_id: int, limit: int = 10, db_path: str = DB_PATH) -> List[sqlite3.Row]:
+    """Get a user's recent image generation sessions (prompt + image URL).
 
     Returns distinct ``(source_content, image_url, created_at)`` combos
     for ``source_type='image'``, ordered by most recently used.
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
             """
             SELECT source_content, image_url, MAX(created_at) as created_at
             FROM standalone_posts
-            WHERE source_type = 'image'
+            WHERE user_id = ?
+            AND source_type = 'image'
             AND image_url IS NOT NULL
             AND image_url != ''
             GROUP BY source_content, image_url
             ORDER BY MAX(created_at) DESC
             LIMIT ?
             """,
-            (limit,),
+            (uid, limit),
         )
         return cur.fetchall()
 
-def clear_recent_prompts(db_path: str = DB_PATH) -> int:
-    """Clear the prompt history by setting source_content to empty for freeform posts.
-    
+def clear_recent_prompts(user_id: int, db_path: str = DB_PATH) -> int:
+    """Clear a user's prompt history by setting source_content to empty for their freeform posts.
+
     This preserves the generated posts but removes them from the recent prompts list.
-    
+
+    Args:
+        user_id: Owner of the posts
+
     Returns:
         Number of posts affected
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
             """
             UPDATE standalone_posts
             SET source_content = ''
-            WHERE source_type = 'freeform'
+            WHERE user_id = ?
+            AND source_type = 'freeform'
             AND source_content IS NOT NULL
             AND source_content != ''
-            """
+            """,
+            (uid,),
         )
         conn.commit()
         return cur.rowcount
 
-def delete_prompt_by_content(prompt_content: str, db_path: str = DB_PATH) -> int:
-    """Delete a specific prompt from history by clearing its source_content.
-    
+def delete_prompt_by_content(prompt_content: str, user_id: int, db_path: str = DB_PATH) -> int:
+    """Delete a specific prompt from a user's history by clearing its source_content.
+
     This preserves the generated posts but removes the prompt from the history.
-    
+
     Args:
         prompt_content: The exact prompt text to remove
-        
+        user_id: Owner of the posts
+
     Returns:
         Number of posts affected
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
             """
             UPDATE standalone_posts
             SET source_content = ''
-            WHERE source_type = 'freeform'
+            WHERE user_id = ?
+            AND source_type = 'freeform'
             AND source_content = ?
             """,
-            (prompt_content,),
+            (uid, prompt_content),
         )
         conn.commit()
         return cur.rowcount
 
-def delete_prompts_bulk(prompt_contents: List[str], db_path: str = DB_PATH) -> int:
-    """Delete multiple prompts from history by clearing their source_content.
-    
+def delete_prompts_bulk(prompt_contents: List[str], user_id: int, db_path: str = DB_PATH) -> int:
+    """Delete multiple prompts from a user's history by clearing their source_content.
+
     Args:
         prompt_contents: List of prompt texts to remove
-        
+        user_id: Owner of the posts
+
     Returns:
         Number of posts affected
     """
+    uid = _require_user(user_id)
     if not prompt_contents:
         return 0
-    
+
     with sqlite3.connect(db_path) as conn:
         placeholders = ",".join("?" for _ in prompt_contents)
         cur = conn.execute(
             f"""
             UPDATE standalone_posts
             SET source_content = ''
-            WHERE source_type = 'freeform'
+            WHERE user_id = ?
+            AND source_type = 'freeform'
             AND source_content IN ({placeholders})
             """,
-            prompt_contents,
+            (uid, *prompt_contents),
         )
         conn.commit()
         return cur.rowcount
