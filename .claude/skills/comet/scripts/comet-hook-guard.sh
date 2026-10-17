@@ -138,9 +138,13 @@ case "$RELPATH" in
 esac
 
 # Fallback: writes outside a specific change directory are governed by
-# the first active (non-archived) change.
+# an active (non-archived) change. With several active changes, prefer
+# one in build/verify — generic source writes are legal there (per-change
+# paths never reach this fallback). If none is in build/verify, fall back
+# to the first active change, blocking as before.
 if [ -z "$PHASE" ]; then
   YAML_FILE=""
+  BUILD_YAML=""
   if [ -d "openspec/changes" ]; then
     for dir in openspec/changes/*/; do
       [ -d "$dir" ] || continue
@@ -153,10 +157,20 @@ if [ -z "$PHASE" ]; then
         if [ "$(is_archived "${dir}.comet.yaml")" = "true" ]; then
           continue
         fi
-        YAML_FILE="${dir}.comet.yaml"
-        break
+        if [ -z "$YAML_FILE" ]; then
+          YAML_FILE="${dir}.comet.yaml"
+        fi
+        case "$(read_phase "${dir}.comet.yaml")" in
+          build|verify)
+            BUILD_YAML="${dir}.comet.yaml"
+            break
+            ;;
+        esac
       fi
     done
+  fi
+  if [ -n "$BUILD_YAML" ]; then
+    YAML_FILE="$BUILD_YAML"
   fi
 
   # No active change — allow all writes
