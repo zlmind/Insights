@@ -662,6 +662,7 @@ def init_db(db_path: str = DB_PATH) -> None:
         # at the real name throughout — a plain RENAME of the old table would
         # rewrite those references onto the legacy name and leave them
         # dangling.
+        # The rebuild below assumes connection-level PRAGMA foreign_keys stays OFF (project convention: it has never been enabled); if FKs are ever turned on, run `PRAGMA foreign_keys=OFF` before this migration.
         for table in ("feeds", "episodes", "url_sources"):
             row = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
