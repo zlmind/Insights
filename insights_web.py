@@ -1383,7 +1383,7 @@ def worker() -> None:
             # The queue is in-memory, so items pending across a restart lose
             # their attribution (events then record no user).
             with usage_meter.user_context(item.get("user_id"), item.get("username")):
-                update_episode_status(url, "processing")
+                update_episode_status(url, "processing", item['user_id'])
                 if is_youtube_url(url):
                     channel = None
                     try:
@@ -1396,8 +1396,9 @@ def worker() -> None:
                         transcript = transcribe_audio(audio_path)
                         summary = summarize_text(transcript, lang=_worker_lang())
                         actions = extract_action_items(transcript, lang=_worker_lang())
-                        save_episode(url, title, transcript, summary, actions, feed_id, published, channel=channel)
-                        _backfill_youtube_source(url, transcript, summary, item['user_id'])
+                        save_episode(url, title, transcript, summary, actions, feed_id, published, channel=channel,
+                                     user_id=item['user_id'])
+                        _backfill_youtube_source(url, transcript, summary, user_id=item['user_id'])
                     finally:
                         if os.path.exists(audio_path):
                             os.remove(audio_path)
@@ -1414,10 +1415,20 @@ def worker() -> None:
                         actions = extract_action_items(transcript, lang=_worker_lang())
                         out_path = os.path.join(tmpdir, "results.json")
                         write_results_json(transcript, summary, actions, out_path)
-                        save_episode(url, title, transcript, summary, actions, feed_id, published)
+                        save_episode(url, title, transcript, summary, actions, feed_id, published,
+                                     user_id=item['user_id'])
         except Exception:
             app.logger.exception("Failed to process episode %s", url)
-            update_episode_status(url, "error")
+            error_uid = item.get("user_id")
+            if error_uid is not None:
+                update_episode_status(url, "error", error_uid)
+            else:
+                # Defensive: an item enqueued without attribution can only be
+                # logged — there is no owner to mark the error status for, and
+                # no NULL-owned row may be created.
+                app.logger.error(
+                    "Episode %s failed while queued without a user_id; error status left unattributed",
+                    url)
         finally:
             task_queue.task_done()
 
