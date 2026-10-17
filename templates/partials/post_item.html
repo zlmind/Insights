@@ -199,13 +199,6 @@
                                         </li>
                                         <li class="nav-item">
                                             <button class="nav-link py-1 px-2" type="button"
-                                                onclick="switchPostImageTab({{ group.id }}, 'library')"
-                                                id="post-library-tab-{{ group.id }}">
-                                                📚 Library
-                                            </button>
-                                        </li>
-                                        <li class="nav-item">
-                                            <button class="nav-link py-1 px-2" type="button"
                                                 onclick="switchPostImageTab({{ group.id }}, 'stock')"
                                                 id="post-stock-tab-{{ group.id }}">
                                                 🔍 Stock
@@ -254,13 +247,6 @@
                                                 🔗 Use Image From Link
                                             </button>
                                             <span class="spinner-border spinner-border-sm text-info d-none" id="post-link-image-spinner-{{ group.id }}" role="status"></span>
-                                        </div>
-                                    </div>
-
-                                    <!-- Library Pane -->
-                                    <div id="post-library-pane-{{ group.id }}" class="d-none">
-                                        <div id="post-library-grid-{{ group.id }}" class="d-flex flex-wrap gap-1" style="max-height: 120px; overflow-y: auto;">
-                                            <div class="text-muted small">Loading...</div>
                                         </div>
                                     </div>
 
@@ -331,10 +317,6 @@
                                             💾
                                         </button>
                                     </div>
-                                    <select class="form-select form-select-sm mb-1" id="video-library-{{ group.id }}"
-                                            onchange="pickPostVideoFromLibrary({{ group.id }}, this)">
-                                        <option value="">📚 Or pick a video you uploaded before…</option>
-                                    </select>
                                     <div id="video-progress-{{ group.id }}" class="mt-1 d-none">
                                         <div class="progress" style="height: 16px;">
                                             <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%; font-size: 0.7rem;">

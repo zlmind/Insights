@@ -288,6 +288,14 @@
         .palette li a small { color: var(--muted); }
         .palette li[aria-selected="true"] a { background: var(--brand-100); color: var(--brand-700); }
         .palette .palette-empty { padding: 1rem 1.1rem; color: var(--muted); }
+        .palette .palette-group {
+            font-size: .68rem; font-weight: 600; text-transform: uppercase;
+            letter-spacing: .07em; color: var(--muted);
+            padding: .55rem .7rem .2rem;
+        }
+        .palette .palette-group:not(:first-child) {
+            border-top: 1px solid var(--panel-line); margin-top: .3rem;
+        }
         .palette-foot {
             border-top: 1px solid var(--panel-line); padding: .5rem 1rem;
             font-size: .75rem; color: var(--muted); display: flex; gap: 1rem;
@@ -570,7 +578,6 @@
         {'group': 'Sources', 'items': [
             {'label': 'Feeds', 'ic': 'rss', 'desc': 'Podcasts, RSS and YouTube', 'href': url_for('index'), 'exact': ['/'], 'prefixes': ['/feed', '/process', '/enqueue']},
             {'label': 'Saved URLs', 'ic': 'link', 'desc': 'Pages kept for generating posts', 'href': url_for('sources_page'), 'prefixes': ['/sources']},
-            {'label': 'Content Library', 'ic': 'folder', 'desc': 'Sort a media archive by year and category', 'href': url_for('library_page'), 'prefixes': ['/library']},
             {'label': 'Processing status', 'ic': 'pulse', 'desc': 'Episode transcripts and summaries', 'href': url_for('status_page'), 'prefixes': ['/status', '/episode']},
         ]},
         {'group': 'Publish', 'items': [
@@ -792,13 +799,21 @@
         var isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
         document.getElementById('paletteKey').textContent = isMac ? '⌘ K' : 'Ctrl K';
 
-        var entries = [];
-        document.querySelectorAll('.side-link[href], .foot-icon[href], .topbar a[href], .dropdown-item[href]').forEach(function (a) {
+        // Collect only links the templates explicitly tag as navigation
+        // (data-palette-group), deduped by href — the same page can appear in
+        // both the sidebar footer and the user dropdown, and page-specific
+        // action links must stay out of a "jump to a page" list.
+        var entries = [], seenHref = {}, groupOrder = [];
+        document.querySelectorAll('a[data-palette-group]').forEach(function (a) {
             var href = a.getAttribute('href');
-            if (!href || href === '#') return;
+            if (!href || href === '#' || seenHref[href]) return;
+            seenHref[href] = true;
             var group = a.getAttribute('data-palette-group') || '';
-            var label = a.firstChild ? a.firstChild.textContent.trim() : '';
-            if (!label) label = (a.getAttribute('title') || a.getAttribute('aria-label') || '');
+            if (groupOrder.indexOf(group) === -1) groupOrder.push(group);
+            // a.textContent covers sidebar links (label lives in a <span>;
+            // icons carry no text); icon-only links fall back to their label.
+            var label = a.textContent.trim()
+                || a.getAttribute('title') || a.getAttribute('aria-label') || '';
             entries.push({ label: label, group: group, href: href });
         });
 
@@ -809,9 +824,14 @@
             shown = entries.filter(function (e) {
                 return !q || (e.label + ' ' + e.group).toLowerCase().indexOf(q) !== -1;
             }).sort(function (a, b) {
+                // Keep sections in sidebar order; within a section, prefix
+                // matches float up when searching.
+                var ga = groupOrder.indexOf(a.group), gb = groupOrder.indexOf(b.group);
+                if (ga !== gb) return ga - gb;
+                if (!q) return 0;
                 var as = a.label.toLowerCase().indexOf(q) === 0 ? 0 : 1;
                 var bs = b.label.toLowerCase().indexOf(q) === 0 ? 0 : 1;
-                return q ? as - bs : 0;
+                return as - bs;
             });
             active = Math.min(active, Math.max(shown.length - 1, 0));
             list.innerHTML = '';
@@ -823,7 +843,15 @@
                 input.removeAttribute('aria-activedescendant');
                 return;
             }
+            var lastGroup = null;
             shown.forEach(function (e, i) {
+                if (e.group !== lastGroup) {
+                    lastGroup = e.group;
+                    var head = document.createElement('li');
+                    head.className = 'palette-group';
+                    head.textContent = e.group;
+                    list.appendChild(head);
+                }
                 var li = document.createElement('li');
                 li.id = 'palette-opt-' + i;
                 li.setAttribute('role', 'option');
@@ -831,8 +859,7 @@
                 var a = document.createElement('a');
                 a.href = e.href;
                 var name = document.createElement('span'); name.textContent = e.label;
-                var grp = document.createElement('small'); grp.textContent = e.group;
-                a.appendChild(name); a.appendChild(grp);
+                a.appendChild(name);
                 li.appendChild(a);
                 li.addEventListener('mousemove', function () { setActive(i); });
                 list.appendChild(li);

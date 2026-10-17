@@ -49,15 +49,14 @@ from datetime import datetime, timedelta, timezone
 import time
 from html import unescape
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin, urlunparse
+from urllib import request as urllib_request
 from flasgger import Swagger
 import usage_meter
 import agent_hub
 import domestic_publisher
 import video_media
 import database
-import content_library
-import media_probe
 from database import (
     init_db,
     get_episode,
@@ -829,12 +828,26 @@ def _parse_usage_filters():
 
     return {"mode": mode, "category": category, "start_ts": start, "end_ts": end}
 
+def _usage_scope_user_id():
+    """Resolve the usage page's per-user scope.
+
+    Everyone sees their own events by default; ``?scope=all`` widens the view to
+    the whole instance, but only for admins — anyone else silently falls back to
+    their own data. Returns the ``user_id`` to filter on, or None for "all".
+    """
+    user = current_user()
+    if (request.args.get("scope") or "").strip() == "all" and user and user["is_admin"]:
+        return None
+    return user["id"] if user else None
+
 @app.route("/usage")
 def usage_page():
     filters = _parse_usage_filters()
+    scope_user_id = _usage_scope_user_id()
     # Headline tiles and breakdowns reflect the date range only, so the
     # proactive-vs-reactive split stays meaningful; mode/category filter the log.
-    range_filters = {"start_ts": filters["start_ts"], "end_ts": filters["end_ts"]}
+    range_filters = {"start_ts": filters["start_ts"], "end_ts": filters["end_ts"],
+                     "user_id": scope_user_id}
 
     totals = usage_totals(**range_filters)
     by_mode = usage_by_mode(**range_filters)
@@ -842,7 +855,7 @@ def usage_page():
     by_model = usage_by_model(**range_filters)
     daily = usage_daily(**range_filters)
 
-    empty = {"cost_usd": 0.0, "total_tokens": 0, "events": 0}
+    empty = {"cost_cny": 0.0, "total_tokens": 0, "events": 0}
     proactive = by_mode.get("proactive", empty)
     reactive = by_mode.get("reactive", empty)
 
@@ -853,8 +866,8 @@ def usage_page():
     per_page = 100
     offset = (page - 1) * per_page
 
-    rows = list_usage(**filters, limit=per_page, offset=offset)
-    total_events = count_usage(**filters)
+    rows = list_usage(**filters, user_id=scope_user_id, limit=per_page, offset=offset)
+    total_events = count_usage(**filters, user_id=scope_user_id)
     total_pages = max(1, (total_events + per_page - 1) // per_page)
 
     return render_template(
@@ -870,16 +883,19 @@ def usage_page():
         page=page,
         per_page=per_page,
         total_pages=total_pages,
-        categories=distinct_usage_categories(),
+        categories=distinct_usage_categories(user_id=scope_user_id),
         filter_mode=request.args.get("mode", ""),
         filter_category=request.args.get("category", ""),
         filter_start=request.args.get("start", ""),
         filter_end=request.args.get("end", ""),
+        is_admin=bool(current_user() and current_user()["is_admin"]),
+        scope="all" if scope_user_id is None else "mine",
     )
 
 @app.route("/usage.csv")
 def usage_csv():
     filters = _parse_usage_filters()
+    scope_user_id = _usage_scope_user_id()
 
     def generate():
         buf = io.StringIO()
@@ -888,7 +904,7 @@ def usage_csv():
             [
                 "id", "ts", "mode", "category", "provider", "model",
                 "prompt_tokens", "completion_tokens", "total_tokens",
-                "audio_seconds", "images", "cost_usd",
+                "audio_seconds", "images", "cost_cny",
                 "user_id", "username", "details",
             ]
         )
@@ -896,13 +912,13 @@ def usage_csv():
         buf.seek(0)
         buf.truncate(0)
 
-        for row in iter_usage_for_export(**filters):
+        for row in iter_usage_for_export(**filters, user_id=scope_user_id):
             writer.writerow(
                 [
                     row["id"], row["ts"], row["mode"], row["category"],
                     row["provider"], row["model"], row["prompt_tokens"],
                     row["completion_tokens"], row["total_tokens"],
-                    row["audio_seconds"], row["images"], row["cost_usd"],
+                    row["audio_seconds"], row["images"], row["cost_cny"],
                     row["user_id"], row["username"], row["details"],
                 ]
             )
@@ -1355,38 +1371,42 @@ def worker() -> None:
         feed_id = item.get("feed_id")
         published = item.get("published")
         try:
-            update_episode_status(url, "processing")
-            if is_youtube_url(url):
-                channel = None
-                try:
-                    meta = fetch_youtube_metadata(url)
-                    channel = meta.get("channel") or None
-                except Exception:
-                    pass
-                audio_path = download_youtube_audio(url)
-                try:
-                    transcript = transcribe_audio(audio_path)
-                    summary = summarize_text(transcript, lang=_worker_lang())
-                    actions = extract_action_items(transcript, lang=_worker_lang())
-                    save_episode(url, title, transcript, summary, actions, feed_id, published, channel=channel)
-                    _backfill_youtube_source(url, transcript, summary)
-                finally:
-                    if os.path.exists(audio_path):
-                        os.remove(audio_path)
-            else:
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    audio_path = os.path.join(tmpdir, "episode.mp3")
-                    with requests.get(url, stream=True) as r:
-                        r.raise_for_status()
-                        with open(audio_path, "wb") as f:
-                            for chunk in r.iter_content(chunk_size=8192):
-                                f.write(chunk)
-                    transcript = transcribe_audio(audio_path)
-                    summary = summarize_text(transcript, lang=_worker_lang())
-                    actions = extract_action_items(transcript, lang=_worker_lang())
-                    out_path = os.path.join(tmpdir, "results.json")
-                    write_results_json(transcript, summary, actions, out_path)
-                    save_episode(url, title, transcript, summary, actions, feed_id, published)
+            # Attribute this episode's AI usage to the user who enqueued it.
+            # The queue is in-memory, so items pending across a restart lose
+            # their attribution (events then record no user).
+            with usage_meter.user_context(item.get("user_id"), item.get("username")):
+                update_episode_status(url, "processing")
+                if is_youtube_url(url):
+                    channel = None
+                    try:
+                        meta = fetch_youtube_metadata(url)
+                        channel = meta.get("channel") or None
+                    except Exception:
+                        pass
+                    audio_path = download_youtube_audio(url)
+                    try:
+                        transcript = transcribe_audio(audio_path)
+                        summary = summarize_text(transcript, lang=_worker_lang())
+                        actions = extract_action_items(transcript, lang=_worker_lang())
+                        save_episode(url, title, transcript, summary, actions, feed_id, published, channel=channel)
+                        _backfill_youtube_source(url, transcript, summary)
+                    finally:
+                        if os.path.exists(audio_path):
+                            os.remove(audio_path)
+                else:
+                    with tempfile.TemporaryDirectory() as tmpdir:
+                        audio_path = os.path.join(tmpdir, "episode.mp3")
+                        with requests.get(url, stream=True) as r:
+                            r.raise_for_status()
+                            with open(audio_path, "wb") as f:
+                                for chunk in r.iter_content(chunk_size=8192):
+                                    f.write(chunk)
+                        transcript = transcribe_audio(audio_path)
+                        summary = summarize_text(transcript, lang=_worker_lang())
+                        actions = extract_action_items(transcript, lang=_worker_lang())
+                        out_path = os.path.join(tmpdir, "results.json")
+                        write_results_json(transcript, summary, actions, out_path)
+                        save_episode(url, title, transcript, summary, actions, feed_id, published)
         except Exception:
             app.logger.exception("Failed to process episode %s", url)
             update_episode_status(url, "error")
@@ -1620,10 +1640,77 @@ def fetch_article_content_safe(url: str, timeout: int = 12, max_bytes: int = 3_0
 
 # Templates are stored in the ``templates`` directory
 
+def parse_feed_with_fallback(url: str):
+    """Parse a feed URL, falling back to the ``www.`` variant if the
+    response is HTML (commonly caused by WAF challenge pages).
+
+    Some hosts serve WAF/security verification HTML on the apex domain
+    while serving real RSS XML from the ``www`` subdomain.  This helper
+    transparently retries those common fallbacks so users do not have to
+    know which hostname variant to enter.
+    """
+    parsed = feedparser.parse(url)
+    if parsed.entries:
+        return parsed
+
+    # A real empty RSS feed will have an XML content-type.  HTML responses
+    # mean we almost certainly hit a WAF page, portal, or redirect page.
+    headers = getattr(parsed, "headers", {}) or {}
+    content_type = (headers.get("content-type") or "").lower()
+    if "text/html" not in content_type:
+        return parsed
+
+    # Try extracting an alternate RSS/Atom link from the returned HTML.
+    try:
+        req = urllib_request.Request(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/126.0.0.0 Safari/537.36"
+                )
+            },
+        )
+        with urllib_request.urlopen(req, timeout=30) as resp:
+            html = resp.read().decode("utf-8", "replace")
+        for pattern in (
+            r'<link[^>]*rel=["\']alternate["\'][^>]*type=["\']application/rss\+xml["\'][^>]*href=["\']([^"\']+)["\']',
+            r'<link[^>]*type=["\']application/rss\+xml["\'][^>]*href=["\']([^"\']+)["\']',
+            r'<link[^>]*href=["\']([^"\']+)["\'][^>]*type=["\']application/rss\+xml["\']',
+        ):
+            m = re.search(pattern, html, re.IGNORECASE | re.DOTALL)
+            if m:
+                alt_url = urljoin(url, m.group(1))
+                alt_parsed = feedparser.parse(alt_url)
+                if alt_parsed.entries:
+                    return alt_parsed
+                break
+    except Exception:
+        pass
+
+    # Try the www. / non-www. hostname swap.
+    try:
+        parts = urlparse(url)
+        netloc = parts.netloc
+        if netloc.lower().startswith("www."):
+            swapped = netloc[4:]
+        else:
+            swapped = "www." + netloc
+        swapped_url = urlunparse(parts._replace(netloc=swapped))
+        swapped_parsed = feedparser.parse(swapped_url)
+        if swapped_parsed.entries:
+            return swapped_parsed
+    except Exception:
+        pass
+
+    return parsed
+
+
 def refresh_feed_metadata(feed_id: int, feed_url: str) -> dict:
     """Fetch feed and update cached metadata. Returns the metadata dict."""
     try:
-        feed_data = feedparser.parse(feed_url)
+        feed_data = parse_feed_with_fallback(feed_url)
         if not feed_data.entries:
             return {'type': 'unknown', 'last_post': None, 'item_count': 0}
         
@@ -1700,7 +1787,7 @@ def index():
                 )
                 return redirect(url_for('sources_page'))
 
-        feed = feedparser.parse(feed_url)
+        feed = parse_feed_with_fallback(feed_url)
         title = feed.feed.get('title', feed_url)
         feed_id = add_feed(feed_url, title)
         refresh_feed_metadata(feed_id, feed_url)
@@ -1830,7 +1917,7 @@ def view_feed(feed_id: int):
     is_text_feed = True
 
     refresh_feed_metadata(feed_id, feed['url'])
-    feed_data = feedparser.parse(feed['url'])
+    feed_data = parse_feed_with_fallback(feed['url'])
 
     audio_extensions = ('.mp3', '.m4a', '.wav', '.ogg', '.aac', '.flac')
 
@@ -1944,7 +2031,10 @@ def enqueue_episode():
     if not audio_url or feed_id is None:
         return redirect(url_for('index'))
     queue_episode(audio_url, title, feed_id, published)
-    task_queue.put({'url': audio_url, 'title': title, 'feed_id': feed_id, 'published': published})
+    _user = current_user()
+    task_queue.put({'url': audio_url, 'title': title, 'feed_id': feed_id, 'published': published,
+                    'user_id': _user['id'] if _user else None,
+                    'username': _user['username'] if _user else None})
     return redirect(url_for('status_page'))
 
 @app.route('/process_text')
@@ -1966,7 +2056,7 @@ def process_text_article():
     if feed_id:
         feed = get_feed_by_id(feed_id)
         if feed:
-            feed_data = feedparser.parse(feed['url'])
+            feed_data = parse_feed_with_fallback(feed['url'])
             for entry in feed_data.entries:
                 entry_url = entry.get('link', entry.get('id', ''))
                 if entry_url == article_url:
@@ -2061,7 +2151,7 @@ def process_episode():
     if not description and feed_id:
         feed = get_feed_by_id(feed_id)
         if feed:
-            feed_data = feedparser.parse(feed['url'])
+            feed_data = parse_feed_with_fallback(feed['url'])
             for entry in feed_data.entries:
                 entry_url = entry.get('link', entry.get('id', ''))
                 enclosure_url = entry.enclosures[0].href if entry.get('enclosures') else None
@@ -2395,11 +2485,14 @@ def reprocess_episode(episode_id: int):
 
     if is_audio:
         # Queue for background processing
+        _user = current_user()
         task_queue.put({
             'url': episode['url'],
             'title': episode['title'],
             'feed_id': episode['feed_id'],
             'published': episode['published'],
+            'user_id': _user['id'] if _user else None,
+            'username': _user['username'] if _user else None,
         })
         return redirect(url_for('status_page'))
     else:
@@ -6291,11 +6384,14 @@ def transcribe_source(source_id: int):
     if existing and existing['status'] in ('queued', 'processing'):
         return redirect(url_for('status_page'))
     queue_episode(source['url'], source['title'] or source['url'], None, None)
+    _user = current_user()
     task_queue.put({
         "url": source['url'],
         "title": source['title'] or source['url'],
         "feed_id": None,
         "published": None,
+        "user_id": _user['id'] if _user else None,
+        "username": _user['username'] if _user else None,
     })
     return redirect(url_for('status_page'))
 
@@ -6739,7 +6835,7 @@ def _parse_brief_form(form) -> dict:
         'auto_queue': _b('auto_queue'),
         'review_window_hours': max(0, form.get('review_window_hours', 24, type=int) or 24),
         'max_sources_per_run': max(1, form.get('max_sources_per_run', 5, type=int) or 5),
-        'max_cost_usd': max(0.0, form.get('max_cost_usd', 0.5, type=float) or 0.5),
+        'max_cost_cny': max(0.0, form.get('max_cost_cny', 0.5, type=float) or 0.5),
         'max_drafts_per_run': max(1, form.get('max_drafts_per_run', 30, type=int) or 30),
     }
 
@@ -6775,6 +6871,9 @@ def brief_create():
     data = _parse_brief_form(request.form)
     if not data['instructions']:
         return jsonify({"error": "Instructions (the prompt) are required"}), 400
+    # Stamp the creator so the brief's AI usage (scheduled or manual) is
+    # attributed to them on the /usage page.
+    data['user_id'] = current_user()['id']
     brief_id = create_content_brief(**data)
     if data['cadence'] != 'manual':
         set_content_brief_schedule(brief_id, next_run_at=_compute_next_run_at(get_content_brief(brief_id)))
@@ -6819,9 +6918,11 @@ def brief_run_now(brief_id):
         return jsonify({"error": "A run is already in progress for this brief"}), 409
     run_id = create_brief_run(brief_id, trigger='manual')
     run_lang = g.lang  # read in request context; the background thread has none
+    runner = current_user()  # same: captured here so usage is attributed to them
 
     def _bg():
-        with usage_meter.usage_context("proactive"):
+        with usage_meter.usage_context("proactive"), \
+                usage_meter.user_context(runner["id"], runner["username"]):
             try:
                 content_agent.run_brief(brief_id, trigger='manual', run_id=run_id,
                                         lang=run_lang)
@@ -6900,8 +7001,15 @@ def content_agent_worker() -> None:
                     if get_active_brief_run(bid):
                         continue  # a manual run is already in flight
                     run_id = create_brief_run(bid, trigger="scheduled")
+                    # Attribute this brief's usage to its owner; legacy rows with
+                    # a NULL user_id resolve to no override (events stay NULL).
+                    owner = get_user_by_id(brief["user_id"]) if brief["user_id"] is not None else None
                     try:
-                        content_agent.run_brief(bid, trigger="scheduled", run_id=run_id)
+                        with usage_meter.user_context(
+                            owner["id"] if owner else None,
+                            owner["username"] if owner else None,
+                        ):
+                            content_agent.run_brief(bid, trigger="scheduled", run_id=run_id)
                     except Exception:
                         app.logger.exception("Scheduled brief %s failed", bid)
                     finally:
@@ -6913,1363 +7021,6 @@ def content_agent_worker() -> None:
                         )
             except Exception:
                 app.logger.exception("content_agent_worker loop error")
-
-# ── Content Library ─────────────────────────────────────────────────────────
-#
-# Catalogues a large on-disk media archive and sorts it by year and category.
-# See ``content_library`` for the engine; this layer owns persistence, progress
-# reporting, and the review-and-approve workflow around the generated copy plan.
-#
-# Long operations run on a background thread keyed by scan id. The scan itself
-# is metadata-only and finishes in seconds even on tens of thousands of files;
-# the classification pass runs for hours, so it is cancellable and every event
-# is persisted as it completes rather than at the end.
-
-_library_jobs: dict[int, dict] = {}
-_library_jobs_lock = threading.Lock()
-
-def _library_job(scan_id: int) -> dict:
-    with _library_jobs_lock:
-        return _library_jobs.setdefault(scan_id, {"stop": False, "running": False})
-
-def _library_job_running(scan_id: int) -> bool:
-    with _library_jobs_lock:
-        job = _library_jobs.get(scan_id)
-        return bool(job and job.get("running"))
-
-def _library_job_claim(scan_id: int) -> bool:
-    """Take the scan's job slot, or return False if a job already holds it.
-
-    Claimed here, in the request, rather than inside the worker thread. Between
-    a POST returning and its thread reaching its first statement the flag would
-    otherwise still read False while the scan's status still held the previous
-    job's result, so a caller polling straight after starting a job would see
-    "not running" plus a finished status and conclude the new job had already
-    finished. The thumbnail panel reported the previous run's totals that way,
-    and two quick POSTs could both pass the check and start two workers over
-    one scan.
-
-    Every launch site claims the slot before starting its thread; the thread
-    releases it in its ``finally``.
-    """
-    with _library_jobs_lock:
-        job = _library_jobs.setdefault(scan_id, {"stop": False, "running": False})
-        if job.get("running"):
-            return False
-        job["running"] = True
-        job["stop"] = False
-        return True
-
-def _library_job_release(scan_id: int) -> None:
-    """Give back the scan's job slot when its worker finishes."""
-    with _library_jobs_lock:
-        job = _library_jobs.get(scan_id)
-        if job:
-            job["running"] = False
-
-def _active_taxonomy() -> list:
-    """Load the saved taxonomy as engine ``Category`` objects."""
-    return [
-        content_library.Category(
-            name=row["name"],
-            subcategories=json.loads(row["subcategories"] or "[]"),
-            example_count=row["example_count"] or 0,
-            keywords=json.loads(row["keywords"] or "[]"),
-        )
-        for row in database.list_library_categories(active_only=True)
-    ]
-
-def _refresh_residency(files: list) -> int:
-    """Re-check which files are actually on local disk, in place.
-
-    The catalogue's ``materialized`` column is a snapshot from scan time, and
-    every later pass invalidates it by downloading samples. Trusting it makes
-    the classifier wrong in four compounding ways: the hydration budget is
-    charged for bytes already on disk, the free-sample shortcut never fires so
-    events are deferred when a local file was available, cost estimates
-    overstate the download, and cheapest-first ordering loses its ordering.
-
-    A stat over the whole catalogue costs well under a second, so this runs at
-    the start of any pass that reasons about cost. It is deliberately not done
-    inside a GET: residency changes constantly, and the stored column is only
-    meaningful as "residency when scanned".
-    """
-    refreshed = 0
-    for f in files:
-        live = media_probe.is_materialized(f.path)
-        if live != f.materialized:
-            f.materialized = live
-            refreshed += 1
-    return refreshed
-
-def _scanned_from_row(row) -> content_library.ScannedFile:
-    """Rebuild an engine object from a catalogue row."""
-    return content_library.ScannedFile(
-        path=row["path"], rel_path=row["rel_path"], name=row["name"],
-        ext=row["ext"] or "", kind=row["kind"] or "", size=row["size"] or 0,
-        mtime=row["mtime"] or 0.0, materialized=bool(row["materialized"]),
-        captured_at=row["captured_at"], date_source=row["date_source"] or "",
-        year=row["year"], month=row["month"], seq=None,
-        event_key=row["event_key"] or "", dup_group=row["dup_group"] or 1,
-        category=row["category"] or "", subcategory=row["subcategory"] or "",
-        confidence=row["confidence"] or 0.0, classified_by=row["classified_by"] or "",
-        caption=row["caption"] or "", notes=row["notes"] or "",
-    )
-
-def _library_scan_thread(scan_id: int, root_path: str) -> None:
-    """Walk the archive and persist the catalogue. Downloads nothing.
-
-    The caller has already claimed the job slot; this only has to release it.
-    """
-    try:
-        database.update_library_scan(scan_id, status="scanning", phase="walking")
-        files = content_library.scan_root(
-            root_path,
-            progress=lambda n: database.update_library_scan(scan_id, files_total=n),
-        )
-
-        database.update_library_scan(scan_id, phase="grouping", files_total=len(files))
-        events = content_library.group_events(files)
-
-        database.update_library_scan(scan_id, phase="saving", events_total=len(events))
-        database.bulk_insert_library_files(scan_id, [f.as_dict() for f in files])
-        for key, group in events.items():
-            database.upsert_library_event(scan_id, content_library.event_summary(key, group))
-
-        taxonomy = _active_taxonomy()
-        estimate = content_library.estimate_pass(events, taxonomy) if taxonomy else {}
-        database.update_library_scan(
-            scan_id, status="scanned", phase="ready",
-            files_total=len(files), events_total=len(events),
-            stats={"estimate": estimate},
-            finished_at=datetime.now().isoformat(timespec="seconds"),
-        )
-        log_activity("library_scan", details=f"Catalogued {len(files)} files in {len(events)} events")
-    except Exception as exc:
-        app.logger.exception("library scan failed")
-        database.update_library_scan(scan_id, status="failed", error_message=str(exc)[:500])
-    finally:
-        _library_job_release(scan_id)
-
-def _library_classify_thread(scan_id: int, opts: dict) -> None:
-    """Run the AI classification ladder over a scanned archive."""
-    job = _library_job(scan_id)
-    done = {"n": 0}
-
-    try:
-        database.update_library_scan(scan_id, status="classifying", phase="classifying",
-                                     events_done=0)
-        rows, _ = database.query_library_files(scan_id, limit=1_000_000)
-        files = [_scanned_from_row(r) for r in rows]
-        # Without this the pass reasons about cost using the scan-time
-        # residency snapshot, which every prior pass has invalidated by
-        # downloading samples. The budget is then charged for bytes already on
-        # disk, so it exhausts against phantom spend and cuts the run short.
-        _refresh_residency(files)
-        events: dict[str, list] = {}
-        for f in files:
-            events.setdefault(f.event_key, []).append(f)
-
-        events = content_library.filter_events_by_year(
-            events, opts.get("year_from"), opts.get("year_to"))
-        if not events:
-            raise ValueError("No events fall in the selected year range.")
-
-        in_scope = len(events)
-        if opts.get("resume", True):
-            events = content_library.pending_events(
-                events, retry_unresolved=bool(opts.get("retry_unresolved")))
-            already = in_scope - len(events)
-            if already:
-                app.logger.info("library resume: skipping %d of %d events already "
-                                "classified", already, in_scope)
-            if not events:
-                database.update_library_scan(
-                    scan_id, status="classified", phase="already complete",
-                    events_total=in_scope, events_done=in_scope,
-                    finished_at=datetime.now().isoformat(timespec="seconds"))
-                return
-
-        # Retarget the progress denominator at the work actually about to
-        # happen. Left at the scan's total, a year-limited or resumed pass would
-        # appear to stall part of the way along and then report "done" without
-        # ever filling the bar.
-        database.update_library_scan(scan_id, events_total=len(events))
-
-        taxonomy = _active_taxonomy()
-        if not taxonomy and not opts.get("allow_new_categories"):
-            raise ValueError("No categories defined. Learn a taxonomy first, "
-                             "or enable category discovery.")
-
-        budget = content_library.HydrationBudget(
-            limit_bytes=int(opts.get("budget_gb", 10) * 1024 ** 3),
-            reserve_bytes=int(opts.get("reserve_gb", 5) * 1024 ** 3),
-        )
-
-        last_push = {"t": 0.0}
-
-        def on_event(key: str, summary: dict) -> None:
-            done["n"] += 1
-            database.upsert_library_event(scan_id, summary)
-            database.apply_event_labels(
-                scan_id, key, summary.get("category") or content_library.UNSORTED,
-                summary.get("confidence", 0), summary.get("classified_by", ""),
-                summary.get("reason", ""),
-            )
-            # Push progress on a timer rather than every N events. The free rule
-            # tier resolves its events in a burst at the start and the AI tier
-            # then takes seconds per event, so a fixed count either spams the DB
-            # during the burst or leaves the UI looking frozen afterwards.
-            now = time.time()
-            if now - last_push["t"] >= 2.0:
-                last_push["t"] = now
-                database.update_library_scan(
-                    scan_id, events_done=done["n"],
-                    bytes_downloaded=budget.spent_bytes)
-
-        def on_category(name: str, events_seen: int) -> None:
-            """Persist a discovered category as soon as it clears promotion."""
-            database.save_library_categories(
-                [{"name": name, "subcategories": [], "keywords": [],
-                  "example_count": events_seen}], source="discovered")
-            app.logger.info("library discovered category %r (%d events)", name, events_seen)
-
-        stats = content_library.classify_events(
-            events, taxonomy, budget,
-            use_ai=True,
-            use_speech=bool(opts.get("use_speech")),
-            max_samples=int(opts.get("max_samples", 2)),
-            max_sample_bytes=int(opts.get("max_sample_mb", 16)) * 1024 ** 2,
-            on_event=on_event,
-            should_stop=lambda: _library_job(scan_id).get("stop", False),
-            use_cloud_mapping=bool(opts.get("use_cloud_mapping")),
-            allow_new_categories=bool(opts.get("allow_new_categories")),
-            video_frames=int(opts.get("video_frames", 2) or 2),
-            motion_samples=int(opts.get("motion_samples", 1) or 1),
-            on_category=on_category,
-        )
-
-        # Record every discovered category with its final event count. Adopted
-        # ones were already written when they crossed the threshold, but with
-        # the count they had at that moment; rewriting here means the Categories
-        # panel shows what a name actually covers rather than the threshold.
-        # Proposals that never reached the threshold are saved inactive: visible
-        # for the owner to promote by hand, but kept out of later runs' label
-        # space until they do.
-        for entry in stats.get("discovered") or []:
-            adopted = bool(entry.get("promoted"))
-            database.save_library_categories(
-                [{"name": entry["name"], "subcategories": [], "keywords": [],
-                  "example_count": entry["events"]}],
-                source="discovered" if adopted else "suggested")
-            database.set_library_category_active(entry["name"], adopted)
-
-        # Persist labels for events the ladder resolved without emitting a
-        # callback (rule hits during a resumed run, deferred, budget-skipped).
-        for key, group in events.items():
-            if group and group[0].category:
-                database.apply_event_labels(
-                    scan_id, key, group[0].category, group[0].confidence,
-                    group[0].classified_by, group[0].notes)
-
-        database.update_library_scan(
-            scan_id,
-            status="stopped" if job.get("stop") else "classified",
-            phase="done", events_done=done["n"],
-            bytes_downloaded=budget.spent_bytes,
-            stats={"classify": stats, "budget": budget.as_dict()},
-            finished_at=datetime.now().isoformat(timespec="seconds"),
-        )
-        log_activity("library_classify",
-                     details=f"Classified {done['n']} events, downloaded "
-                             f"{budget.spent_bytes / 2**30:.1f} GB")
-    except Exception as exc:
-        app.logger.exception("library classification failed")
-        database.update_library_scan(scan_id, status="failed", error_message=str(exc)[:500])
-    finally:
-        _library_job_release(scan_id)
-
-def _library_apply_thread(scan_id: int, dest_root: str, manifest: str,
-                          mode: str = "copy") -> None:
-    """Copy every approved plan item into the destination tree."""
-    try:
-        database.update_library_scan(scan_id, status="applying", phase="copying")
-        rows = database.list_plan_items(scan_id, state="approved", limit=1_000_000)
-        items = [
-            content_library.PlanItem(
-                src=r["src_path"], dest_rel=r["dest_rel"], size=r["size"] or 0,
-                category=r["category"] or "", year=r["year"],
-                confidence=r["confidence"] or 0, classified_by="",
-                collision=bool(r["collision"]),
-            )
-            for r in rows
-        ]
-        result = content_library.apply_plan(
-            items, dest_root, manifest_path=manifest, mode=mode,
-            progress=lambda n, total: database.update_library_scan(
-                scan_id, events_done=n, events_total=total),
-        )
-        for r in rows:
-            database.mark_plan_item_applied(r["id"])
-        database.update_library_scan(
-            scan_id, status="applied", phase="done", stats={"apply": result},
-            finished_at=datetime.now().isoformat(timespec="seconds"))
-        log_activity("library_apply",
-                     details=f"{'Linked' if mode == 'link' else 'Copied'} "
-                             f"{result['copied']} files to {dest_root}")
-    except Exception as exc:
-        app.logger.exception("library apply failed")
-        database.update_library_scan(scan_id, status="failed", error_message=str(exc)[:500])
-    finally:
-        _library_job_release(scan_id)
-
-def _copy_to_exfat(src: str, dest: str) -> None:
-    """Copy file bytes and mtime without the metadata ExFAT cannot hold.
-
-    shutil.copy2 also copies BSD file flags, and ExFAT rejects chflags with
-    EINVAL, so a copy to a typical external drive fails after writing every
-    byte. Data plus modification time is all a backup needs.
-    """
-    shutil.copyfile(src, dest)
-    try:
-        st = os.stat(src)
-        os.utime(dest, (st.st_atime, st.st_mtime))
-    except OSError:
-        pass
-
-def _vision_model_answers() -> bool:
-    """One tiny real inference, so 'installed' is not mistaken for 'working'."""
-    try:
-        import base64
-        from PIL import Image
-        import io
-        buf = io.BytesIO()
-        Image.new("RGB", (32, 32), (120, 80, 200)).save(buf, format="JPEG")
-        content_library._ollama_generate(
-            content_library.OLLAMA_VISION_MODEL, "One word: what colour is this?",
-            images=[base64.b64encode(buf.getvalue()).decode()], num_predict=5, timeout=120)
-        return True
-    except Exception:
-        return False
-
-def _library_sync_thread(scan_id: int, opts: dict) -> None:
-    """Bring the catalogue, previews, link tree and drive up to date.
-
-    Built for an archive that keeps growing -- a phone syncing into the folder
-    every day -- where the owner should not have to press anything.
-
-    This converges state rather than processing a batch of "new" files. Every
-    step asks "what is still missing?" against the whole catalogue: files not
-    yet catalogued, events not yet classified, previews not yet rendered, links
-    and drive copies not yet present. That is what makes it safe to run on a
-    schedule: a run that finds nothing costs seconds, a run interrupted partway
-    is simply finished by the next one, and a step that failed last time (a
-    budget that ran out, a drive that was unplugged) is retried without anyone
-    having to notice. Existing labels and corrections are never touched.
-    """
-    # The job slot is claimed by the caller (see _library_job_claim); this
-    # thread only releases it in its finally.
-    job = _library_job(scan_id)
-    summary: dict = {}
-    t0 = time.time()
-    try:
-        scan = database.get_library_scan(scan_id)
-        root = scan["root_path"]
-        database.update_library_scan(scan_id, status="syncing", phase="finding new files")
-
-        # 1. Catalogue what is new.
-        files = content_library.scan_root(root)
-        known = database.known_library_paths(scan_id)
-        fresh = [f for f in files if f.path not in known]
-        summary["new_files"] = len(fresh)
-        if fresh:
-            events_new = content_library.group_events(fresh)
-            in_use = database.event_keys_in_use(scan_id)
-            stamp = datetime.now().strftime("%y%m%d%H%M")
-            for key in list(events_new):
-                # A new file on a day that already has a classified event must
-                # not join it: resume would skip the event and the file would
-                # stay unlabelled forever. Give it a distinct key.
-                if key in in_use:
-                    nk = f"{key}~{stamp}"
-                    for f in events_new[key]:
-                        f.event_key = nk
-                    events_new[nk] = events_new.pop(key)
-            for key, group in events_new.items():
-                database.upsert_library_event(scan_id, content_library.event_summary(key, group))
-            database.insert_new_library_files(scan_id, [f.as_dict() for f in fresh])
-            summary["new_events"] = len(events_new)
-
-        # 2. Classify everything still pending -- new events and anything an
-        #    earlier run could not finish. Residency is read live so the budget
-        #    is charged only for real downloads.
-        rows, _ = database.query_library_files(scan_id, limit=1_000_000)
-        allf = [_scanned_from_row(r) for r in rows]
-        _refresh_residency(allf)
-        events: dict[str, list] = {}
-        for f in allf:
-            events.setdefault(f.event_key, []).append(f)
-        pending = content_library.pending_events(events)
-        summary["pending_events"] = len(pending)
-        # Confirm the vision model actually answers before starting. Ollama can
-        # report a model as installed while its runtime rejects it -- seen
-        # after an upgrade that dropped the model's architecture -- and the
-        # symptom is every event failing in under a second. Skip the step and
-        # say why, so the pending events wait for the next run instead of
-        # being churned through pointlessly.
-        vision_ok = bool(pending) and _vision_model_answers()
-        if pending and not vision_ok:
-            summary["classification_skipped"] = "vision model not answering (check `ollama run llama3.2-vision`)"
-            app.logger.error("library sync: vision model is not answering; leaving %d events pending", len(pending))
-        if pending and vision_ok:
-            taxonomy = _active_taxonomy()
-            # Size the allowance to the work: enough to fetch every pending
-            # sample, capped by what the volume can hold above its reserve.
-            need = sum(content_library.sample_cost(g, 2, 32 * 1024 ** 2, 2) for g in pending.values())
-            free = media_probe.free_bytes("/")
-            cap = max(0, free - 6 * 1024 ** 3)
-            limit = min(int(need * 1.2) + 512 * 1024 ** 2, cap)
-            budget = content_library.HydrationBudget(limit_bytes=limit)
-            summary["budget_gb"] = round(limit / 1024 ** 3, 2)
-            database.update_library_scan(scan_id, status="classifying", phase="classifying",
-                                         events_total=len(pending), events_done=0)
-
-            def on_event(key: str, ev: dict) -> None:
-                database.upsert_library_event(scan_id, ev)
-                database.apply_event_labels(scan_id, key, ev.get("category") or content_library.UNSORTED,
-                                            ev.get("confidence", 0), ev.get("classified_by", ""),
-                                            ev.get("reason", ""))
-
-            def on_category(name: str, n: int) -> None:
-                database.save_library_categories(
-                    [{"name": name, "subcategories": [], "keywords": [], "example_count": n}],
-                    source="discovered")
-
-            stats = content_library.classify_events(
-                pending, taxonomy, budget, use_ai=True,
-                max_samples=2, max_sample_bytes=32 * 1024 ** 2, motion_samples=2,
-                on_event=on_event, should_stop=lambda: _library_job(scan_id).get("stop", False),
-                use_cloud_mapping=bool(opts.get("use_cloud_mapping", True)),
-                allow_new_categories=bool(opts.get("allow_new_categories", True)),
-                on_category=on_category,
-            )
-            for key, group in pending.items():
-                if group and group[0].category:
-                    database.apply_event_labels(scan_id, key, group[0].category, group[0].confidence,
-                                                group[0].classified_by, group[0].notes)
-            summary["classified"] = stats.get("by_vision", 0) + stats.get("by_rule", 0)
-            summary["still_unsorted"] = (stats.get("low_confidence", 0) + stats.get("no_match", 0)
-                                         + stats.get("budget_skipped", 0) + stats.get("deferred_large", 0))
-            summary["downloaded_gb"] = round(budget.spent_bytes / 1024 ** 3, 2)
-            # labels changed; reload for the steps below
-            rows, _ = database.query_library_files(scan_id, limit=1_000_000)
-            allf = [_scanned_from_row(r) for r in rows]
-
-        # 3. Previews for any local file that lacks one. Free.
-        database.update_library_scan(scan_id, phase="rendering previews")
-        made = 0
-        for f in allf:
-            if f.kind in ("image", "video") and not media_probe.cached_thumb(f.path) \
-                    and media_probe.is_materialized(f.path) and media_probe.ensure_thumb(f.path):
-                made += 1
-        summary["previews"] = made
-
-        # 4. Link tree and 5. drive: add whatever is missing.
-        link_root = opts.get("link_root")
-        drive_root = opts.get("drive_root")
-        drive_ok = bool(drive_root and os.path.isdir(drive_root))
-        database.update_library_scan(scan_id, phase="updating links and drive")
-        linked = copied = copy_fail = 0
-        for f in allf:
-            cat = content_library.safe_component(f.category or content_library.UNSORTED)
-            year = str(f.year) if f.year else "Undated"
-            if link_root:
-                dest = os.path.join(link_root, cat, year, f.name)
-                if not os.path.lexists(dest):
-                    os.makedirs(os.path.dirname(dest), exist_ok=True)
-                    os.symlink(f.path, dest)
-                    linked += 1
-            if drive_ok:
-                sorted_ = bool(f.category) and f.category != content_library.UNSORTED
-                dest = (os.path.join(drive_root, "Sorted", cat, year, f.name) if sorted_
-                        else os.path.join(drive_root, "Unsorted", year, f.name))
-                try:
-                    if not (os.path.exists(dest) and os.path.getsize(dest) == f.size):
-                        # Only copy what is on this Mac; a placeholder would be
-                        # a download, and the drive is synced from the cloud
-                        # by the rclone path for those.
-                        if media_probe.is_materialized(f.path):
-                            os.makedirs(os.path.dirname(dest), exist_ok=True)
-                            _copy_to_exfat(f.path, dest)
-                            copied += 1
-                except OSError as exc:
-                    copy_fail += 1
-                    if copy_fail <= 3:
-                        app.logger.warning("drive copy failed %s: %s", f.name, exc)
-        summary.update({"linked": linked, "copied_to_drive": copied,
-                        "drive_copy_failed": copy_fail, "drive_mounted": drive_ok,
-                        "seconds": int(time.time() - t0)})
-
-        database.recount_library_categories(scan_id)
-        database.update_library_scan(
-            scan_id, status="classified", phase="sync complete",
-            stats={"sync": {**summary, "at": datetime.now().isoformat(timespec="seconds")}},
-            finished_at=datetime.now().isoformat(timespec="seconds"))
-        log_activity("library_sync", details=json.dumps(summary))
-    except Exception as exc:
-        app.logger.exception("library sync failed")
-        summary["error"] = str(exc)[:200]
-        database.update_library_scan(scan_id, status="failed", error_message=str(exc)[:500],
-                                     stats={"sync": summary})
-    finally:
-        job["running"] = False
-
-@app.route('/library/scan/<int:scan_id>/sync', methods=['POST'])
-def library_sync(scan_id: int):
-    """Run the whole pipeline for anything new in the archive."""
-    data = request.get_json(silent=True) or request.form or {}
-    opts = {
-        "budget_gb": float(data.get("budget_gb", 2) or 2),
-        "use_cloud_mapping": str(data.get("use_cloud_mapping", "1")) in ("1", "true", "on", "True"),
-        "allow_new_categories": str(data.get("allow_new_categories", "1")) in ("1", "true", "on", "True"),
-        "link_root": data.get("link_root") or None,
-        "drive_root": data.get("drive_root") or None,
-    }
-    # Claim the slot in the request, not the thread, so a poll landing between
-    # this returning and the thread's first statement cannot see "not running".
-    if not _library_job_claim(scan_id):
-        return jsonify({"error": "A job is already running for this scan"}), 409
-    threading.Thread(target=_library_sync_thread, args=(scan_id, opts), daemon=True).start()
-    return jsonify({"ok": True, "options": opts})
-
-@app.route('/library')
-def library_page():
-    """Dashboard: registered folders, latest catalogue, and its breakdown."""
-    roots = database.list_library_roots()
-    scan_id = request.args.get("scan", type=int)
-    scan = database.get_library_scan(scan_id) if scan_id else database.latest_library_scan()
-
-    summary = database.library_summary(scan["id"]) if scan else {}
-    plan = database.library_plan_summary(scan["id"]) if scan else {}
-    stats = {}
-    if scan and scan["stats"]:
-        try:
-            stats = json.loads(scan["stats"])
-        except (TypeError, ValueError):
-            stats = {}
-
-    return render_template(
-        "library.html",
-        roots=roots,
-        scans=database.list_library_scans(limit=10),
-        scan=scan,
-        summary=summary,
-        plan=plan,
-        stats=stats,
-        categories=database.list_library_categories(active_only=False),
-        ollama=content_library.ollama_status(),
-        tools=media_probe.tool_status(),
-        free_gb=media_probe.free_bytes("/") / 1024 ** 3,
-    )
-
-@app.route('/library/roots', methods=['POST'])
-def library_add_root():
-    """Register a folder as a source archive or a taxonomy example folder."""
-    path = os.path.abspath(os.path.expanduser((request.form.get("path") or "").strip()))
-    role = request.form.get("role", "source")
-    if not path or not os.path.isdir(path):
-        return jsonify({"error": f"Not a directory: {path}"}), 400
-    root_id = database.add_library_root(path, request.form.get("label", ""), role)
-    return redirect(url_for("library_page", root=root_id))
-
-@app.route('/library/roots/<int:root_id>/delete', methods=['POST'])
-def library_delete_root(root_id: int):
-    database.delete_library_root(root_id)
-    return redirect(url_for("library_page"))
-
-@app.route('/library/taxonomy/learn', methods=['POST'])
-def library_learn_taxonomy():
-    """Read category names out of a hand-sorted folder."""
-    root_id = request.form.get("root_id", type=int)
-    root = database.get_library_root(root_id) if root_id else None
-    if not root:
-        return jsonify({"error": "Unknown folder"}), 400
-
-    categories = content_library.learn_taxonomy(root["path"])
-    if not categories:
-        return jsonify({"error": "No subfolders found to learn categories from"}), 400
-    database.save_library_categories([c.as_dict() for c in categories])
-    log_activity("library_taxonomy", details=f"Learned {len(categories)} categories from {root['label']}")
-    return redirect(url_for("library_page"))
-
-@app.route('/library/scan/<int:scan_id>/regroup', methods=['POST'])
-def library_regroup(scan_id: int):
-    """Separate video from stills in folders that hold both, in place.
-
-    Existing catalogues were grouped before that split existed, so their mixed
-    folders carry one label derived from a still. Rebuilding by rescanning is
-    not an option -- the scan inserts rather than upserts, so it would duplicate
-    every row -- and the fix only needs to move the motion files onto their own
-    event key and drop the label they inherited. They then read as unclassified
-    and the next pass reconsiders them on their own evidence.
-
-    Labels on the still side are left exactly as they are: those events were
-    sampled from a still and are still correctly described by it.
-    """
-    rows, _ = database.query_library_files(scan_id, limit=1_000_000)
-    by_event: dict[str, list] = {}
-    for r in rows:
-        by_event.setdefault(r["event_key"], []).append(r)
-
-    moved_files = 0
-    moved_events = 0
-    for key, group in by_event.items():
-        if key.endswith(content_library.MOTION_SUFFIX):
-            continue        # already split by an earlier run
-        kinds = {r["kind"] for r in group}
-        if "image" not in kinds or not (kinds - {"image"}):
-            continue        # single-kind folder; nothing to separate
-        motion = [r for r in group if r["kind"] != "image"]
-        if not motion:
-            continue
-        # Insert the suffix before the sequence-cluster marker so the new key
-        # matches what group_events would produce on a fresh scan.
-        base, _, cluster = key.rpartition("#")
-        new_key = f"{base}{content_library.MOTION_SUFFIX}#{cluster}" if base else key + content_library.MOTION_SUFFIX
-        moved_files += database.move_files_to_event(
-            scan_id, [r["id"] for r in motion], new_key)
-        moved_events += 1
-
-    database.recount_library_categories(scan_id)
-    log_activity("library_regroup",
-                 details=f"Split {moved_events} mixed events, {moved_files} video files reopened")
-    return jsonify({"ok": True, "events_split": moved_events, "files_moved": moved_files})
-
-@app.route('/library/scan/<int:scan_id>/categories/merge', methods=['POST'])
-def library_merge_categories(scan_id: int):
-    """Consolidate the taxonomy, rewriting existing labels to match.
-
-    Body: ``{"merges": [{"target": str, "sources": [str, ...]}, ...],
-              "retire": [str, ...]}``.
-
-    Merging is applied to the catalogue as well as the category list, because a
-    taxonomy edit that leaves old labels in place would keep returning
-    categories the classifier no longer offers. Retired categories are
-    deactivated, never deleted -- the files keep their label and stay findable,
-    they just stop being proposed for new work.
-    """
-    data = request.get_json(silent=True) or {}
-    merges = data.get("merges") or []
-    retire = data.get("retire") or []
-
-    applied, files_moved, events_moved = [], 0, 0
-    for merge in merges:
-        target = (merge.get("target") or "").strip()
-        sources = [s for s in (merge.get("sources") or []) if s]
-        if not target or not sources:
-            continue
-        result = database.merge_library_categories(scan_id, target, sources)
-        files_moved += result["files"]
-        events_moved += result["events"]
-        applied.append({"target": target, "sources": sources, **result})
-
-    for name in retire:
-        database.set_library_category_active(name, False)
-
-    database.recount_library_categories(scan_id)
-    active = database.list_library_categories(active_only=True)
-    log_activity("library_taxonomy",
-                 details=f"Merged {len(applied)} groups ({files_moved} files), "
-                         f"retired {len(retire)}; {len(active)} categories active")
-    return jsonify({
-        "ok": True, "merges": applied, "retired": len(retire),
-        "files_moved": files_moved, "events_moved": events_moved,
-        "active_categories": len(active),
-    })
-
-@app.route('/library/scan/<int:scan_id>/categories/undo-merge', methods=['POST'])
-def library_undo_merge(scan_id: int):
-    """Restore the labels files carried before a taxonomy merge.
-
-    Body may carry ``{"targets": [...]}`` to unwind only some merges; with no
-    body the whole consolidation is reversed. A GET-like preview is available
-    by posting nothing and reading ``available`` first.
-    """
-    data = request.get_json(silent=True) or {}
-    targets = data.get("targets") or None
-    if data.get("preview"):
-        return jsonify({"available": database.merge_undo_available(scan_id)})
-
-    result = database.undo_library_merge(scan_id, targets)
-    database.recount_library_categories(scan_id)
-    log_activity("library_taxonomy",
-                 details=f"Undid merge: {result['files']} files restored to "
-                         f"{result['categories_restored']} categories")
-    return jsonify({"ok": True, **result,
-                    "active_categories": len(database.list_library_categories(active_only=True))})
-
-@app.route('/library/categories/toggle', methods=['POST'])
-def library_toggle_category():
-    data = request.get_json(silent=True) or request.form
-    database.set_library_category_active(
-        data.get("name", ""), str(data.get("active", "1")) in ("1", "true", "True"))
-    return jsonify({"ok": True})
-
-@app.route('/library/scan', methods=['POST'])
-def library_start_scan():
-    """Kick off a metadata-only catalogue of a registered archive."""
-    root_id = request.form.get("root_id", type=int)
-    root = database.get_library_root(root_id) if root_id else None
-    if not root:
-        return jsonify({"error": "Unknown folder"}), 400
-    if not os.path.isdir(root["path"]):
-        return jsonify({"error": f"Folder is unavailable: {root['path']}"}), 400
-
-    scan_id = database.create_library_scan(root_id)
-    _library_job_claim(scan_id)
-    threading.Thread(target=_library_scan_thread, args=(scan_id, root["path"]),
-                     daemon=True).start()
-    return redirect(url_for("library_page", scan=scan_id))
-
-@app.route('/library/scan/<int:scan_id>/status')
-def library_scan_status(scan_id: int):
-    """Progress payload polled by the dashboard while a job runs."""
-    scan = database.get_library_scan(scan_id)
-    if not scan:
-        return jsonify({"error": "Unknown scan"}), 404
-    stats = {}
-    if scan["stats"]:
-        try:
-            stats = json.loads(scan["stats"])
-        except (TypeError, ValueError):
-            pass
-    return jsonify({
-        "id": scan["id"],
-        "status": scan["status"],
-        "phase": scan["phase"],
-        "files_total": scan["files_total"],
-        "events_total": scan["events_total"],
-        "events_done": scan["events_done"],
-        "bytes_downloaded": scan["bytes_downloaded"],
-        "error": scan["error_message"],
-        "running": _library_job_running(scan_id),
-        "stats": stats,
-        "free_gb": round(media_probe.free_bytes("/") / 1024 ** 3, 1),
-    })
-
-@app.route('/library/scan/<int:scan_id>/estimate')
-def library_estimate(scan_id: int):
-    """Predict the cost of a classification pass without downloading anything.
-
-    Every figure here is computed from the catalogue, so the user sees the real
-    download size and duration before committing to a run that could otherwise
-    pull far more than the volume can hold.
-    """
-    scan = database.get_library_scan(scan_id)
-    if not scan:
-        return jsonify({"error": "Unknown scan"}), 404
-
-    cap_mb = request.args.get("max_sample_mb", default=16, type=int)
-    max_samples = request.args.get("max_samples", default=2, type=int)
-
-    rows, _ = database.query_library_files(scan_id, limit=1_000_000)
-    files = [_scanned_from_row(r) for r in rows]
-    _refresh_residency(files)
-    events: dict[str, list] = {}
-    for f in files:
-        events.setdefault(f.event_key, []).append(f)
-
-    year_from = request.args.get("year_from", type=int)
-    year_to = request.args.get("year_to", type=int)
-    events = content_library.filter_events_by_year(events, year_from, year_to)
-
-    # Match the run's own default, or a resumed pass would be quoted the cost of
-    # work it is going to skip.
-    in_scope = len(events)
-    if request.args.get("resume", "1") == "1":
-        events = content_library.pending_events(
-            events, retry_unresolved=request.args.get("retry_unresolved") == "1")
-    already_done = in_scope - len(events)
-
-    # Time a few real reads unless asked not to. On a cloud-backed archive the
-    # download, not the model, sets the runtime, and provider speed varies too
-    # much between machines and networks for a hardcoded figure to be honest.
-    rate = None
-    if request.args.get("calibrate", "1") == "1":
-        rate = content_library.measure_hydration_rate(files)
-
-    estimate = content_library.estimate_pass(
-        events, _active_taxonomy(), max_samples=max_samples,
-        max_sample_bytes=cap_mb * 1024 ** 2, hydration_bps=rate)
-    estimate["download_gb"] = round(estimate["download_bytes"] / 1024 ** 3, 2)
-    estimate["free_gb"] = round(estimate["free_bytes"] / 1024 ** 3, 1)
-    estimate["est_hours"] = round(estimate["est_seconds"] / 3600, 1)
-    estimate["download_hours"] = round(estimate["download_seconds"] / 3600, 1)
-    estimate["vision_hours"] = round(estimate["vision_seconds"] / 3600, 1)
-    estimate["mb_per_s"] = round(estimate["hydration_bps"] / 1024 ** 2, 2)
-    estimate["measured"] = rate is not None
-    estimate["already_done"] = already_done
-    estimate["in_scope"] = in_scope
-    estimate["fits"] = estimate["download_bytes"] < estimate["free_bytes"] - 5 * 1024 ** 3
-    return jsonify(estimate)
-
-@app.route('/library/scan/<int:scan_id>/classify', methods=['POST'])
-def library_classify(scan_id: int):
-    """Start the AI pass. Vision runs locally; only mapping can go to the cloud."""
-    if not _library_job_claim(scan_id):
-        return jsonify({"error": "A job is already running for this scan"}), 409
-    data = request.get_json(silent=True) or request.form
-
-    def _year(key):
-        raw = data.get(key)
-        try:
-            return int(raw) if str(raw or "").strip() else None
-        except (TypeError, ValueError):
-            return None
-
-    opts = {
-        "budget_gb": float(data.get("budget_gb", 10) or 10),
-        "reserve_gb": float(data.get("reserve_gb", 5) or 5),
-        "max_samples": int(data.get("max_samples", 2) or 2),
-        "max_sample_mb": int(data.get("max_sample_mb", 16) or 16),
-        "year_from": _year("year_from"),
-        "year_to": _year("year_to"),
-        "use_speech": str(data.get("use_speech", "")) in ("1", "true", "on", "True"),
-        "use_cloud_mapping": str(data.get("use_cloud_mapping", "")) in ("1", "true", "on", "True"),
-        "allow_new_categories": str(data.get("allow_new_categories", "")) in ("1", "true", "on", "True"),
-        # Resume unless explicitly told to start over: re-paying for events an
-        # earlier pass already resolved is almost never what is wanted, and on
-        # a metered cloud archive it is the expensive mistake.
-        "resume": str(data.get("resume", "1")) in ("1", "true", "on", "True"),
-        # Reopen events that were examined but left unlabelled. Worth doing
-        # after the taxonomy changes, since the samples are usually already
-        # local and the earlier answer was "none of these fit".
-        "retry_unresolved": str(data.get("retry_unresolved", "")) in ("1", "true", "on", "True"),
-        # Frames sampled per video. Costs inference, not download.
-        "video_frames": int(data.get("video_frames", 2) or 2),
-        # Clips sampled per video-only event. A second opinion where
-        # a single dud sample would otherwise sink the whole event.
-        "motion_samples": int(data.get("motion_samples", 1) or 1),
-    }
-    threading.Thread(target=_library_classify_thread, args=(scan_id, opts),
-                     daemon=True).start()
-    return jsonify({"ok": True, "scan_id": scan_id, "options": opts})
-
-@app.route('/library/scan/<int:scan_id>/stop', methods=['POST'])
-def library_stop(scan_id: int):
-    """Ask a running job to stop after the current event; work so far is kept."""
-    _library_job(scan_id)["stop"] = True
-    return jsonify({"ok": True})
-
-@app.route('/library/scan/<int:scan_id>/files')
-def library_files(scan_id: int):
-    """Filtered page of the catalogue, for the browse table."""
-    rows, total = database.query_library_files(
-        scan_id,
-        year=request.args.get("year") or None,
-        category=request.args.get("category") or None,
-        kind=request.args.get("kind") or None,
-        search=request.args.get("q") or None,
-        unsorted_only=request.args.get("unsorted") == "1",
-        duplicates_only=request.args.get("duplicates") == "1",
-        limit=request.args.get("limit", default=200, type=int),
-        offset=request.args.get("offset", default=0, type=int),
-    )
-    # Captions are produced per event, not per file, so the browse table has to
-    # borrow its event's description. Fetched in one pass for the whole page.
-    captions = database.event_captions(
-        scan_id, [r["event_key"] for r in rows if r["event_key"]])
-
-    files = []
-    for r in rows:
-        # Residency is derived live rather than read from the stored column.
-        # That column is a snapshot from scan time and understates what is
-        # available by more than an order of magnitude once a classification
-        # pass has downloaded its samples -- which is precisely why the grid
-        # used to render a cloud glyph for almost every row. The check is a
-        # stat, costing under a millisecond for a whole page and never
-        # triggering a download.
-        cached = media_probe.cached_thumb(r["path"]) is not None
-        if cached:
-            preview = "cached"
-        elif media_probe.is_materialized(r["path"]):
-            preview = "local"       # renderable on demand, no download needed
-        else:
-            preview = "remote"      # bytes still in the cloud; no preview
-        files.append({
-            "id": r["id"], "rel_path": r["rel_path"], "name": r["name"],
-            "kind": r["kind"], "size": r["size"], "year": r["year"],
-            "category": r["category"] or "Unsorted", "confidence": r["confidence"],
-            "classified_by": r["classified_by"],
-            "caption": r["caption"] or captions.get(r["event_key"], ""),
-            "preview": preview, "dup_group": r["dup_group"],
-            "event_key": r["event_key"],
-        })
-    return jsonify({"total": total, "files": files})
-
-@app.route('/library/scan/<int:scan_id>/events')
-def library_events(scan_id: int):
-    """Events with their labels and the captions that produced them."""
-    rows = database.list_library_events(
-        scan_id, category=request.args.get("category") or None,
-        limit=request.args.get("limit", default=100, type=int),
-        offset=request.args.get("offset", default=0, type=int))
-    return jsonify({"events": [{
-        "event_key": r["event_key"], "directory": r["directory"],
-        "file_count": r["file_count"], "year": r["year"],
-        "date_start": r["date_start"], "category": r["category"] or "Unsorted",
-        "confidence": r["confidence"], "classified_by": r["classified_by"],
-        "reason": r["reason"],
-        "captions": json.loads(r["captions"] or "[]"),
-    } for r in rows]})
-
-@app.route('/library/scan/<int:scan_id>/review')
-def library_review(scan_id: int):
-    """Events whose label is most likely wrong, worst first.
-
-    Two signals are combined. Low confidence and a large file count come from
-    the catalogue and cost nothing. The decisive one is comparing the caption
-    the classifier saw against the category it chose: a caption that plainly
-    names a different subject is the signature of the failure mode measured on
-    this archive, where confident labels were assigned from evidence that did
-    not support them.
-    """
-    taxonomy = _active_taxonomy()
-    rows = database.review_candidates(scan_id, limit=600)
-    out = []
-    for r in rows:
-        try:
-            caps = json.loads(r["captions"] or "[]")
-        except (TypeError, ValueError):
-            caps = []
-        caption = (caps[0] if caps else "").strip()
-        conf = r["confidence"] or 0.0
-
-        score = (1.0 - conf) * 2.0
-        why = []
-        if conf < 0.6:
-            why.append("low confidence")
-        # Blast radius: a wrong label on a large event costs proportionally more.
-        if r["file_count"] and r["file_count"] > 5:
-            score += min(1.2, 0.3 * math.log(r["file_count"]))
-            why.append(f"{r['file_count']} files affected")
-        if not caption:
-            score += 0.8
-            why.append("no caption evidence")
-        else:
-            kw_cat, kw_conf, _ = content_library.keyword_classify_text(caption, taxonomy)
-            if kw_cat and kw_cat != r["category"]:
-                score += 1.6
-                why.append(f"caption suggests {kw_cat}")
-        if r["pinned_files"]:
-            score = -1.0            # already corrected by hand; drop it
-            why = ["corrected"]
-        out.append({
-            "event_key": r["event_key"], "category": r["category"],
-            "confidence": round(conf, 2), "file_count": r["file_count"],
-            "year": r["year"], "directory": r["directory"],
-            "caption": caption[:180], "reason": r["reason"],
-            "pinned": bool(r["pinned_files"]),
-            "score": round(score, 2), "why": ", ".join(why) or "low confidence",
-        })
-    out = [o for o in out if o["score"] > 0]
-    out.sort(key=lambda o: -o["score"])
-    return jsonify({"events": out[:200], "total_flagged": len(out),
-                    "pinned_total": database.pinned_count(scan_id)})
-
-@app.route('/library/scan/<int:scan_id>/relabel', methods=['POST'])
-def library_relabel(scan_id: int):
-    """Override an event's category by hand and propagate it to its files."""
-    data = request.get_json(silent=True) or request.form
-    event_key = data.get("event_key", "")
-    category = (data.get("category") or "").strip()
-    if not event_key or not category:
-        return jsonify({"error": "event_key and category are required"}), 400
-
-    database.upsert_library_event(scan_id, {
-        "event_key": event_key, "category": category,
-        "confidence": 1.0, "classified_by": "manual", "reason": "set by hand",
-    })
-    # Pin it: a hand correction must survive any later reclassification pass,
-    # otherwise review work is silently undone the next time one runs.
-    updated = database.pin_category(scan_id, category, event_key=event_key)
-    database.recount_library_categories(scan_id)
-    return jsonify({"ok": True, "files_updated": updated, "pinned": True})
-
-@app.route('/library/scan/<int:scan_id>/duplicates')
-def library_duplicates(scan_id: int):
-    """Duplicate groups, largest reclaimable space first."""
-    rows, _ = database.query_library_files(scan_id, duplicates_only=True, limit=1_000_000)
-    files = [_scanned_from_row(r) for r in rows]
-    report = content_library.duplicate_report(files)
-    return jsonify({
-        "groups": report[:200],
-        "total_groups": len(report),
-        "reclaimable_bytes": sum(r["reclaimable_bytes"] for r in report),
-    })
-
-@app.route('/library/scan/<int:scan_id>/plan', methods=['GET', 'POST'])
-def library_plan(scan_id: int):
-    """Build (POST) or inspect (GET) the proposed copy plan."""
-    if request.method == 'GET':
-        return jsonify(database.library_plan_summary(scan_id))
-
-    data = request.get_json(silent=True) or request.form
-    layout = data.get("layout", "category_year")
-    include_unsorted = str(data.get("include_unsorted", "")) in ("1", "true", "on", "True")
-    min_confidence = float(data.get("min_confidence", 0) or 0)
-
-    rows, _ = database.query_library_files(scan_id, limit=1_000_000)
-    items = []
-    for r in rows:
-        category = r["category"] or content_library.UNSORTED
-        if not include_unsorted and category == content_library.UNSORTED:
-            continue
-        if (r["confidence"] or 0) < min_confidence:
-            continue
-        f = _scanned_from_row(r)
-        items.append({
-            "file_id": r["id"],
-            "dest_rel": content_library.plan_destination(f, layout),
-            "size": r["size"] or 0,
-            "category": category,
-            "year": r["year"],
-            "confidence": r["confidence"] or 0,
-            "collision": False,
-        })
-
-    # Flag destinations claimed more than once so duplicates surface for review
-    # instead of being silently renamed at copy time.
-    seen: dict[str, int] = {}
-    for item in items:
-        seen[item["dest_rel"]] = seen.get(item["dest_rel"], 0) + 1
-        item["collision"] = seen[item["dest_rel"]] > 1
-
-    count = database.replace_library_plan(scan_id, items)
-    return jsonify({"ok": True, "items": count,
-                    "summary": database.library_plan_summary(scan_id)})
-
-@app.route('/library/scan/<int:scan_id>/plan/items')
-def library_plan_items(scan_id: int):
-    rows = database.list_plan_items(
-        scan_id, state=request.args.get("state") or None,
-        limit=request.args.get("limit", default=300, type=int),
-        offset=request.args.get("offset", default=0, type=int))
-    return jsonify({"items": [{
-        "id": r["id"], "src": r["src_rel"], "dest": r["dest_rel"],
-        "size": r["size"], "category": r["category"], "year": r["year"],
-        "confidence": r["confidence"], "state": r["state"],
-        "collision": bool(r["collision"]), "kind": r["kind"],
-    } for r in rows]})
-
-@app.route('/library/scan/<int:scan_id>/plan/approve', methods=['POST'])
-def library_plan_approve(scan_id: int):
-    """Approve or reject plan items, by category or by explicit ids."""
-    data = request.get_json(silent=True) or {}
-    state = data.get("state", "approved")
-    if state not in ("approved", "rejected", "proposed"):
-        return jsonify({"error": "Invalid state"}), 400
-    changed = database.set_plan_state(
-        scan_id, state,
-        categories=data.get("categories") or None,
-        item_ids=data.get("item_ids") or None)
-    return jsonify({"ok": True, "changed": changed,
-                    "summary": database.library_plan_summary(scan_id)})
-
-@app.route('/library/scan/<int:scan_id>/apply', methods=['POST'])
-def library_apply(scan_id: int):
-    """Copy approved items into a destination folder.
-
-    Copies rather than moves and writes an undo manifest, so an unwanted result
-    costs disk space rather than originals.
-    """
-    if _library_job_running(scan_id):
-        return jsonify({"error": "A job is already running for this scan"}), 409
-
-    data = request.get_json(silent=True) or request.form
-    dest = os.path.abspath(os.path.expanduser((data.get("dest_root") or "").strip()))
-    if not dest or dest == os.path.sep:
-        return jsonify({"error": "A destination folder is required"}), 400
-
-    approved = database.library_plan_summary(scan_id).get("by_state", {}).get("approved")
-    if not approved or not approved.get("items"):
-        return jsonify({"error": "Nothing approved to copy"}), 400
-
-    mode = (data.get("mode") or "copy").strip().lower()
-    if mode not in ("copy", "link"):
-        return jsonify({"error": "mode must be 'copy' or 'link'"}), 400
-
-    # A copy hydrates every placeholder it touches, so refuse up front rather
-    # than filling the volume partway through. Links read nothing and occupy
-    # nothing, so the same check would block an operation that cannot overrun.
-    need = approved.get("bytes", 0)
-    free = media_probe.free_bytes(os.path.dirname(dest) or "/")
-    if mode == "copy" and need > free - 2 * 1024 ** 3:
-        return jsonify({
-            "error": f"Copying needs {need / 2**30:.1f} GB but only "
-                     f"{free / 2**30:.1f} GB is free. Use mode 'link' to build the "
-                     f"same tree without duplicating bytes.",
-        }), 400
-
-    manifest = os.path.join(dest, ".insights-library-manifest.jsonl")
-    # Claimed here rather than above, so none of the validation failures on the
-    # way down can return while still holding the slot and wedge the scan.
-    if not _library_job_claim(scan_id):
-        return jsonify({"error": "A job is already running for this scan"}), 409
-    threading.Thread(target=_library_apply_thread, args=(scan_id, dest, manifest, mode),
-                     daemon=True).start()
-    return jsonify({"ok": True, "dest": dest, "mode": mode,
-                    "items": approved["items"],
-                    "bytes": 0 if mode == "link" else need, "manifest": manifest})
-
-@app.route('/library/scan/<int:scan_id>/undo', methods=['POST'])
-def library_undo(scan_id: int):
-    """Remove copies made by a previous apply, using its manifest."""
-    data = request.get_json(silent=True) or request.form
-    manifest = (data.get("manifest") or "").strip()
-    if not manifest or not os.path.exists(manifest):
-        return jsonify({"error": "Manifest not found"}), 400
-    result = content_library.undo_plan(manifest)
-    log_activity("library_undo", details=f"Removed {result['removed']} copied files")
-    return jsonify({"ok": True, **result})
-
-# Bounds concurrent preview rendering. Each render is a subprocess doing a full
-# source decode, and the machine is also running the local vision model and the
-# archive prefetcher, so this leaves headroom rather than saturating the CPU.
-_thumb_slots = threading.BoundedSemaphore(4)
-
-@app.route('/library/thumb/<int:file_id>')
-def library_thumb(file_id: int):
-    """Serve the cached preview for one catalogued file.
-
-    Addressed by catalogue id rather than by filesystem path. Taking a path
-    from the client meant validating it against the registered roots on every
-    request and putting absolute paths into the page; resolving the row is
-    simpler and closes that surface entirely.
-
-    A cache miss renders only when the file is already on local disk. A file
-    whose bytes are still in the cloud is never fetched here: this endpoint is
-    hit once per row of a grid, and downloading on miss would turn a page load
-    into a multi-gigabyte transfer.
-    """
-    row = database.get_library_file(file_id)
-    if not row:
-        return abort(404)
-
-    path = row["path"]
-    hit = media_probe.cached_thumb(path)
-    if not hit:
-        if not media_probe.is_materialized(path):
-            return abort(409)       # in the cloud; caller shows a placeholder
-        with _thumb_slots:
-            hit = media_probe.ensure_thumb(path)
-        if not hit:
-            return abort(415)       # unrenderable, or every frame was blank
-
-    # The cache key already encodes path, size and mtime, so a given URL's
-    # bytes never change. That makes the response immutable and lets the
-    # browser skip revalidation entirely on subsequent views.
-    etag = os.path.basename(hit).removesuffix(".jpg")
-    if request.headers.get("If-None-Match") == etag:
-        return Response(status=304)
-    try:
-        with open(hit, "rb") as fh:
-            data = fh.read()
-    except OSError:
-        return abort(404)
-    return Response(data, mimetype="image/jpeg", headers={
-        "ETag": etag,
-        "Cache-Control": "private, max-age=31536000, immutable",
-    })
-
-@app.route('/library/file/<int:file_id>/reveal', methods=['POST'])
-def library_reveal(file_id: int):
-    """Show a catalogued file in Finder.
-
-    The fastest route from "I found it in the catalogue" to "I have the file"
-    without copying anything. Reveals rather than opens, so a cloud-only file
-    shows as a placeholder in Finder instead of being downloaded.
-    """
-    row = database.get_library_file(file_id)
-    if not row:
-        return jsonify({"error": "Unknown file"}), 404
-    if not os.path.exists(row["path"]):
-        return jsonify({"error": "File is no longer at that path"}), 404
-    try:
-        subprocess.run(["open", "-R", row["path"]], check=False, timeout=10)
-    except (OSError, subprocess.SubprocessError) as exc:
-        return jsonify({"error": str(exc)}), 500
-    return jsonify({"ok": True, "path": row["path"]})
-
-@app.route('/library/file/<int:file_id>/open', methods=['POST'])
-def library_open_file(file_id: int):
-    """Open a catalogued file in whatever application owns its type.
-
-    The catalogue's whole purpose is getting back to the footage, so a filename
-    has to lead to the file itself and not just to a 48px thumbnail.
-
-    Opening a cloud-only file materializes it, so the size is returned to the
-    caller before that happens and the client confirms. Nothing here reads the
-    bytes itself -- handing the path to the OS is what triggers the download,
-    and only for the one file asked for.
-    """
-    row = database.get_library_file(file_id)
-    if not row:
-        return jsonify({"error": "Unknown file"}), 404
-    path = row["path"]
-    if not os.path.exists(path):
-        return jsonify({"error": "File is no longer at that path"}), 404
-
-    local = media_probe.is_materialized(path)
-    if not local and request.args.get("confirm") != "1":
-        return jsonify({
-            "needs_confirm": True,
-            "size": row["size"],
-            "name": row["name"],
-        }), 409
-
-    try:
-        subprocess.run(["open", path], check=False, timeout=15)
-    except (OSError, subprocess.SubprocessError) as exc:
-        return jsonify({"error": str(exc)}), 500
-    return jsonify({"ok": True, "downloaded": not local, "size": row["size"]})
-
-def _thumb_backfill_thread(scan_id: int, fetch_gb: float = 0.0,
-                           max_file_mb: int = 24,
-                           kinds: tuple = ("image", "video")) -> None:
-    """Render previews, optionally fetching files that are not on disk yet.
-
-    With ``fetch_gb`` at zero this only touches bytes already present, which is
-    free but caps coverage at whatever earlier passes happened to download.
-
-    Given an allowance it will also pull down files it has not seen. That is
-    the only way to preview a cloud-backed archive, and it is affordable for
-    stills in a way it is not for video: in a typical phone archive the entire
-    still collection is a few tens of gigabytes while the video runs to
-    hundreds. Work is ordered smallest-first so an allowance buys the largest
-    number of previews, and ``max_file_mb`` keeps a single large clip from
-    consuming it.
-
-    A rendered preview outlives the file it came from. The cache lives outside
-    the cloud folder, so the originals can be evicted afterwards and the
-    previews remain.
-    """
-    job = _library_job(scan_id)
-    done = made = skipped = fetched = 0
-    budget = media_probe.HydrationBudget(limit_bytes=int(fetch_gb * 1024 ** 3))
-    lock = threading.Lock()
-
-    try:
-        rows, _ = database.query_library_files(scan_id, limit=1_000_000)
-        # Restricting the kinds makes an allowance deterministic. Work is
-        # ordered smallest-first, so without this a pass aimed at stills
-        # would spend part of its budget on whatever small clips happen to
-        # sort ahead of them.
-        candidates = [r for r in rows if r["kind"] in kinds]
-        # Cheapest first: already-local files cost nothing, then smallest
-        # downloads, so a limited allowance yields the most previews.
-        candidates.sort(key=lambda r: (
-            0 if media_probe.is_materialized(r["path"]) else 1, r["size"]))
-        database.update_library_scan(scan_id, status="thumbnailing",
-                                     phase="rendering previews",
-                                     events_total=len(candidates), events_done=0)
-
-        def render_one(row) -> str:
-            nonlocal fetched
-            path = row["path"]
-            if media_probe.cached_thumb(path):
-                return "skip"
-            paying = False
-            if not media_probe.is_materialized(path):
-                if not fetch_gb or row["size"] > max_file_mb * 1024 ** 2:
-                    return "skip"
-                with lock:
-                    try:
-                        budget.charge(row["size"])
-                    except media_probe.BudgetExhausted:
-                        return "skip"
-                    fetched += 1
-                paying = True
-            # allow_fetch has to be passed explicitly: rendering reads the whole
-            # file, and ensure_thumb refuses cloud files by default precisely so
-            # that no caller downloads one by accident.
-            return "made" if media_probe.ensure_thumb(path, allow_fetch=paying) else "fail"
-
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            for result in pool.map(render_one, candidates):
-                done += 1
-                if result == "made":
-                    made += 1
-                elif result == "skip":
-                    skipped += 1
-                if done % 100 == 0:
-                    if job.get("stop"):
-                        break
-                    database.update_library_scan(
-                        scan_id, events_done=done,
-                        bytes_downloaded=budget.spent_bytes)
-
-        stats = media_probe.thumb_cache_stats()
-        database.update_library_scan(
-            scan_id, status="scanned", phase="previews ready", events_done=done,
-            bytes_downloaded=budget.spent_bytes,
-            stats={"thumbnails": {"examined": done, "rendered": made,
-                                  "skipped": skipped, "fetched": fetched,
-                                  "fetched_bytes": budget.spent_bytes,
-                                  "cache": stats}})
-        log_activity("library_thumbs",
-                     details=f"Rendered {made} previews ({fetched} fetched, "
-                             f"{stats['files']} cached, {stats['bytes'] / 2**20:.0f} MB)")
-    except Exception as exc:
-        app.logger.exception("thumbnail backfill failed")
-        database.update_library_scan(scan_id, status="failed", error_message=str(exc)[:500])
-    finally:
-        _library_job_release(scan_id)
-
-@app.route('/library/scan/<int:scan_id>/thumbnails', methods=['POST'])
-def library_build_thumbnails(scan_id: int):
-    """Kick off preview rendering.
-
-    ``fetch_gb`` lets the pass download files it has not seen, which is the
-    only way to raise coverage past whatever earlier passes happened to pull
-    down. Zero keeps it free.
-    """
-    if _library_job_running(scan_id):
-        return jsonify({"error": "A job is already running for this scan"}), 409
-    data = request.get_json(silent=True) or request.form or {}
-    try:
-        fetch_gb = float(data.get("fetch_gb", 0) or 0)
-        max_file_mb = int(data.get("max_file_mb", 24) or 24)
-    except (TypeError, ValueError):
-        return jsonify({"error": "fetch_gb and max_file_mb must be numbers"}), 400
-
-    free = media_probe.free_bytes("/")
-    if fetch_gb * 1024 ** 3 > free - 5 * 1024 ** 3:
-        return jsonify({
-            "error": f"Fetching {fetch_gb:.0f} GB would leave under 5 GB free "
-                     f"({free / 2**30:.0f} GB available)",
-        }), 400
-
-    kinds = data.get("kinds") or ["image", "video"]
-    if isinstance(kinds, str):
-        kinds = [k.strip() for k in kinds.split(",") if k.strip()]
-    kinds = tuple(k for k in kinds if k in ("image", "video"))
-    if not kinds:
-        return jsonify({"error": "kinds must include image and/or video"}), 400
-
-    if not _library_job_claim(scan_id):
-        return jsonify({"error": "A job is already running for this scan"}), 409
-    threading.Thread(target=_thumb_backfill_thread,
-                     args=(scan_id, fetch_gb, max_file_mb, kinds), daemon=True).start()
-    return jsonify({"ok": True, "fetch_gb": fetch_gb,
-                    "max_file_mb": max_file_mb, "kinds": list(kinds)})
-
-@app.route('/library/thumbnails/stats')
-def library_thumb_stats():
-    """Cache size, for the dashboard."""
-    stats = media_probe.thumb_cache_stats()
-    stats["mb"] = round(stats["bytes"] / 1024 ** 2, 1)
-    return jsonify(stats)
 
 def start_workers():
     """Start all background worker threads."""

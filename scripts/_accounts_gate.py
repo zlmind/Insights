@@ -144,9 +144,14 @@ def isolated_app():
     database.init_db(database.DB_PATH)
 
     import insights_web as web
-    import social_publisher as publisher
     web.database.DB_PATH = database.DB_PATH
-    publisher.database.DB_PATH = database.DB_PATH
+    try:
+        import social_publisher as publisher
+        publisher.database.DB_PATH = database.DB_PATH
+    except ImportError:
+        # The publisher module was retired; gates that need it fail on their
+        # own use of the None return, gates that don't keep working.
+        publisher = None
 
     from werkzeug.security import generate_password_hash
     uid = database.create_user("gate", generate_password_hash("p"),

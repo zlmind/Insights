@@ -106,13 +106,6 @@
         border-color: var(--brand-500, #1447e6);
     }
     
-    /* Library image hover styles */
-    .library-image:hover {
-        border-color: #0d6efd !important;
-        transform: scale(1.05);
-        transition: all 0.15s ease;
-    }
-    
     /* Loading state */
     .generating-overlay {
         position: absolute;
@@ -1145,11 +1138,6 @@
                         🔗 From URL
                     </button>
                 </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link py-2" id="image-library-tab" data-bs-toggle="pill" data-bs-target="#image-library-pane" type="button" role="tab" onclick="loadImageLibrary('bulk')">
-                        📚 From Library
-                    </button>
-                </li>
             </ul>
             
             <div class="tab-content">
@@ -1186,14 +1174,6 @@
                         </button>
                     </div>
                     <small class="text-muted">Enter a public URL accessible by the target platforms</small>
-                </div>
-                
-                <!-- Library Tab -->
-                <div class="tab-pane fade" id="image-library-pane" role="tabpanel">
-                    <div id="image-library-grid" class="d-flex flex-wrap gap-2" style="max-height: 200px; overflow-y: auto;">
-                        <div class="text-muted small">Loading images...</div>
-                    </div>
-                    <small class="text-muted mt-1 d-block">Click an image to select it</small>
                 </div>
             </div>
             
@@ -1522,9 +1502,6 @@
                     <li class="nav-item">
                         <a class="nav-link" href="#" onclick="switchBulkAddImageTab('url'); return false;">🔗 URL</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="switchBulkAddImageTab('library'); return false;">📚 Library</a>
-                    </li>
                 </ul>
                 
                 <!-- Upload Pane -->
@@ -1554,14 +1531,6 @@
                         <img src="" alt="Preview" class="img-thumbnail" style="max-height: 100px;">
                     </div>
                 </div>
-                
-                <!-- Library Pane -->
-                <div id="bulk-add-library-pane" class="d-none">
-                    <div id="bulk-add-library-grid" class="d-flex flex-wrap gap-2" style="max-height: 200px; overflow-y: auto;">
-                        <div class="text-muted small">Loading...</div>
-                    </div>
-                </div>
-                
                 <!-- Hidden field for selected image URL -->
                 <input type="hidden" id="bulk-add-final-image-url" value="">
             </div>
@@ -2819,89 +2788,18 @@ function removePostImage(postId) {
     savePostImage(postId);
 }
 
-// Image library functions
-let cachedImages = null;
-
-function loadImageLibrary(context, postId = null) {
-    const gridId = context === 'bulk' ? 'image-library-grid' : `post-library-grid-${postId}`;
-    const grid = document.getElementById(gridId);
-    
-    if (!grid) return;
-    
-    // Use cached images if available
-    if (cachedImages) {
-        renderImageGrid(grid, cachedImages, context, postId);
-        return;
-    }
-    
-    grid.innerHTML = '<div class="text-muted small">Loading images...</div>';
-    
-    fetch('/compose/list-images')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                cachedImages = data.images;
-                renderImageGrid(grid, data.images, context, postId);
-            } else {
-                grid.innerHTML = '<div class="text-muted small">Failed to load images</div>';
-            }
-        })
-        .catch(error => {
-            grid.innerHTML = '<div class="text-muted small">Error loading images</div>';
-        });
-}
-
-function renderImageGrid(grid, images, context, postId) {
-    if (images.length === 0) {
-        grid.innerHTML = '<div class="text-muted small">No uploaded images yet</div>';
-        return;
-    }
-    
-    grid.innerHTML = images.map(img => `
-        <img src="${img.url}" 
-             class="img-thumbnail library-image" 
-             style="width: 60px; height: 60px; object-fit: cover; cursor: pointer;"
-             onclick="selectLibraryImage('${img.url}', '${context}', ${postId || 'null'})"
-             title="${img.filename}">
-    `).join('');
-}
-
-function selectLibraryImage(url, context, postId) {
-    if (context === 'bulk') {
-        // Set the URL in the hidden field
-        document.getElementById('final-image-url').value = url;
-        
-        // Show preview
-        const preview = document.getElementById('bulk-image-preview');
-        const img = preview.querySelector('img');
-        img.src = url;
-        document.getElementById('bulk-image-filename').textContent = 'From library';
-        preview.classList.remove('d-none');
-        
-        showToast('Image selected from library', 'success');
-    } else {
-        // Individual post - save directly
-        document.getElementById(`image-url-input-${postId}`).value = url;
-        document.getElementById(`post-final-image-url-${postId}`).value = url;
-        savePostImageWithUrl(postId, url);
-        showToast('Image selected and saved!', 'success');
-    }
-}
-
 function switchPostImageTab(postId, tab) {
     const uploadTab = document.getElementById(`post-upload-tab-${postId}`);
     const urlTab = document.getElementById(`post-url-tab-${postId}`);
-    const libraryTab = document.getElementById(`post-library-tab-${postId}`);
     const stockTab = document.getElementById(`post-stock-tab-${postId}`);
     const uploadPane = document.getElementById(`post-upload-pane-${postId}`);
     const urlPane = document.getElementById(`post-url-pane-${postId}`);
-    const libraryPane = document.getElementById(`post-library-pane-${postId}`);
     const stockPane = document.getElementById(`post-stock-pane-${postId}`);
-    
+
     // Reset all tabs
-    [uploadTab, urlTab, libraryTab, stockTab].forEach(t => t && t.classList.remove('active'));
-    [uploadPane, urlPane, libraryPane, stockPane].forEach(p => p && p.classList.add('d-none'));
-    
+    [uploadTab, urlTab, stockTab].forEach(t => t && t.classList.remove('active'));
+    [uploadPane, urlPane, stockPane].forEach(p => p && p.classList.add('d-none'));
+
     if (tab === 'upload') {
         uploadTab.classList.add('active');
         uploadPane.classList.remove('d-none');
@@ -2909,10 +2807,6 @@ function switchPostImageTab(postId, tab) {
         urlTab.classList.add('active');
         urlPane.classList.remove('d-none');
         document.getElementById(`image-url-input-${postId}`).focus();
-    } else if (tab === 'library') {
-        libraryTab.classList.add('active');
-        libraryPane.classList.remove('d-none');
-        loadImageLibrary('post', postId);
     } else if (tab === 'stock') {
         stockTab.classList.add('active');
         stockPane.classList.remove('d-none');
@@ -3134,7 +3028,6 @@ function savePostImageWithUrl(postId, imageUrl) {
 // Video attachment. A card has at most one video, stored on every row of the
 // card (the server applies it card-wide, like the image), and it is what gets
 // posted: a video replaces the image.
-let cachedVideos = null;
 
 function postVideoEls(postId) {
     const el = (name) => document.getElementById(`${name}-${postId}`);
@@ -3142,7 +3035,7 @@ function postVideoEls(postId) {
         section: el('video-section'), preview: el('video-preview'), note: el('video-note'),
         warnings: el('video-warnings'), form: el('video-edit-form'), addBtn: el('add-video-btn'),
         progress: el('video-progress'), urlInput: el('video-url-input'),
-        fileInput: el('video-file-input'), library: el('video-library'),
+        fileInput: el('video-file-input'),
     };
 }
 
@@ -3153,7 +3046,6 @@ function editPostVideo(postId) {
     if (els.urlInput) els.urlInput.value = '';
     els.form.classList.remove('d-none');
     if (els.addBtn) els.addBtn.classList.add('d-none');
-    loadPostVideoLibrary(postId);
 }
 
 function cancelPostVideo(postId) {
@@ -3250,36 +3142,6 @@ function removePostVideo(postId) {
     const body = new FormData();
     body.append('video_url', '');
     sendPostVideo(postId, body, '');
-}
-
-function loadPostVideoLibrary(postId) {
-    const select = postVideoEls(postId).library;
-    if (!select || select.dataset.loaded) return;
-    const fill = (videos) => {
-        videos.forEach((v) => {
-            const option = document.createElement('option');
-            option.value = v.url;
-            option.textContent = v.filename || v.url;
-            select.appendChild(option);
-        });
-        select.dataset.loaded = '1';
-    };
-    if (cachedVideos) { fill(cachedVideos); return; }
-    fetch('/compose/list-images?type=video')
-        .then((response) => response.json())
-        .then((data) => {
-            cachedVideos = data.success ? data.images : [];
-            fill(cachedVideos);
-        })
-        .catch(() => {});
-}
-
-function pickPostVideoFromLibrary(postId, select) {
-    if (!select.value) return;
-    const body = new FormData();
-    body.append('video_url', select.value);
-    sendPostVideo(postId, body, 'Video attached!');
-    select.value = '';
 }
 
 function savePostEdit(postId) {
@@ -4790,21 +4652,16 @@ function showBulkAddImageModal() {
 function switchBulkAddImageTab(tab) {
     const tabs = document.querySelectorAll('#bulk-add-image-tabs .nav-link');
     tabs.forEach(t => t.classList.remove('active'));
-    
+
     document.getElementById('bulk-add-upload-pane').classList.add('d-none');
     document.getElementById('bulk-add-url-pane').classList.add('d-none');
-    document.getElementById('bulk-add-library-pane').classList.add('d-none');
-    
+
     if (tab === 'upload') {
         tabs[0].classList.add('active');
         document.getElementById('bulk-add-upload-pane').classList.remove('d-none');
     } else if (tab === 'url') {
         tabs[1].classList.add('active');
         document.getElementById('bulk-add-url-pane').classList.remove('d-none');
-    } else if (tab === 'library') {
-        tabs[2].classList.add('active');
-        document.getElementById('bulk-add-library-pane').classList.remove('d-none');
-        loadBulkAddImageLibrary();
     }
 }
 
@@ -4861,40 +4718,6 @@ function previewBulkAddImageUrl() {
         alert('Could not load image from URL');
     };
     img.src = url;
-}
-
-function loadBulkAddImageLibrary() {
-    const grid = document.getElementById('bulk-add-library-grid');
-    grid.innerHTML = '<div class="text-muted small">Loading...</div>';
-    
-    fetch('/compose/list-images')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success && data.images.length > 0) {
-                grid.innerHTML = '';
-                data.images.forEach(img => {
-                    const div = document.createElement('div');
-                    div.className = 'library-image-item';
-                    div.style.cssText = 'cursor: pointer; border: 2px solid transparent; border-radius: 4px; padding: 2px;';
-                    div.innerHTML = `<img src="${img.url}" alt="${img.filename}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;">`;
-                    div.onclick = function() {
-                        // Remove selection from other items
-                        grid.querySelectorAll('.library-image-item').forEach(i => {
-                            i.style.borderColor = 'transparent';
-                        });
-                        // Select this item
-                        div.style.borderColor = '#0d6efd';
-                        document.getElementById('bulk-add-final-image-url').value = img.url;
-                    };
-                    grid.appendChild(div);
-                });
-            } else {
-                grid.innerHTML = '<div class="text-muted small">No images in library</div>';
-            }
-        })
-        .catch(err => {
-            grid.innerHTML = '<div class="text-muted small">Failed to load library</div>';
-        });
 }
 
 function applyBulkImage() {

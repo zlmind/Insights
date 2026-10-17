@@ -2,7 +2,7 @@
 {% block title %}Usage & cost | Insights{% endblock %}
 {% block header %}Usage &amp; cost{% endblock %}
 
-{% macro money(v) -%}${{ '%.4f'|format(v or 0) }}{%- endmacro %}
+{% macro money(v) -%}¥{{ '%.2f'|format(v or 0) }}{%- endmacro %}
 {% macro num(v) -%}{{ '{:,}'.format((v or 0)|int) }}{%- endmacro %}
 {% macro mode_badge(m) -%}
     {% if m == 'proactive' %}
@@ -16,15 +16,24 @@
 
 {% block content %}
 <p class="results-count mb-3">
-    AI 内容生成的花费，按触发方式拆分。
-    <strong style="color:#0f766e;">主动</strong> = 自动后台工作（单集转写、摘要、待办事项）。
+    AI 内容生成的花费，按触发方式拆分，默认只显示<em>你自己</em>的用量{% if is_admin %}（管理员可在下方切换查看全部用户）{% endif %}。
+    <strong style="color:#0f766e;">主动</strong> = 自动后台工作（定时简报、单集转写、摘要、待办事项），归属给任务创建者。
     <strong style="color:#0d6efd;">被动</strong> = 你自己触发的生成（撰写页帖子、文章、润色、缩略图）。
-    费用按本地价格表<em>估算</em> —— token 数是精确的。
-    可用 <code>USAGE_PRICE_*</code> 环境变量调整价格。
+    费用按本地价格表以<em>元</em>估算 —— token 数是精确的。
+    可用 <code>USAGE_PRICE_*</code> 与 <code>USAGE_PRICE_MODEL_*</code> 环境变量调整价格（单位均为元 / 百万 tokens）。
 </p>
 
 <div class="filter-bar">
     <form method="get" action="{{ url_for('usage_page') }}" class="row g-2 align-items-end">
+        {% if is_admin %}
+        <div class="col-md-2">
+            <label class="form-label" for="scope">Scope</label>
+            <select id="scope" name="scope" class="form-select">
+                <option value="mine" {% if scope != 'all' %}selected{% endif %}>My usage</option>
+                <option value="all" {% if scope == 'all' %}selected{% endif %}>All users</option>
+            </select>
+        </div>
+        {% endif %}
         <div class="col-md-2">
             <label class="form-label" for="mode">Mode</label>
             <select id="mode" name="mode" class="form-select">
@@ -33,7 +42,7 @@
                 <option value="reactive" {% if filter_mode == 'reactive' %}selected{% endif %}>Reactive</option>
             </select>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <label class="form-label" for="category">Content type</label>
             <select id="category" name="category" class="form-select">
                 <option value="">All types</option>
@@ -50,14 +59,15 @@
             <label class="form-label" for="end">To</label>
             <input type="date" id="end" name="end" class="form-control" value="{{ filter_end }}">
         </div>
-        <div class="col-md-3 d-flex gap-2">
+        <div class="col-md-2 d-flex gap-2">
             <button type="submit" class="btn btn-primary">Apply</button>
             <a href="{{ url_for('usage_page') }}" class="btn btn-outline-secondary">Reset</a>
             <a href="{{ url_for('usage_csv',
                                  mode=filter_mode,
                                  category=filter_category,
                                  start=filter_start,
-                                 end=filter_end) }}"
+                                 end=filter_end,
+                                 scope=scope) }}"
                class="btn btn-outline-success">Export CSV</a>
         </div>
     </form>
@@ -71,7 +81,7 @@
         <div class="card h-100 shadow-sm">
             <div class="card-body">
                 <div class="text-uppercase text-muted" style="font-size:0.75rem; letter-spacing:0.5px;">Total spend</div>
-                <div style="font-size:2rem; font-weight:600;">{{ money(totals.cost_usd) }}</div>
+                <div style="font-size:2rem; font-weight:600;">{{ money(totals.cost_cny) }}</div>
                 <div class="results-count">{{ num(totals.total_tokens) }} tokens · {{ num(totals.events) }} calls</div>
             </div>
         </div>
@@ -80,7 +90,7 @@
         <div class="card h-100 shadow-sm" style="border-top:3px solid #0f766e;">
             <div class="card-body">
                 <div class="text-uppercase text-muted" style="font-size:0.75rem; letter-spacing:0.5px;">Proactive (automated)</div>
-                <div style="font-size:2rem; font-weight:600; color:#0f766e;">{{ money(proactive.cost_usd) }}</div>
+                <div style="font-size:2rem; font-weight:600; color:#0f766e;">{{ money(proactive.cost_cny) }}</div>
                 <div class="results-count">{{ num(proactive.total_tokens) }} tokens · {{ num(proactive.events) }} calls</div>
             </div>
         </div>
@@ -89,7 +99,7 @@
         <div class="card h-100 shadow-sm" style="border-top:3px solid #0d6efd;">
             <div class="card-body">
                 <div class="text-uppercase text-muted" style="font-size:0.75rem; letter-spacing:0.5px;">Reactive (you triggered)</div>
-                <div style="font-size:2rem; font-weight:600; color:#0d6efd;">{{ money(reactive.cost_usd) }}</div>
+                <div style="font-size:2rem; font-weight:600; color:#0d6efd;">{{ money(reactive.cost_cny) }}</div>
                 <div class="results-count">{{ num(reactive.total_tokens) }} tokens · {{ num(reactive.events) }} calls</div>
             </div>
         </div>
@@ -117,7 +127,7 @@
                         <td><code>{{ c.category }}</code></td>
                         <td class="text-end" style="color:#0f766e;">{{ money(c.proactive_cost) }}</td>
                         <td class="text-end" style="color:#0d6efd;">{{ money(c.reactive_cost) }}</td>
-                        <td class="text-end fw-semibold">{{ money(c.cost_usd) }}</td>
+                        <td class="text-end fw-semibold">{{ money(c.cost_cny) }}</td>
                         <td class="text-end" style="font-variant-numeric: tabular-nums;">{{ num(c.total_tokens) }}</td>
                         <td class="text-end" style="font-variant-numeric: tabular-nums;">{{ num(c.events) }}</td>
                     </tr>
@@ -152,7 +162,7 @@
                             {% endif %}
                         </td>
                         <td class="text-end" style="font-variant-numeric: tabular-nums;">{{ num(m.total_tokens) }}</td>
-                        <td class="text-end fw-semibold">{{ money(m.cost_usd) }}</td>
+                        <td class="text-end fw-semibold">{{ money(m.cost_cny) }}</td>
                     </tr>
                     {% else %}
                     <tr><td colspan="4" class="text-center text-muted py-4">No usage recorded yet.</td></tr>
@@ -182,7 +192,7 @@
                 <td style="font-variant-numeric: tabular-nums;">{{ d.day }}</td>
                 <td class="text-end" style="color:#0f766e;">{{ money(d.proactive_cost) }}</td>
                 <td class="text-end" style="color:#0d6efd;">{{ money(d.reactive_cost) }}</td>
-                <td class="text-end fw-semibold">{{ money(d.cost_usd) }}</td>
+                <td class="text-end fw-semibold">{{ money(d.cost_cny) }}</td>
                 <td class="text-end" style="font-variant-numeric: tabular-nums;">{{ num(d.total_tokens) }}</td>
                 <td class="text-end" style="font-variant-numeric: tabular-nums;">{{ num(d.events) }}</td>
             </tr>
@@ -227,7 +237,7 @@
                     {%- elif row['images'] %}{{ row['images'] }} img
                     {%- else %}—{% endif %}
                 </td>
-                <td class="text-end fw-semibold">{{ money(row['cost_usd']) }}</td>
+                <td class="text-end fw-semibold">{{ money(row['cost_cny']) }}</td>
             </tr>
             {% else %}
             <tr><td colspan="7" class="text-center text-muted py-4">No usage matches these filters.</td></tr>
@@ -237,7 +247,7 @@
 </div>
 
 {% if total_pages > 1 %}
-{% set qs = {'mode': filter_mode, 'category': filter_category, 'start': filter_start, 'end': filter_end} %}
+{% set qs = {'mode': filter_mode, 'category': filter_category, 'start': filter_start, 'end': filter_end, 'scope': scope} %}
 <nav aria-label="Usage pagination">
     <ul class="pagination justify-content-center">
         <li class="page-item {% if page <= 1 %}disabled{% endif %}">

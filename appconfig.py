@@ -46,6 +46,12 @@ SETTINGS: Dict[str, dict] = {
         "group": "ai", "label": "OpenAI API key", "secret": True,
         "help": "Also used for transcription and thumbnail images even when the provider is Anthropic.",
     },
+    "OPENAI_BASE_URL": {
+        "group": "ai", "label": "OpenAI-compatible base URL",
+        "help": "Send chat calls to another /chat/completions endpoint instead of "
+                "api.openai.com — a GLM proxy, or DeepSeek (https://api.deepseek.com) "
+                "with the model set to deepseek-chat. Leave blank for OpenAI itself.",
+    },
     "OPENAI_MODEL": {
         "group": "ai", "label": "OpenAI model", "default": "glm-5.3",
     },

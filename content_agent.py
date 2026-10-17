@@ -112,7 +112,7 @@ def _cost_snapshot() -> str:
 
 def _current_cost(since_ts: str) -> float:
     try:
-        return float(database.usage_totals(mode="proactive", start_ts=since_ts)["cost_usd"])
+        return float(database.usage_totals(mode="proactive", start_ts=since_ts)["cost_cny"])
     except Exception:
         return 0.0
 
@@ -215,7 +215,7 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
     regardless.
 
     Returns a summary dict: ``{status, posts_created, articles_created,
-    sources_found, sources_used, queued, cost_usd, run_id, warnings}``.
+    sources_found, sources_used, queued, cost_cny, run_id, warnings}``.
     """
     row = database.get_content_brief(brief_id)
     if not row:
@@ -247,7 +247,7 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
         run_id = database.create_brief_run(brief_id, trigger=trigger)
 
     since_ts = _cost_snapshot()
-    max_cost = float(brief.get("max_cost_usd") or 0) or None
+    max_cost = float(brief.get("max_cost_cny") or 0) or None
     max_drafts = int(brief.get("max_drafts_per_run") or 30)
     max_sources = int(brief.get("max_sources_per_run") or 5)
 
@@ -328,8 +328,12 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
                 post_ids.extend(ids)
                 if ids:
                     sources_used += 1
-        elif want_posts and not items and not research_attempted:
-            # Pure prompt brief (no sourcing configured): draft straight from the prompt.
+        elif want_posts and not items and (not research_attempted or "no_candidates" in warnings):
+            # Nothing to source from — a pure prompt brief, or the search
+            # provider is unconfigured / returned nothing: draft straight from
+            # the prompt on model knowledge instead of producing nothing.
+            if research_attempted:
+                warnings.append("no_sources_model_knowledge")
             try:
                 generated = insights.generate_posts_from_prompt(
                     prompt=instructions, platforms=platforms, tone=tone,
@@ -343,8 +347,9 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
             except Exception:
                 logger.exception("prompt-only post generation failed for brief %s", brief_id)
         elif want_posts and not items and research_attempted:
-            # Research ran but surfaced nothing new (e.g. all duplicates): skip
-            # rather than emit repetitive generic posts on every scheduled run.
+            # Research ran and found sources but nothing usable came out of them
+            # (e.g. all duplicates): skip rather than emit repetitive generic
+            # posts on every scheduled run.
             warnings.append("no_new_sources")
 
         # ── Long-form articles ───────────────────────────────────────────
@@ -379,11 +384,37 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
                 )
                 article_ids.append(aid)
                 sources_used += 1
+        elif want_articles and not items and (not research_attempted or "no_candidates" in warnings):
+            # No sources to read — pure prompt brief or search unavailable:
+            # write one article straight from the instructions on model
+            # knowledge instead of producing nothing.
+            if research_attempted:
+                warnings.append("no_sources_model_knowledge")
+            try:
+                content = insights.generate_article(
+                    transcript=instructions, summary="",
+                    topic=instructions,
+                    podcast_title="",
+                    episode_title=brief["name"],
+                    style=brief.get("article_style") or "blog",
+                    extra_context=creative or None, is_text_source=True, lang=lang,
+                )
+                if content:
+                    aid = database.add_article(
+                        None, (instructions[:200] or brief["name"]),
+                        brief.get("article_style") or "blog", content,
+                        brief_id=brief_id, brief_run_id=run_id, source_type="agent",
+                    )
+                    article_ids.append(aid)
+            except Exception as exc:
+                logger.exception("knowledge-based article generation failed for brief %s", brief_id)
+                gen_errors += 1
+                last_gen_error = str(exc)
 
-        # If sources were found but every generation attempt failed (e.g. a bad
-        # model/provider config), surface it rather than reporting a silent
-        # "success" with zero drafts.
-        if items and gen_errors and not post_ids and not article_ids:
+        # If every generation attempt failed (e.g. a bad model/provider
+        # config), surface it rather than reporting a silent "success" with
+        # zero drafts.
+        if gen_errors and not post_ids and not article_ids:
             status = "error"
             err = (f"All content generation failed ({gen_errors} attempt(s)). "
                    f"Last error: {last_gen_error}")
@@ -405,7 +436,7 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
         run_id, status=status,
         sources_found=sources_found, sources_used=sources_used,
         posts_created=len(post_ids), articles_created=len(article_ids),
-        cost_usd=cost, error_message=err,
+        cost_cny=cost, error_message=err,
         log={"warnings": warnings, "query_plan": query_plan, "queued": queued},
     )
 
@@ -417,6 +448,6 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
         "sources_found": sources_found,
         "sources_used": sources_used,
         "queued": queued,
-        "cost_usd": cost,
+        "cost_cny": cost,
         "warnings": warnings,
     }

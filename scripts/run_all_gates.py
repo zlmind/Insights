@@ -5,10 +5,10 @@ drift apart:
 
     python scripts/run_all_gates.py
 
-It runs the multi-account gates (defined once, in run_account_gates.py) and the
-Content Library gates, each in its own process. A gate passes only if it exits 0
-AND prints its own OK token, which is what stops a gate that quietly did nothing
-from reading as a pass.
+It runs the multi-account gates (defined once, in run_account_gates.py),
+each in its own process. A gate passes only if it exits 0 AND prints its own
+OK token, which is what stops a gate that quietly did nothing from reading as
+a pass.
 
 It also checks the gates themselves. Every scripts/check_*.py must be registered
 here or listed in NOT_GATES with a reason. A check that exists but is not
@@ -29,20 +29,6 @@ from run_account_gates import GATES as ACCOUNT_GATES, run_gate  # noqa: E402
 # Each gate: the file, the token it must print, the claim it makes, and
 # optionally the arguments that select one section of a script holding several.
 # The multi-account gates in run_account_gates.py are plain three-item entries.
-LIBRARY_GATES = [
-    ("check_regressions.py", "REGRESSIONS_OK",
-     "the Content Library lifecycle (scan, classify, plan, apply, undo) holds"),
-    ("check_relabel_persist.py", "RELABEL_PERSIST_OK",
-     "a relabel is written through and reads back"),
-    ("check_relabel_pinned.py", "RELABEL_PINNED_OK",
-     "a hand-set label survives later classification"),
-    ("check_review_queue.py", "REVIEW_QUEUE_OK",
-     "the review queue flags the labels most likely to be wrong"),
-    ("check_ui_wiring.py", "UI_WIRING_OK",
-     "the Library page exposes its review and correction controls"),
-    ("check_accuracy_audit.py", "ACCURACY_AUDIT_OK",
-     "the committed accuracy report is a real, self-consistent sample"),
-]
 
 # The instance settings page and the appconfig layer behind it. One script, one
 # gate: it drives the real /settings page on a throwaway database.
@@ -55,6 +41,29 @@ SETTINGS_GATES = [
 X_FETCH_GATES = [
     ("check_x_fetch.py", "X_FETCH_OK",
      "X/Twitter URLs extract via fxtwitter and errors read with one prefix"),
+]
+
+# The AI usage / cost meters. One script, one gate per claim, picked by
+# argument: per-user scoping of every read, environment-variable model pricing
+# and background attribution, then the real /usage page and CSV isolation.
+USAGE_GATES = [
+    ("check_usage.py", "USAGE_SCOPING_OK",
+     "usage reads scope by user, legacy rows stay admin-only, and user_context attributes background work",
+     ("scoping",)),
+    ("check_usage.py", "USAGE_PRICING_OK",
+     "env-priced models bill at their env rates and outrank the built-in tables",
+     ("pricing",)),
+    ("check_usage.py", "USAGE_PAGE_OK",
+     "the page defaults to the viewer's own data, scope=all is admin-only, and CSV follows the scope",
+     ("page",)),
+]
+
+# The content brief's no-source fallback: draft from model knowledge when
+# research finds nothing, skip when sources exist but are all stale, and never
+# report a failed run as a successful zero.
+BRIEF_GATES = [
+    ("check_brief_fallback.py", "BRIEF_FALLBACK_OK",
+     "briefs with no sources draft from model knowledge; all-duplicates still skips; failures surface as errors"),
 ]
 
 AGENT_GATES = [
@@ -295,8 +304,8 @@ NOT_GATES = {
     "check_agent_e2e.py": "needs a local wechatsync login; run manually with INSIGHTS_AGENT_E2E=1",
 }
 
-ALL_GATES = (ACCOUNT_GATES + ACCOUNT_JS_GATES + LIBRARY_GATES + SETTINGS_GATES
-             + X_FETCH_GATES + AGENT_GATES + COMPOSE_GATES + VIDEO_GATES + MANUAL_POST_GATES
+ALL_GATES = (ACCOUNT_GATES + ACCOUNT_JS_GATES + SETTINGS_GATES
+             + X_FETCH_GATES + USAGE_GATES + BRIEF_GATES + AGENT_GATES + COMPOSE_GATES + VIDEO_GATES + MANUAL_POST_GATES
              + QUEUE_GATES + PAGING_GATES + IG_PEOPLE_GATES)
 
 

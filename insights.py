@@ -400,7 +400,10 @@ def _get_llm_client(use_local: bool = False, vision: bool = False,
         m = model if (model and model.startswith("claude")) else _live("ANTHROPIC_MODEL")
         return _AnthropicChatClient(appconfig.get("ANTHROPIC_API_KEY")), m, "anthropic"
 
-    client = OpenAI(api_key=appconfig.get("OPENAI_API_KEY"))
+    client = OpenAI(
+        api_key=appconfig.get("OPENAI_API_KEY"),
+        base_url=appconfig.get("OPENAI_BASE_URL") or None,
+    )
     if not client.api_key:
         raise RuntimeError("OPENAI_API_KEY is not configured")
     m = model if (model and not model.startswith("claude")) else _live("OPENAI_MODEL")

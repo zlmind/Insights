@@ -777,15 +777,17 @@ def section_llm():
     except insights.LLMRefusal as exc:
         check("cyber" in str(exc), f"the refusal should say why: {exc}")
 
-    # --- metering -------------------------------------------------------------
+    # --- metering (yuan per 1M tokens; USD list prices converted at 7.2) ------
     price = usage_meter._price_for_anthropic
-    check(price("claude-opus-5-5") == {"in": 4.0, "out": 20.0}, "Opus 5.5 is mispriced")
-    check(price("claude-opus-4-8") == {"in": 5.0, "out": 25.0}, "Opus 4.8 must keep its own price")
-    check(price("claude-sonnet-5-5") == {"in": 2.0, "out": 10.0}, "Sonnet 5.5 is mispriced")
-    check(price("claude-fable-5-1") == {"in": 10.0, "out": 50.0}, "Fable 5.1 is mispriced")
-    check(usage_meter._price_for("gpt-6.1-sol") == {"in": 2.0, "out": 10.0}, "GPT-6.1 Sol is mispriced")
-    check(usage_meter._price_for("gpt-6-luna") == {"in": 0.1, "out": 0.5}, "GPT-6 Luna is mispriced")
-    check(usage_meter._price_for("gpt-6-astra") == {"in": 10.0, "out": 50.0}, "GPT-6 Astra is mispriced")
+    check(price("claude-opus-5-5") == {"in": 28.8, "out": 144.0}, "Opus 5.5 is mispriced")
+    check(price("claude-opus-4-8") == {"in": 36.0, "out": 180.0}, "Opus 4.8 must keep its own price")
+    check(price("claude-sonnet-5-5") == {"in": 14.4, "out": 72.0}, "Sonnet 5.5 is mispriced")
+    check(price("claude-fable-5-1") == {"in": 72.0, "out": 360.0}, "Fable 5.1 is mispriced")
+    check(usage_meter._price_for("gpt-6.1-sol") == {"in": 14.4, "out": 72.0}, "GPT-6.1 Sol is mispriced")
+    check(usage_meter._price_for("gpt-6-luna") == {"in": 0.72, "out": 3.6}, "GPT-6 Luna is mispriced")
+    check(usage_meter._price_for("gpt-6-astra") == {"in": 72.0, "out": 360.0}, "GPT-6 Astra is mispriced")
+    check(usage_meter._price_for("deepseek-v4-flash") == {"in": 1.0, "out": 2.0},
+          "DeepSeek V4 Flash keeps its official yuan price")
     print("adapters: GPT-6/Claude 5 requests are translated, older models untouched, prices resolve")
     print("LLM_ADAPTERS_OK")
 

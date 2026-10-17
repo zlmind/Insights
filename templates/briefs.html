@@ -152,8 +152,8 @@
                                 <input class="input" type="number" id="f-maxsrc" name="max_sources_per_run" min="1" value="5">
                             </div>
                             <div class="field">
-                                <label for="f-maxcost">Max cost / run (USD)</label>
-                                <input class="input" type="number" step="0.05" id="f-maxcost" name="max_cost_usd" min="0" value="0.50">
+                                <label for="f-maxcost">Max cost / run (元)</label>
+                                <input class="input" type="number" step="0.05" id="f-maxcost" name="max_cost_cny" min="0" value="0.50">
                             </div>
                             <div class="field">
                                 <label for="f-maxdrafts">Max drafts / run</label>
@@ -331,7 +331,7 @@ function editBrief(id) {
     document.getElementById('f-autoqueue').checked = !!b.auto_queue;
     document.getElementById('f-review').value = b.review_window_hours || 24;
     document.getElementById('f-maxsrc').value = b.max_sources_per_run || 5;
-    document.getElementById('f-maxcost').value = b.max_cost_usd || 0.5;
+    document.getElementById('f-maxcost').value = b.max_cost_cny || 0.5;
     document.getElementById('f-maxdrafts').value = b.max_drafts_per_run || 30;
     syncFormVisibility();
     document.getElementById('briefForm').scrollIntoView({ behavior: 'smooth' });
@@ -437,7 +437,7 @@ async function showRuns(id) {
         const badge = r.status === 'success' ? 'bg-success' : r.status === 'partial' ? 'bg-warning text-dark' : r.status === 'running' ? 'bg-info text-dark' : 'bg-danger';
         html += `<tr><td class="small">${(r.started_at||'').replace('T',' ')}</td><td class="small">${r.trigger||''}</td>` +
                 `<td><span class="badge ${badge}">${r.status}</span></td><td>${r.posts_created||0}</td>` +
-                `<td>${r.articles_created||0}</td><td class="small">$${(r.cost_usd||0).toFixed(3)}</td></tr>`;
+                `<td>${r.articles_created||0}</td><td class="small">¥${(r.cost_cny||0).toFixed(3)}</td></tr>`;
         if (r.error_message) html += `<tr><td colspan="6" class="small text-danger">${r.error_message}</td></tr>`;
     }
     html += '</tbody></table></div>';
