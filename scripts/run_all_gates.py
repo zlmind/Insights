@@ -298,6 +298,22 @@ IG_PEOPLE_GATES = [
      ("queue",)),
 ]
 
+# Multi-user content isolation. One script, one gate per section, picked by
+# argument: the migration's schema guarantees, the data layer's per-user
+# scoping, and a static scan of database.py's SQL against the twelve content
+# tables. The e2e section (Task 16) joins the same script later.
+ISOLATION_GATES = [
+    ("check_content_isolation.py", "CONTENT_ISOLATION_SCHEMA_OK",
+     "迁移幂等：12 表带 user_id，feeds/episodes/url_sources 复合唯一，同 URL 双用户各一行",
+     ("schema",)),
+    ("check_content_isolation.py", "CONTENT_ISOLATION_DATA_OK",
+     "双账号互不可见，NULL 存量对含 admin 的所有人不可见，bulk 与写入口均不越权",
+     ("data",)),
+    ("check_content_isolation.py", "CONTENT_ISOLATION_SCAN_OK",
+     "database.py 内容表 SELECT 带 user 过滤、INSERT 带归属列（白名单除外）",
+     ("scan",)),
+]
+
 # check_*.py files that are deliberately not gates, with the reason. Empty is the
 # healthy state: a script that is not a gate should not carry the check_ prefix.
 NOT_GATES = {
@@ -306,7 +322,7 @@ NOT_GATES = {
 
 ALL_GATES = (ACCOUNT_GATES + ACCOUNT_JS_GATES + SETTINGS_GATES
              + X_FETCH_GATES + USAGE_GATES + BRIEF_GATES + AGENT_GATES + COMPOSE_GATES + VIDEO_GATES + MANUAL_POST_GATES
-             + QUEUE_GATES + PAGING_GATES + IG_PEOPLE_GATES)
+             + QUEUE_GATES + PAGING_GATES + IG_PEOPLE_GATES + ISOLATION_GATES)
 
 
 def _unpack(entry):
