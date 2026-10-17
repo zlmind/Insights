@@ -1218,20 +1218,20 @@ def validate_and_clean_image(file_storage):
     except Exception as e:
         raise ValueError(f"Invalid image file: {str(e)}")
 
-def save_stock_image_to_library(image_url: str, direct_save: bool = False) -> str:
+def save_stock_image_to_library(image_url: str, user_id: int, direct_save: bool = False) -> str:
     """
     Save a stock image to the library.
-    
+
     If direct_save=True or URL is from Unsplash/Pexels/Pixabay, saves the URL directly
     to the library without downloading (these services allow hotlinking).
-    
+
     Otherwise downloads and re-uploads to Cloudinary or local storage.
     Returns the saved image URL.
     """
     # Check if this image URL is already in the library.
     # `list_uploaded_images()` returns `sqlite3.Row` objects which use mapping
     # access (`row['col']`) but do not implement `dict.get()`.
-    existing = list_uploaded_images()
+    existing = list_uploaded_images(user_id)
     for img in existing:
         keys = img.keys() if hasattr(img, 'keys') else []
         existing_url = img['url'] if 'url' in keys else None
@@ -1266,7 +1266,8 @@ def save_stock_image_to_library(image_url: str, direct_save: bool = False) -> st
             filename=filename,
             url=image_url,
             storage=storage,
-            size=0
+            size=0,
+            user_id=user_id,
         )
         return image_url
     
@@ -1320,7 +1321,8 @@ def save_stock_image_to_library(image_url: str, direct_save: bool = False) -> st
             filename=filename,
             url=saved_url,
             storage='cloudinary',
-            size=file_size
+            size=file_size,
+            user_id=user_id,
         )
         return saved_url
     
@@ -1337,9 +1339,10 @@ def save_stock_image_to_library(image_url: str, direct_save: bool = False) -> st
         filename=unique_filename,
         url=saved_url,
         storage='local',
-        size=len(cleaned_bytes)
+        size=len(cleaned_bytes),
+        user_id=user_id,
     )
-    
+
     return saved_url
 
 configure_logging()
@@ -3352,7 +3355,7 @@ def _filtered_standalone_posts(args):
     groups, index_by_id = _filtered_post_groups(args)
     return _rows_for_groups(groups, _valid_post_platform(args.get('platform'))), index_by_id
 
-def _selected_standalone_posts(payload):
+def _selected_standalone_posts(payload, user_id: int):
     """Resolve a Compose bulk-action selection to the rows it should act on.
 
     Two payload shapes:
@@ -3361,6 +3364,9 @@ def _selected_standalone_posts(payload):
                                re-derives the matching set from the filter bar,
                                so the browser never has to ship (or go stale on)
                                thousands of ids.
+
+    Ids naming another user's rows are dropped silently: the caller asked for
+    "these posts of mine", and those were never among them.
 
     Returns ``(rows, error)`` where ``error`` is a ready-to-return response.
     """
@@ -3378,7 +3384,7 @@ def _selected_standalone_posts(payload):
         wanted = {int(pid) for pid in raw_ids}
     except (TypeError, ValueError):
         return None, (jsonify({"error": "Invalid post IDs"}), 400)
-    return [r for r in list_standalone_posts() if r['id'] in wanted], None
+    return [r for r in list_standalone_posts(user_id) if r['id'] in wanted], None
 
 @app.route('/compose/posts/ids')
 def compose_posts_ids():
@@ -3820,6 +3826,7 @@ def _condense_notice(meta):
 @app.route('/compose/generate', methods=['POST'])
 def compose_generate():
     """Generate social media posts using LLM based on source type."""
+    uid = current_user()['id']
     source_type = request.form.get('source_type', 'freeform')
     content = request.form.get('content', '').strip()
     platforms = request.form.getlist('platforms')
@@ -3882,6 +3889,7 @@ def compose_generate():
                         title=source_data.get("title", ""),
                         description=source_data.get("description", ""),
                         content=source_data.get("content", ""),
+                        user_id=uid,
                         og_image=source_data.get("og_image"),
                     )
                     source_data["source_id"] = source_id
@@ -4067,6 +4075,7 @@ def compose_generate():
                 # every account rather than as separate posts per account.
                 ids = _save_post_for_accounts(
                     accounts_by_platform.get(norm_platform),
+                    user_id=uid,
                     source_type=source_type,
                     source_content=source_label,
                     platform=norm_platform,
@@ -4080,8 +4089,9 @@ def compose_generate():
                     'image_url': image_url,
                 })
                 if not image_url:
-                    _maybe_attach_link_image(ids[0], post_content, sibling_ids=ids[1:])
-        
+                    _maybe_attach_link_image(ids[0], post_content, user_id=uid,
+                                             sibling_ids=ids[1:])
+
         response_data = {
             "success": True,
             "generated": generated,
@@ -4126,6 +4136,7 @@ def compose_create_post():
     those rows; ``video_warnings`` in the reply says what each platform will
     make of it.
     """
+    uid = current_user()['id']
     targets, target_errors = _requested_targets('targets')
     if not targets:
         # No explicit targets: every ticked platform goes to its default account.
@@ -4154,24 +4165,28 @@ def compose_create_post():
     if error:
         return error
 
-    post_ids = [
-        add_standalone_post(
+    # One call per platform: _save_post_for_accounts writes the same copy once
+    # per ticked account on it, every row owned by the composer.
+    post_ids = []
+    for platform in dict.fromkeys(target['platform'] for target in targets):
+        platform_targets = [t for t in targets if t['platform'] == platform]
+        post_ids.extend(_save_post_for_accounts(
+            [t['account_id'] for t in platform_targets],
+            user_id=uid,
             source_type='manual',
             source_content='Manual post',
-            platform=target['platform'],
+            platform=platform,
             content=content,
             image_url=image_url,
             video_url=video_url,
-            account_id=target['account_id'],
-        )
-        for target in targets
-    ]
+        ))
 
     if not image_url and not video_url:
         # One fetch for the card, applied to every target's row, since rows with
         # different images would stop being one card. A card with a video posts
         # the video, so there is no image worth fetching for it.
-        _maybe_attach_link_image(post_ids[0], content, sibling_ids=post_ids[1:])
+        _maybe_attach_link_image(post_ids[0], content, user_id=uid,
+                                 sibling_ids=post_ids[1:])
 
     return jsonify({
         "success": True,
@@ -4215,15 +4230,17 @@ def _requested_platforms(field):
                 platforms.append(part)
     return platforms
 
-def _save_post_for_accounts(account_ids, **kwargs):
+def _save_post_for_accounts(account_ids, user_id: int, **kwargs):
     """Write the same copy once per account, returning the row ids.
 
     An empty or missing account list means the platform's default account, which
-    is what every caller did before accounts existed.
+    is what every caller did before accounts existed. ``user_id`` is the owner
+    of every row written; the background link-image worker has no request
+    context, so it must always be passed explicitly.
     """
     if not account_ids:
-        return [add_standalone_post(**kwargs)]
-    return [add_standalone_post(account_id=account_id, **kwargs)
+        return [add_standalone_post(user_id=user_id, **kwargs)]
+    return [add_standalone_post(account_id=account_id, user_id=user_id, **kwargs)
             for account_id in account_ids]
 
 def _requested_accounts_by_platform(platforms):
@@ -4311,54 +4328,55 @@ def _requested_post_ids(default_id, field='post_ids'):
         ids.append(default_id)
     return ids
 
-def _card_rows(post, post_ids):
+def _card_rows(post, post_ids, user_id: int):
     """The rows of ``post_ids`` that really are ``post``'s card, ``post`` first.
 
     Ids from the browser can be stale — a twin may have been edited, deleted or
     regrouped in another tab — so a row only counts while it still holds the
     same copy. That keeps a card-wide edit from rewriting an unrelated post.
+    Rows are read through the owner's scope, so a foreign id can never join.
     """
     rows = [post]
     for pid in post_ids:
         if pid == post['id']:
             continue
-        row = get_standalone_post(pid)
+        row = get_standalone_post(pid, user_id)
         if row and (row['content'] or '') == (post['content'] or ''):
             rows.append(row)
     return rows
 
-def _apply_card_image(post, image_url):
+def _apply_card_image(post, image_url, user_id: int):
     """Set an image on every row of ``post``'s card; returns the ids written.
 
     Every path that attaches an image (upload, URL, library, stock, og:image,
     source refresh) goes through here so the card's rows keep matching images —
     they would otherwise drift apart into separate cards.
     """
-    rows = _card_rows(post, _requested_post_ids(post['id']))
+    rows = _card_rows(post, _requested_post_ids(post['id']), user_id)
     for row in rows:
-        update_standalone_post_image(row['id'], image_url)
+        update_standalone_post_image(row['id'], image_url, user_id)
     return [row['id'] for row in rows]
 
-def _apply_card_video(post, video_url):
+def _apply_card_video(post, video_url, user_id: int):
     """Set (or with None, clear) the video on every row of ``post``'s card.
 
     The video is part of what groups a card's rows, just as the image is, so
     attaching it to one platform's row alone would split the card in two.
     Returns the ids written.
     """
-    rows = _card_rows(post, _requested_post_ids(post['id']))
+    rows = _card_rows(post, _requested_post_ids(post['id']), user_id)
     for row in rows:
-        update_standalone_post_video(row['id'], video_url)
+        update_standalone_post_video(row['id'], video_url, user_id)
     return [row['id'] for row in rows]
 
-def _post_card_html(post_ids, display_index=None):
+def _post_card_html(post_ids, user_id: int, display_index=None):
     """Render one Compose card for ``post_ids``, or '' if none of them survive.
 
     Handing the freshly rendered card back to the page is what keeps a platform
     toggle simple: ticking a platform brings a whole set of platform-specific
     controls with it, and re-rendering beats patching them in by hand.
     """
-    rows = [row for row in (get_standalone_post(pid) for pid in post_ids) if row]
+    rows = [row for row in (get_standalone_post(pid, user_id) for pid in post_ids) if row]
     if not rows:
         return ''
 
@@ -4372,9 +4390,9 @@ def _post_card_html(post_ids, display_index=None):
     ids = [row['id'] for row in rows]
     card = _enrich_post_group(
         group,
-        get_pending_schedules_for_standalone_posts(ids),
-        get_posted_info_for_standalone_posts(ids),
-        {brief['id']: brief['name'] for brief in list_content_briefs()},
+        get_pending_schedules_for_standalone_posts(ids, user_id),
+        get_posted_info_for_standalone_posts(ids, user_id),
+        {brief['id']: brief['name'] for brief in list_content_briefs(user_id)},
     )
     return render_template('partials/post_items.html', groups=[card])
 
@@ -4386,13 +4404,15 @@ def compose_render_post_card(post_id: int):
     delete run under a platform filter, say — where patching the leftover DOM
     is more error-prone than asking for the card again.
     """
-    if not get_standalone_post(post_id):
+    uid = current_user()['id']
+    if not get_standalone_post(post_id, uid):
         return jsonify({"error": "Post not found"}), 404
 
     return jsonify({
         "success": True,
         "html": _post_card_html(
-            _requested_post_ids(post_id), request.form.get('display_index', type=int)
+            _requested_post_ids(post_id), uid,
+            request.form.get('display_index', type=int)
         ),
     })
 
@@ -4413,7 +4433,7 @@ def _find_target_row(rows, platform, account_id):
             return row
     return None
 
-def _copy_post_to_target(post, platform, account_id, siblings=()):
+def _copy_post_to_target(post, platform, account_id, user_id: int, siblings=()):
     """Save ``post``'s copy, image, video and brief as a new row for one target.
 
     This is what "also post it there" means in the database: the row per
@@ -4425,6 +4445,7 @@ def _copy_post_to_target(post, platform, account_id, siblings=()):
         source_content=post['source_content'],
         platform=platform,
         content=post['content'],
+        user_id=user_id,
         image_url=post['image_url'],
         video_url=_row_video(post) or None,
         brief_id=post['brief_id'] if 'brief_id' in post.keys() else None,
@@ -4448,7 +4469,8 @@ def compose_toggle_post_platform(post_id: int):
     with ``force=1``. Forcing a queued row also takes it out of the queue, since
     leaving a schedule pointing at a deleted post would publish nothing.
     """
-    post = get_standalone_post(post_id)
+    uid = current_user()['id']
+    post = get_standalone_post(post_id, uid)
     if not post:
         return jsonify({"error": "Post not found"}), 404
 
@@ -4475,7 +4497,7 @@ def compose_toggle_post_platform(post_id: int):
     if action not in ('add', 'remove'):
         return jsonify({"error": "action must be 'add' or 'remove'"}), 400
 
-    rows = _card_rows(post, _requested_post_ids(post_id))
+    rows = _card_rows(post, _requested_post_ids(post_id), uid)
     display_index = request.form.get('display_index', type=int)
     existing = _find_target_row(rows, platform, account_id)
 
@@ -4489,7 +4511,7 @@ def compose_toggle_post_platform(post_id: int):
         if existing:
             return jsonify({"error": f"This post already goes to {target_name}"}), 400
 
-        new_id = _copy_post_to_target(post, platform, account_id, siblings=rows)
+        new_id = _copy_post_to_target(post, platform, account_id, uid, siblings=rows)
         ids = [row['id'] for row in rows] + [new_id]
         return jsonify({
             "success": True,
@@ -4499,14 +4521,14 @@ def compose_toggle_post_platform(post_id: int):
             "account_label": target_name,
             "post_id": new_id,
             "post_ids": ids,
-            "html": _post_card_html(ids, display_index),
+            "html": _post_card_html(ids, uid, display_index),
         })
 
     if existing is None:
         return jsonify({"error": f"This post does not go to {target_name}"}), 400
 
     target_id = existing['id']
-    delete_standalone_post(target_id)
+    delete_standalone_post(target_id, uid)
     ids = [row['id'] for row in rows if row['id'] != target_id]
     return jsonify({
         "success": True,
@@ -4516,10 +4538,10 @@ def compose_toggle_post_platform(post_id: int):
         "account_label": target_name,
         "post_id": target_id,
         "post_ids": ids,
-        "html": _post_card_html(ids, display_index) if ids else '',
+        "html": _post_card_html(ids, uid, display_index) if ids else '',
     })
 
-def _selected_post_groups(payload):
+def _selected_post_groups(payload, user_id: int):
     """Resolve a Compose bulk-action selection to the whole cards it names.
 
     The card-level sibling of _selected_standalone_posts, for actions that treat
@@ -4529,6 +4551,9 @@ def _selected_post_groups(payload):
                                the card is found from whichever row it is given.
       ``{"filters": {...}}``   "select all across every page", re-derived from the
                                filter bar exactly as the list itself is.
+
+    Cards are drawn from the owner's rows only, so an id naming another user's
+    post finds no card of its own.
 
     Returns ``(groups, error)`` where ``error`` is a ready-to-return response.
     """
@@ -4549,7 +4574,7 @@ def _selected_post_groups(payload):
     except (TypeError, ValueError):
         return None, (jsonify({"error": "Invalid post IDs"}), 400)
 
-    groups = _group_standalone_posts(list_standalone_posts())
+    groups = _group_standalone_posts(list_standalone_posts(user_id))
     for position, group in enumerate(groups, start=1):
         group['display_index'] = position
     selected = [
@@ -4616,7 +4641,8 @@ def _bulk_platform_request():
     if not targets:
         return None, None, None, (jsonify({"error": "Choose at least one platform"}), 400)
 
-    groups, error = _selected_post_groups(payload)
+    uid = current_user()['id']
+    groups, error = _selected_post_groups(payload, uid)
     if error:
         return None, None, None, error
     return payload, targets, groups, None
@@ -4647,12 +4673,13 @@ def compose_bulk_add_platform():
     if error:
         return error
 
+    uid = current_user()['id']
     queue = _search_flag(payload.get('queue'))
     render = _search_flag(payload.get('render'))
 
     row_ids = [row['id'] for group in groups for row in group['platforms'].values()]
-    pending = get_pending_schedules_for_standalone_posts(row_ids) if queue else {}
-    posted = get_posted_info_for_standalone_posts(row_ids) if queue else {}
+    pending = get_pending_schedules_for_standalone_posts(row_ids, uid) if queue else {}
+    posted = get_posted_info_for_standalone_posts(row_ids, uid) if queue else {}
 
     by_target = [
         {'platform': t['platform'], 'account_id': t['account_id'],
@@ -4678,7 +4705,7 @@ def compose_bulk_add_platform():
             if is_new:
                 row = get_standalone_post(
                     _copy_post_to_target(head, target['platform'], target['account_id'],
-                                         siblings=card_rows))
+                                         uid, siblings=card_rows), uid)
                 card_rows.append(row)
                 stats['added'] += 1
                 changed = True
@@ -4723,7 +4750,7 @@ def compose_bulk_add_platform():
             results.append({
                 'anchor_ids': original_ids,
                 'post_ids': ids,
-                'html': _post_card_html(ids, group.get('display_index')),
+                'html': _post_card_html(ids, uid, group.get('display_index')),
             })
 
     reply = {
@@ -4770,12 +4797,13 @@ def compose_bulk_remove_platform():
     if error:
         return error
 
+    uid = current_user()['id']
     force = _search_flag(payload.get('force'))
     render = _search_flag(payload.get('render'))
 
     row_ids = [row['id'] for group in groups for row in group['platforms'].values()]
-    pending = get_pending_schedule_ids_for_standalone_posts(row_ids)
-    posted = get_posted_info_for_standalone_posts(row_ids)
+    pending = get_pending_schedule_ids_for_standalone_posts(row_ids, uid)
+    posted = get_posted_info_for_standalone_posts(row_ids, uid)
 
     by_target = [
         {'platform': t['platform'], 'account_id': t['account_id'],
@@ -4828,7 +4856,7 @@ def compose_bulk_remove_platform():
         # The queue entries go first: deleting a post under a pending entry
         # leaves an entry that would publish nothing.
         unqueued += delete_scheduled_posts_bulk(schedule_ids)
-        delete_standalone_posts_bulk(going_ids)
+        delete_standalone_posts_bulk(going_ids, uid)
         for stats, _row in going:
             stats['removed'] += 1
 
@@ -4837,7 +4865,7 @@ def compose_bulk_remove_platform():
             results.append({
                 'anchor_ids': original_ids,
                 'post_ids': left,
-                'html': _post_card_html(left, group.get('display_index')),
+                'html': _post_card_html(left, uid, group.get('display_index')),
             })
 
     reply = {
@@ -4857,6 +4885,7 @@ def compose_bulk_remove_platform():
 @app.route('/compose/import', methods=['POST'])
 def compose_import_file():
     """Import posts from a CSV or XLSX file into the Command Center."""
+    uid = current_user()['id']
     import csv as csv_mod
 
     # Chinese names import as their platform id too: a sheet written in
@@ -4927,7 +4956,7 @@ def compose_import_file():
     except Exception as e:
         return jsonify({"error": f"Failed to parse file: {str(e)}"}), 400
 
-    existing = get_existing_standalone_content()
+    existing = get_existing_standalone_content(uid)
 
     imported = 0
     skipped = 0
@@ -5015,13 +5044,14 @@ def compose_import_file():
                 source_content=source_content,
                 platform=platform,
                 content=content,
+                user_id=uid,
                 repost=is_repost,
             )
             if not is_repost:
                 existing[(platform, content)] = new_id
             imported += 1
             by_platform[platform] = by_platform.get(platform, 0) + 1
-            _maybe_attach_link_image(new_id, content)
+            _maybe_attach_link_image(new_id, content, user_id=uid)
 
     return jsonify({
         "success": True,
@@ -5038,7 +5068,8 @@ def compose_edit_post(post_id: int):
     Applies to every row of the card (see _requested_post_ids): the copy is the
     card, so editing it on one platform only would silently split the card.
     """
-    post = get_standalone_post(post_id)
+    uid = current_user()['id']
+    post = get_standalone_post(post_id, uid)
     if not post:
         return jsonify({"error": "Post not found"}), 404
 
@@ -5046,9 +5077,9 @@ def compose_edit_post(post_id: int):
     if not new_content:
         return jsonify({"error": "Content is required"}), 400
 
-    rows = _card_rows(post, _requested_post_ids(post_id))
+    rows = _card_rows(post, _requested_post_ids(post_id), uid)
     for row in rows:
-        update_standalone_post(row['id'], new_content)
+        update_standalone_post(row['id'], uid, new_content)
 
     # If the edit introduced a URL and the post still has no image, kick off a
     # background fetch of the og:image. Skip when the body did not change or
@@ -5061,7 +5092,8 @@ def compose_edit_post(post_id: int):
         new_urls = extract_urls_from_text(new_content)
         if any(u not in old_urls for u in new_urls):
             _maybe_attach_link_image(
-                post_id, new_content, sibling_ids=[r['id'] for r in rows if r['id'] != post_id]
+                post_id, new_content, user_id=uid,
+                sibling_ids=[r['id'] for r in rows if r['id'] != post_id]
             )
 
     return jsonify({
@@ -5076,7 +5108,8 @@ def compose_update_post_image(post_id: int):
 
     Applies to every row of the card: the image is part of what groups them.
     """
-    post = get_standalone_post(post_id)
+    uid = current_user()['id']
+    post = get_standalone_post(post_id, uid)
     if not post:
         return jsonify({"error": "Post not found"}), 404
 
@@ -5085,7 +5118,7 @@ def compose_update_post_image(post_id: int):
     return jsonify({
         "success": True,
         "image_url": image_url,
-        "updated_ids": _apply_card_image(post, image_url),
+        "updated_ids": _apply_card_image(post, image_url, uid),
     })
 
 def _requested_video():
@@ -5131,7 +5164,8 @@ def compose_update_post_video(post_id: int):
     a video this size and length, so a problem shows when the video is attached
     rather than when the post fails.
     """
-    post = get_standalone_post(post_id)
+    uid = current_user()['id']
+    post = get_standalone_post(post_id, uid)
     if not post:
         return jsonify({"error": "Post not found"}), 404
 
@@ -5142,7 +5176,7 @@ def compose_update_post_video(post_id: int):
     return jsonify({
         "success": True,
         "video_url": video_url,
-        "updated_ids": _apply_card_video(post, video_url),
+        "updated_ids": _apply_card_video(post, video_url, uid),
         **report,
     })
 
@@ -5170,10 +5204,11 @@ def compose_get_stock_images(post_id: int):
       503:
         description: No stock image API configured
     """
-    post = get_standalone_post(post_id)
+    uid = current_user()['id']
+    post = get_standalone_post(post_id, uid)
     if not post:
         return jsonify({"error": "Post not found"}), 404
-    
+
     if not stock_images_configured():
         return jsonify({
             "error": "No stock image API configured. Add UNSPLASH_ACCESS_KEY, PEXELS_API_KEY, or PIXABAY_API_KEY to your .env file.",
@@ -5221,31 +5256,32 @@ def compose_apply_stock_image(post_id: int):
       404:
         description: Post not found
     """
-    post = get_standalone_post(post_id)
+    uid = current_user()['id']
+    post = get_standalone_post(post_id, uid)
     if not post:
         return jsonify({"error": "Post not found"}), 404
-    
+
     data = request.get_json() or {}
     image_url = data.get('image_url', '').strip()
     save_to_library = data.get('save_to_library', True)
-    
+
     if not image_url:
         return jsonify({"error": "No image URL provided"}), 400
-    
+
     # If save_to_library is true, download and save the stock image
     saved_url = image_url
     if save_to_library:
         try:
-            saved_url = save_stock_image_to_library(image_url)
+            saved_url = save_stock_image_to_library(image_url, user_id=uid)
         except Exception as e:
             app.logger.warning(f"Failed to save stock image to library: {e}, using original URL")
             saved_url = image_url
-    
+
     return jsonify({
         "success": True,
         "image_url": saved_url,
         "saved_to_library": saved_url != image_url,
-        "updated_ids": _apply_card_image(post, saved_url),
+        "updated_ids": _apply_card_image(post, saved_url, uid),
     })
 
 @app.route('/compose/post/<int:post_id>/link-image', methods=['GET', 'POST'])
@@ -5280,7 +5316,8 @@ def compose_apply_link_image(post_id: int):
       422:
         description: Could not extract an og:image from the URL
     """
-    post = get_standalone_post(post_id)
+    uid = current_user()['id']
+    post = get_standalone_post(post_id, uid)
     if not post:
         return jsonify({"error": "Post not found"}), 404
 
@@ -5324,7 +5361,7 @@ def compose_apply_link_image(post_id: int):
         }), 422
 
     try:
-        saved_url = save_stock_image_to_library(og_image)
+        saved_url = save_stock_image_to_library(og_image, user_id=uid)
     except (UnsafeURLError, RuntimeError, ValueError, requests.RequestException) as exc:
         app.logger.warning("Failed to save og:image %s for post %s: %s", og_image, post_id, exc)
         return jsonify({
@@ -5340,7 +5377,7 @@ def compose_apply_link_image(post_id: int):
         "source_url": target,
         "og_image_url": og_image,
         "detected_urls": detected,
-        "updated_ids": _apply_card_image(post, saved_url),
+        "updated_ids": _apply_card_image(post, saved_url, uid),
     })
 
 @app.route('/compose/post/<int:post_id>/refresh-source-image', methods=['POST'])
@@ -5352,7 +5389,8 @@ def compose_refresh_source_image(post_id: int):
     re-fetches the YouTube thumbnail or article og:image so an updated source
     image can be applied to the post.
     """
-    post = get_standalone_post(post_id)
+    uid = current_user()['id']
+    post = get_standalone_post(post_id, uid)
     if not post:
         return jsonify({"error": "Post not found"}), 404
 
@@ -5389,7 +5427,7 @@ def compose_refresh_source_image(post_id: int):
         return jsonify({"error": f"Source image rejected: {exc}", "source_url": url}), 422
 
     try:
-        saved_url = save_stock_image_to_library(og_image)
+        saved_url = save_stock_image_to_library(og_image, user_id=uid)
     except (UnsafeURLError, RuntimeError, ValueError, requests.RequestException) as exc:
         app.logger.warning("Failed to save source image %s for post %s: %s", og_image, post_id, exc)
         return jsonify({
@@ -5403,12 +5441,13 @@ def compose_refresh_source_image(post_id: int):
         "image_url": saved_url,
         "source_url": url,
         "og_image_url": og_image,
-        "updated_ids": _apply_card_image(post, saved_url),
+        "updated_ids": _apply_card_image(post, saved_url, uid),
     })
 
 def _maybe_attach_link_image(
     post_id: int,
     content: str | None,
+    user_id: int,
     sibling_ids: list | None = None,
 ) -> None:
     """Schedule a background fetch of the first URL's og:image for the post.
@@ -5417,6 +5456,10 @@ def _maybe_attach_link_image(
     Designed to be called from request handlers without blocking the response.
     `sibling_ids` are the other rows of the same Compose card: one fetch, one
     image, applied to all of them so they stay a single card.
+
+    ``user_id`` is required, not derived from the request: the fetch runs on an
+    executor thread with no request context, so the caller hands over the row's
+    owner and every read and write inside stays scoped to them.
     """
     if not content:
         return
@@ -5428,7 +5471,7 @@ def _maybe_attach_link_image(
 
     def _worker(pid: int, candidate_urls: list) -> None:
         try:
-            current = loader(pid)
+            current = loader(pid, user_id)
             if not current:
                 return
             if current['image_url'] if 'image_url' in current.keys() else None:
@@ -5443,17 +5486,17 @@ def _maybe_attach_link_image(
                 if not og_image:
                     continue
                 try:
-                    saved_url = save_stock_image_to_library(og_image)
+                    saved_url = save_stock_image_to_library(og_image, user_id=user_id)
                 except (UnsafeURLError, RuntimeError, ValueError, requests.RequestException) as exc:
                     app.logger.info(
                         "Could not save og:image %s for post %s: %s", og_image, pid, exc
                     )
                     continue
                 for target in [pid] + list(sibling_ids or []):
-                    latest = loader(target)
+                    latest = loader(target, user_id)
                     latest_image = latest['image_url'] if latest and 'image_url' in latest.keys() else None
                     if latest and not latest_image:
-                        updater(target, saved_url)
+                        updater(target, saved_url, user_id)
                         app.logger.info(
                             "Auto-attached og:image to post %s from %s", target, candidate
                         )
@@ -5529,6 +5572,7 @@ def compose_stock_images_status():
 @app.route('/compose/upload-image', methods=['POST'])
 def compose_upload_image():
     """Upload an image file and return its URL."""
+    uid = current_user()['id']
     if 'image' not in request.files:
         return jsonify({"error": "No image file provided"}), 400
     
@@ -5571,9 +5615,10 @@ def compose_upload_image():
                 filename=filename,
                 url=image_url,
                 storage='cloudinary',
-                size=file_size
+                size=file_size,
+                user_id=uid,
             )
-            
+
             return jsonify({
                 "success": True,
                 "image_url": image_url,
@@ -5583,22 +5628,23 @@ def compose_upload_image():
         except Exception as e:
             app.logger.error("Cloudinary upload failed: %s", str(e))
             # Fall back to local storage
-    
+
     # Local storage fallback
     unique_filename = f"{uuid.uuid4().hex}.{ext}"
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-    
+
     with open(filepath, 'wb') as f:
         f.write(cleaned_bytes)
-    
+
     image_url = f"{request.host_url}static/uploads/{unique_filename}"
-    
+
     # Save to database for image library
     add_uploaded_image(
         filename=unique_filename,
         url=f"/static/uploads/{unique_filename}",
         storage='local',
-        size=len(cleaned_bytes)
+        size=len(cleaned_bytes),
+        user_id=uid,
     )
     
     return jsonify({
@@ -5622,6 +5668,7 @@ def _store_uploaded_video(file):
     the codec, shape or length says so through the publish flow. For large files,
     paste a public URL instead.
     """
+    uid = current_user()['id']
     if not allowed_video_file(file.filename):
         return None, f"Video type not allowed. Allowed types: {', '.join(sorted(ALLOWED_VIDEO_EXTENSIONS))}", 400
 
@@ -5676,6 +5723,7 @@ def _store_uploaded_video(file):
         storage='cloudinary',
         size=size,
         media_type='video',
+        user_id=uid,
     )
     return {
         "video_url": video_url,
@@ -5883,13 +5931,14 @@ def compose_list_images():
 @app.route('/compose/post/<int:post_id>/delete', methods=['POST'])
 def compose_delete_post(post_id: int):
     """Delete a standalone post — the whole card when the page sends its rows."""
-    post = get_standalone_post(post_id)
+    uid = current_user()['id']
+    post = get_standalone_post(post_id, uid)
     if not post:
         return jsonify({"error": "Post not found"}), 404
 
-    rows = _card_rows(post, _requested_post_ids(post_id))
+    rows = _card_rows(post, _requested_post_ids(post_id), uid)
     for row in rows:
-        delete_standalone_post(row['id'])
+        delete_standalone_post(row['id'], uid)
     return jsonify({"success": True, "deleted_ids": [row['id'] for row in rows]})
 
 @app.route('/compose/posts/delete-bulk', methods=['POST'])
@@ -5899,13 +5948,14 @@ def compose_delete_bulk():
     Takes either ``post_ids`` (the ticked checkboxes) or ``filters`` (a "select
     all across every page" selection, resolved server-side).
     """
+    uid = current_user()['id']
     data = request.get_json(silent=True) or {}
-    rows, error = _selected_standalone_posts(data)
+    rows, error = _selected_standalone_posts(data, uid)
     if error:
         return error
 
     post_ids = [row['id'] for row in rows]
-    deleted = delete_standalone_posts_bulk(post_ids) if post_ids else 0
+    deleted = delete_standalone_posts_bulk(post_ids, uid) if post_ids else 0
 
     return jsonify({
         "success": True,
@@ -5938,22 +5988,23 @@ def compose_bulk_update_images():
       400:
         description: No posts selected
     """
+    uid = current_user()['id']
     data = request.get_json()
     post_ids = data.get('post_ids', [])
     image_url = data.get('image_url')  # None or empty string to remove
-    
+
     if not post_ids:
         return jsonify({"error": "No posts selected"}), 400
-    
+
     # Convert to integers
     post_ids = [int(pid) for pid in post_ids]
-    
+
     # Update each post's image
     updated = 0
     for post_id in post_ids:
-        post = get_standalone_post(post_id)
+        post = get_standalone_post(post_id, uid)
         if post:
-            update_standalone_post_image(post_id, image_url if image_url else None)
+            update_standalone_post_image(post_id, image_url if image_url else None, uid)
             updated += 1
     
     return jsonify({
@@ -5969,14 +6020,15 @@ def compose_toggle_used(post_id: int):
     A card reads as used only once every platform it targets is done, so the
     toggle flips them together rather than leaving a half-used card.
     """
-    post = get_standalone_post(post_id)
+    uid = current_user()['id']
+    post = get_standalone_post(post_id, uid)
     if not post:
         return jsonify({"error": "Post not found"}), 404
 
-    rows = _card_rows(post, _requested_post_ids(post_id))
+    rows = _card_rows(post, _requested_post_ids(post_id), uid)
     new_status = not all(bool(row['used']) for row in rows)
     for row in rows:
-        mark_standalone_post_used(row['id'], new_status)
+        mark_standalone_post_used(row['id'], new_status, user_id=uid)
     return jsonify({
         "success": True,
         "used": new_status,
@@ -5990,16 +6042,17 @@ def compose_bulk_toggle_used():
     Takes either ``post_ids`` (the ticked checkboxes) or ``filters`` (a "select
     all across every page" selection, resolved server-side).
     """
+    uid = current_user()['id']
     data = request.get_json(silent=True) or {}
     used = data.get('used', True)
 
-    rows, error = _selected_standalone_posts(data)
+    rows, error = _selected_standalone_posts(data, uid)
     if error:
         return error
 
     updated = 0
     for row in rows:
-        mark_standalone_post_used(row['id'], used)
+        mark_standalone_post_used(row['id'], used, user_id=uid)
         updated += 1
 
     return jsonify({
@@ -6028,7 +6081,8 @@ def compose_push_post(post_id: int):
     scheduled push queues regardless of the agent, because waiting for the
     agent to come online is exactly what the schedule is for.
     """
-    post = get_standalone_post(post_id)
+    uid = current_user()['id']
+    post = get_standalone_post(post_id, uid)
     if not post:
         return jsonify({"error": "Post not found"}), 404
     target = (request.form.get('target') or '').strip().lower()
@@ -6177,13 +6231,14 @@ def agent_job_events(job_id: int):
 @app.route('/compose/clear-all', methods=['POST'])
 def compose_clear_all():
     """Clear all standalone posts."""
-    posts = list_standalone_posts()
+    uid = current_user()['id']
+    posts = list_standalone_posts(uid)
     if not posts:
         return jsonify({"success": True, "message": "No posts to clear"})
-    
+
     post_ids = [p['id'] for p in posts]
-    deleted = delete_standalone_posts_bulk(post_ids)
-    
+    deleted = delete_standalone_posts_bulk(post_ids, uid)
+
     return jsonify({
         "success": True,
         "deleted_count": deleted,
@@ -6586,6 +6641,7 @@ def reextract_source(source_id: int):
 @app.route('/compose/generate-from-source', methods=['POST'])
 def compose_generate_from_source():
     """Generate posts from a saved URL source."""
+    uid = current_user()['id']
     source_id = request.form.get('source_id', type=int)
     platforms = request.form.getlist('platforms')
     tone = request.form.get('tone', 'professional')
@@ -6596,11 +6652,11 @@ def compose_generate_from_source():
 
     if not source_id:
         return jsonify({"error": "Source ID is required"}), 400
-    
-    source = get_url_source(source_id)
+
+    source = get_url_source(source_id, uid)
     if not source:
         return jsonify({"error": "Source not found"}), 404
-    
+
     if not image_url and source['og_image']:
         image_url = source['og_image']
 
@@ -6640,7 +6696,7 @@ def compose_generate_from_source():
             model=ai_model,
         )
 
-        update_url_source_last_used(source_id)
+        update_url_source_last_used(source_id, uid)
         
         # Normalize platform names and filter hallucinated platforms
         requested_platforms = {p.lower() for p in platforms}
@@ -6661,6 +6717,7 @@ def compose_generate_from_source():
             for post_content in posts_list:
                 ids = _save_post_for_accounts(
                     accounts_by_platform.get(norm_platform),
+                    user_id=uid,
                     source_type='saved_source',
                     source_content=source['url'][:1000],
                     platform=norm_platform,
@@ -6674,7 +6731,8 @@ def compose_generate_from_source():
                     'image_url': image_url,
                 })
                 if not image_url:
-                    _maybe_attach_link_image(ids[0], post_content, sibling_ids=ids[1:])
+                    _maybe_attach_link_image(ids[0], post_content, user_id=uid,
+                                             sibling_ids=ids[1:])
         
         return jsonify({
             "success": True,
