@@ -831,86 +831,110 @@ def _upsert_account_row(
     )
     return cur.lastrowid
 
-def get_feed(url: str, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
-    """Retrieve a feed record by its RSS URL."""
+def _require_user(user_id) -> int:
+    """Content rows are always owned: a missing user_id is a caller bug."""
+    if user_id is None:
+        raise ValueError("user_id is required for content operations")
+    return int(user_id)
+
+def get_feed(url: str, user_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+    """Retrieve a user's feed record by its RSS URL."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        cur = conn.execute("SELECT * FROM feeds WHERE url = ?", (url,))
+        cur = conn.execute(
+            "SELECT * FROM feeds WHERE url = ? AND user_id = ?", (url, uid)
+        )
         return cur.fetchone()
 
-def get_feed_by_id(feed_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
-    """Return a feed row given its integer ``id``."""
+def get_feed_by_id(feed_id: int, user_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+    """Return a user's feed row given its integer ``id``."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        cur = conn.execute("SELECT * FROM feeds WHERE id = ?", (feed_id,))
+        cur = conn.execute(
+            "SELECT * FROM feeds WHERE id = ? AND user_id = ?", (feed_id, uid)
+        )
         return cur.fetchone()
 
-def list_feeds(db_path: str = DB_PATH) -> List[sqlite3.Row]:
-    """Return all stored feeds ordered by title."""
+def list_feeds(user_id: int, db_path: str = DB_PATH) -> List[sqlite3.Row]:
+    """Return a user's stored feeds ordered by title."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        cur = conn.execute("SELECT * FROM feeds ORDER BY title")
+        cur = conn.execute(
+            "SELECT * FROM feeds WHERE user_id = ? ORDER BY title", (uid,)
+        )
         return cur.fetchall()
 
-def delete_feed(feed_id: int, db_path: str = DB_PATH) -> None:
-    """Delete a feed and all associated episodes and articles."""
+def delete_feed(feed_id: int, user_id: int, db_path: str = DB_PATH) -> None:
+    """Delete a user's feed and all associated episodes and articles."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
-        # Delete articles for episodes in this feed
+        # Delete articles for this user's episodes in this feed
         conn.execute(
             """
             DELETE FROM articles WHERE episode_id IN (
-                SELECT id FROM episodes WHERE feed_id = ?
+                SELECT id FROM episodes WHERE feed_id = ? AND user_id = ?
             )
             """,
-            (feed_id,),
+            (feed_id, uid),
         )
-        # Delete episodes for this feed
-        conn.execute("DELETE FROM episodes WHERE feed_id = ?", (feed_id,))
+        # Delete this user's episodes for this feed
+        conn.execute(
+            "DELETE FROM episodes WHERE feed_id = ? AND user_id = ?", (feed_id, uid)
+        )
         # Delete the feed itself
-        conn.execute("DELETE FROM feeds WHERE id = ?", (feed_id,))
+        conn.execute("DELETE FROM feeds WHERE id = ? AND user_id = ?", (feed_id, uid))
         conn.commit()
 
-def delete_feeds_bulk(feed_ids: List[int], db_path: str = DB_PATH) -> int:
-    """Delete multiple feeds and all their associated data. Returns count deleted."""
+def delete_feeds_bulk(feed_ids: List[int], user_id: int, db_path: str = DB_PATH) -> int:
+    """Delete multiple of a user's feeds and all their associated data. Returns count deleted."""
+    uid = _require_user(user_id)
     if not feed_ids:
         return 0
     placeholders = ",".join("?" * len(feed_ids))
     with sqlite3.connect(db_path) as conn:
-        # Delete articles for episodes in these feeds
+        # Delete articles for this user's episodes in these feeds
         conn.execute(
             f"""
             DELETE FROM articles WHERE episode_id IN (
-                SELECT id FROM episodes WHERE feed_id IN ({placeholders})
+                SELECT id FROM episodes
+                WHERE feed_id IN ({placeholders}) AND user_id = ?
             )
             """,
-            feed_ids,
+            (*feed_ids, uid),
         )
-        # Delete episodes for these feeds
+        # Delete this user's episodes for these feeds
         conn.execute(
-            f"DELETE FROM episodes WHERE feed_id IN ({placeholders})",
-            feed_ids,
+            f"DELETE FROM episodes WHERE feed_id IN ({placeholders}) AND user_id = ?",
+            (*feed_ids, uid),
         )
         # Delete the feeds themselves
         cur = conn.execute(
-            f"DELETE FROM feeds WHERE id IN ({placeholders})",
-            feed_ids,
+            f"DELETE FROM feeds WHERE id IN ({placeholders}) AND user_id = ?",
+            (*feed_ids, uid),
         )
         conn.commit()
         return cur.rowcount
 
-def add_feed(url: str, title: str, db_path: str = DB_PATH) -> int:
-    """Insert a new feed if needed and return its ``id``."""
+def add_feed(url: str, title: str, user_id: int, db_path: str = DB_PATH) -> int:
+    """Insert a new feed for a user if needed and return its ``id``."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
-        # ``INSERT OR IGNORE`` lets us call this repeatedly with the same URL
+        # ``INSERT OR IGNORE`` lets us call this repeatedly with the same URL;
+        # the (url, user_id) unique key keeps each user's subscription separate
         cur = conn.execute(
-            "INSERT OR IGNORE INTO feeds (url, title) VALUES (?, ?)",
-            (url, title),
+            "INSERT OR IGNORE INTO feeds (url, title, user_id) VALUES (?, ?, ?)",
+            (url, title, uid),
         )
         # ``rowcount`` will be >0 when a new row was inserted
         if cur.rowcount:
             feed_id = cur.lastrowid
         else:
-            cur = conn.execute("SELECT id FROM feeds WHERE url = ?", (url,))
+            cur = conn.execute(
+                "SELECT id FROM feeds WHERE url = ? AND user_id = ?", (url, uid)
+            )
             feed_id = cur.fetchone()[0]
         conn.commit()
         return feed_id
@@ -920,27 +944,32 @@ def update_feed_metadata(
     feed_type: str,
     last_post: str | None,
     item_count: int,
+    user_id: int,
     db_path: str = DB_PATH,
 ) -> None:
-    """Update cached metadata for a feed."""
+    """Update cached metadata for a user's feed."""
+    uid = _require_user(user_id)
     from datetime import datetime
     last_checked = datetime.utcnow().isoformat(timespec="seconds")
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             """
-            UPDATE feeds 
+            UPDATE feeds
             SET feed_type = ?, last_post = ?, item_count = ?, last_checked = ?
-            WHERE id = ?
+            WHERE id = ? AND user_id = ?
             """,
-            (feed_type, last_post, item_count, last_checked, feed_id),
+            (feed_type, last_post, item_count, last_checked, feed_id, uid),
         )
         conn.commit()
 
-def get_episode(url: str, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
-    """Retrieve a processed episode by its audio URL."""
+def get_episode(url: str, user_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+    """Retrieve a user's processed episode by its audio URL."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        cur = conn.execute("SELECT * FROM episodes WHERE url = ?", (url,))
+        cur = conn.execute(
+            "SELECT * FROM episodes WHERE url = ? AND user_id = ?", (url, uid)
+        )
         return cur.fetchone()
 
 def save_episode(
@@ -952,19 +981,21 @@ def save_episode(
     feed_id: int,
     published: str | None = None,
     channel: str | None = None,
+    user_id: Optional[int] = None,
     db_path: str = DB_PATH,
 ) -> None:
-    """Persist a fully processed episode."""
+    """Persist a fully processed episode for a user."""
+    uid = _require_user(user_id)
     actions = "\n".join(action_items)
     processed_at = datetime.utcnow().isoformat(timespec="seconds")
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             """
             INSERT OR REPLACE INTO episodes
-                (url, title, transcript, summary, action_items, feed_id, status, published, processed_at, channel)
-            VALUES (?, ?, ?, ?, ?, ?, 'complete', ?, ?, ?)
+                (url, title, transcript, summary, action_items, feed_id, status, published, processed_at, channel, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, 'complete', ?, ?, ?, ?)
             """,
-            (url, title, transcript, summary, actions, feed_id, published, processed_at, channel),
+            (url, title, transcript, summary, actions, feed_id, published, processed_at, channel, uid),
         )
         conn.commit()
 
@@ -973,96 +1004,125 @@ def queue_episode(
     title: str,
     feed_id: int,
     published: str | None = None,
+    user_id: Optional[int] = None,
     db_path: str = DB_PATH,
 ) -> None:
-    """Mark an episode as awaiting background processing."""
+    """Mark an episode as awaiting background processing for a user."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
-        # Insert only if we haven't seen this URL before
+        # Insert only if this user hasn't seen this URL before; the composite
+        # (url, user_id) key gives two users their own row for one URL
         conn.execute(
             """
-            INSERT OR IGNORE INTO episodes (url, title, feed_id, status, published)
-            VALUES (?, ?, ?, 'queued', ?)
+            INSERT OR IGNORE INTO episodes (url, title, feed_id, status, published, user_id)
+            VALUES (?, ?, ?, 'queued', ?, ?)
             """,
-            (url, title, feed_id, published),
+            (url, title, feed_id, published, uid),
         )
         conn.commit()
 
-def update_episode_status(url: str, status: str, db_path: str = DB_PATH) -> None:
-    """Update the processing status for an episode."""
+def update_episode_status(url: str, status: str, user_id: int, db_path: str = DB_PATH) -> None:
+    """Update the processing status for a user's episode."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE episodes SET status = ? WHERE url = ?",
-            (status, url),
+            "UPDATE episodes SET status = ? WHERE url = ? AND user_id = ?",
+            (status, url, uid),
         )  # simple status update used by the worker thread
         conn.commit()
 
-def get_episode_by_id(episode_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
-    """Retrieve an episode by its database ID."""
+def get_episode_by_id(episode_id: int, user_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+    """Retrieve a user's episode by its database ID."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        cur = conn.execute("SELECT * FROM episodes WHERE id = ?", (episode_id,))
+        cur = conn.execute(
+            "SELECT * FROM episodes WHERE id = ? AND user_id = ?", (episode_id, uid)
+        )
         return cur.fetchone()
 
-def delete_episode_by_id(episode_id: int, db_path: str = DB_PATH) -> None:
-    """Delete an episode and all its associated articles."""
+def delete_episode_by_id(episode_id: int, user_id: int, db_path: str = DB_PATH) -> None:
+    """Delete a user's episode and all its associated articles."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
-        # Delete associated articles
-        conn.execute("DELETE FROM articles WHERE episode_id = ?", (episode_id,))
+        # Delete associated articles, only for episodes this user owns
+        conn.execute(
+            """
+            DELETE FROM articles WHERE episode_id IN (
+                SELECT id FROM episodes WHERE id = ? AND user_id = ?
+            )
+            """,
+            (episode_id, uid),
+        )
         # Delete the episode
-        conn.execute("DELETE FROM episodes WHERE id = ?", (episode_id,))
+        conn.execute(
+            "DELETE FROM episodes WHERE id = ? AND user_id = ?", (episode_id, uid)
+        )
         conn.commit()
 
-def delete_episodes_bulk(episode_ids: List[int], db_path: str = DB_PATH) -> int:
-    """Delete multiple episodes and all their associated data. Returns count deleted."""
+def delete_episodes_bulk(episode_ids: List[int], user_id: int, db_path: str = DB_PATH) -> int:
+    """Delete multiple of a user's episodes and all their associated data. Returns count deleted."""
+    uid = _require_user(user_id)
     if not episode_ids:
         return 0
     placeholders = ",".join("?" * len(episode_ids))
     with sqlite3.connect(db_path) as conn:
-        # Delete associated articles
+        # Delete associated articles, only for episodes this user owns
         conn.execute(
-            f"DELETE FROM articles WHERE episode_id IN ({placeholders})",
-            episode_ids,
+            f"""
+            DELETE FROM articles WHERE episode_id IN (
+                SELECT id FROM episodes WHERE id IN ({placeholders}) AND user_id = ?
+            )
+            """,
+            (*episode_ids, uid),
         )
         # Delete the episodes
         cur = conn.execute(
-            f"DELETE FROM episodes WHERE id IN ({placeholders})",
-            episode_ids,
+            f"DELETE FROM episodes WHERE id IN ({placeholders}) AND user_id = ?",
+            (*episode_ids, uid),
         )
         conn.commit()
         return cur.rowcount
 
-def reset_episode_for_reprocess(episode_id: int, db_path: str = DB_PATH) -> None:
-    """Clear episode data to prepare for reprocessing."""
+def reset_episode_for_reprocess(episode_id: int, user_id: int, db_path: str = DB_PATH) -> None:
+    """Clear a user's episode data to prepare for reprocessing."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             """
-            UPDATE episodes 
-            SET transcript = NULL, summary = NULL, action_items = NULL, 
+            UPDATE episodes
+            SET transcript = NULL, summary = NULL, action_items = NULL,
                 status = 'queued', processed_at = NULL
-            WHERE id = ?
+            WHERE id = ? AND user_id = ?
             """,
-            (episode_id,),
+            (episode_id, uid),
         )
         conn.commit()
 
-def list_episodes(feed_id: int, db_path: str = DB_PATH) -> List[sqlite3.Row]:
-    """Return all episodes belonging to a particular feed."""
+def list_episodes(feed_id: int, user_id: int, db_path: str = DB_PATH) -> List[sqlite3.Row]:
+    """Return a user's episodes belonging to a particular feed."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
-            "SELECT * FROM episodes WHERE feed_id = ? ORDER BY id",
-            (feed_id,),
+            "SELECT * FROM episodes WHERE feed_id = ? AND user_id = ? ORDER BY id",
+            (feed_id, uid),
         )
         return cur.fetchall()
 
-def list_all_episodes(order_by: str = "id", db_path: str = DB_PATH) -> List[sqlite3.Row]:
-    """List episodes from all feeds ordered by the provided column."""
+def list_all_episodes(order_by: str = "id", user_id: Optional[int] = None,
+                      db_path: str = DB_PATH) -> List[sqlite3.Row]:
+    """List a user's episodes from all feeds ordered by the provided column."""
+    uid = _require_user(user_id)
     valid = {"id", "published", "processed_at"}
     column = order_by if order_by in valid else "id"
     direction = "DESC" if column in {"published", "processed_at"} else "ASC"
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        cur = conn.execute(f"SELECT * FROM episodes ORDER BY {column} {direction}")
+        cur = conn.execute(
+            f"SELECT * FROM episodes WHERE user_id = ? ORDER BY {column} {direction}",
+            (uid,),
+        )
         return cur.fetchall()
 
 def get_youtube_episodes_missing_channel(db_path: str = DB_PATH) -> List[sqlite3.Row]:
