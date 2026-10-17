@@ -355,8 +355,8 @@ git commit -m "数据层：standalone_posts 与 recent prompts 按 user 作用�
   - `list_uploaded_images(user_id, db_path=...)`、`delete_uploaded_image(image_id, user_id, ...)`、`get_uploaded_image(image_id, user_id, ...)`。
   - `add_library_prompt(title, content, user_id: int（必填，位置在 content 后）, db_path=...)`、`list_library_prompts(user_id, db_path=...)`、`get_library_prompt(prompt_id, user_id, ...)`、`update_library_prompt(prompt_id, user_id, title, content, db_path=...)`、`delete_library_prompt(prompt_id, user_id, db_path=...)`。
   - `add_generated_thumbnail(youtube_url, video_id, title, channel, aspect, style, prompt, image_relpath, user_id: int（必填，位置在 image_relpath 后）, db_path=...)`、`list_generated_thumbnails(user_id, limit=50, offset=0, db_path=...)`、`get_generated_thumbnail(thumbnail_id, user_id, db_path=...)`、`delete_generated_thumbnail(thumbnail_id, user_id, db_path=...)`。
-- [ ] **Step 1: 按 Interfaces 改签名与 SQL**
-- [ ] **Step 2: 验证（临时库）**
+- [x] **Step 1: 按 Interfaces 改签名与 SQL**
+- [x] **Step 2: 验证（临时库）**
 
 Run:
 ```bash
@@ -380,7 +380,7 @@ print('MISC_CONTENT_SCOPING_OK')
 "
 ```
 Expected: `MISC_CONTENT_SCOPING_OK`。
-- [ ] **Step 3: 冒烟 + 提交**
+- [x] **Step 3: 冒烟 + 提交**
 
 Run: `venv/Scripts/python.exe -c "import database"`
 ```bash
@@ -406,8 +406,8 @@ git commit -m "数据层：url_sources/上传图/prompt 库/生成封面按 user
   - runs：`create_brief_run(brief_id, user_id: int（必填，位置在 brief_id 后）, trigger='manual', db_path=...)`、`get_brief_run(run_id, user_id, ...)`、`list_brief_runs(brief_id, user_id, limit=20, db_path=...)`、`get_active_brief_run(brief_id, user_id, db_path=...)`、`finalize_brief_run(run_id, user_id, status, sources_found=0, ..., db_path=...)`；`content_brief_runs` 的 INSERT/行上有 user_id（Task 1 已加列，本任务把列写进 INSERT）。
   - scheduled_posts：`add_scheduled_post(scheduled_for, post_type, user_id: int（必填，位置在 post_type 后）, social_post_id=None, article_id=None, standalone_post_id=None, platform='linkedin', ...)`（既有完整签名以源码为准，user_id 插在 post_type 之后）；`list_scheduled_posts(user_id, ...)`（保留既有 status/date_from/date_to/sort_order 关键字参数，SQL 加 `AND user_id = ?`）；`get_scheduled_post/get_scheduled_group_ids/update_scheduled_post_time/update_scheduled_post_status/increment_retry_count/cancel_scheduled_post/delete_scheduled_post` 均为 `(id, user_id, ...)`；`get_pending_schedules_for_social_posts/get_pending_schedules_for_standalone_posts/get_pending_schedule_ids_for_standalone_posts/get_posted_info_for_standalone_posts` 为 `(ids, user_id, ...)`；`reorder_scheduled_posts(post_ids, user_id, ...)`、`move_posts_to_position(post_ids, user_id, ...)`、`delete_scheduled_posts_bulk(post_ids, user_id, ...)`、`redistribute_scheduled_posts(platform, user_id, ...)`、`clear_pending_scheduled_posts(user_id, ...)`、`cancel_scheduled_post_by_source(..., user_id, ...)`、`get_scheduled_posts_for_article(article_id, user_id, ...)`。
   - **白名单**：`get_pending_scheduled_posts(db_path=...)` 保持无 user 过滤（发布侧消费队列，消费的是全局时段；行上归属不因此暴露给任何用户界面）。
-- [ ] **Step 1: 按 Interfaces 改签名与 SQL**
-- [ ] **Step 2: 验证（临时库）**
+- [x] **Step 1: 按 Interfaces 改签名与 SQL**
+- [x] **Step 2: 验证（临时库）**
 
 Run:
 ```bash
@@ -433,7 +433,7 @@ print('BRIEFS_SCHEDULE_SCOPING_OK')
 "
 ```
 Expected: `BRIEFS_SCHEDULE_SCOPING_OK`。
-- [ ] **Step 3: 冒烟 + 提交**
+- [x] **Step 3: 冒烟 + 提交**
 
 Run: `venv/Scripts/python.exe -c "import database"`
 ```bash
@@ -468,8 +468,8 @@ git commit -m "数据层：content_briefs/runs/scheduled_posts 按 user 作用�
 **Interfaces:**
 - Consumes: Task 2/3 的全部新签名。
 - Produces: 上述路由行为（登录用户只能触达自己的 feed/episode/article）。路由签名（URL 参数）不变。
-- [ ] **Step 1: 逐路由改造**（404 语义：HTML 路由 `from flask import abort` 后 `abort(404)`；JSON 路由保持既有 `jsonify({"error": "..."})-404` 文案，他人与不存在同文案）
-- [ ] **Step 2: 验证（临时库 + test client，双账号）**
+- [x] **Step 1: 逐路由改造**（404 语义：HTML 路由 `from flask import abort` 后 `abort(404)`；JSON 路由保持既有 `jsonify({"error": "..."})-404` 文案，他人与不存在同文案）
+- [x] **Step 2: 验证（临时库 + test client，双账号）**
 
 Run:
 ```bash
@@ -499,7 +499,7 @@ print('WEB_FEEDS_ARTICLES_404_OK')
 "
 ```
 Expected: `WEB_FEEDS_ARTICLES_404_OK`。
-- [ ] **Step 3: 冒烟 + 提交**
+- [x] **Step 3: 冒烟 + 提交**
 
 Run: `venv/Scripts/python.exe -c "import insights_web"`
 ```bash
