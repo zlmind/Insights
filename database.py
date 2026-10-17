@@ -2952,38 +2952,45 @@ def add_url_source(
     title: str,
     description: str,
     content: str,
+    user_id: int,
     og_image: Optional[str] = None,
     db_path: str = DB_PATH,
 ) -> int:
     """Save extracted URL content for future reuse.
-    
-    If the URL already exists, updates the existing record.
-    
+
+    If the URL already exists for this user, updates the existing record.
+    The composite (url, user_id) unique index lets another user keep their
+    own row for the same URL.
+
     Args:
         url: The source URL
         title: Page title
         description: Meta description or og:description
         content: Extracted body text content
+        user_id: Owner of the source
         og_image: Open Graph image URL (optional)
-        
+
     Returns:
         The id of the inserted or updated record
     """
+    uid = _require_user(user_id)
     created_at = datetime.utcnow().isoformat()
     with sqlite3.connect(db_path) as conn:
-        # Check if URL already exists
-        cur = conn.execute("SELECT id FROM url_sources WHERE url = ?", (url,))
+        # Check if URL already exists for this user
+        cur = conn.execute(
+            "SELECT id FROM url_sources WHERE url = ? AND user_id = ?", (url, uid)
+        )
         existing = cur.fetchone()
-        
+
         if existing:
             # Update existing record
             conn.execute(
                 """
-                UPDATE url_sources 
+                UPDATE url_sources
                 SET title = ?, description = ?, content = ?, og_image = ?, last_used_at = ?
-                WHERE id = ?
+                WHERE id = ? AND user_id = ?
                 """,
-                (title, description, content, og_image, created_at, existing[0]),
+                (title, description, content, og_image, created_at, existing[0], uid),
             )
             conn.commit()
             return existing[0]
@@ -2991,123 +2998,140 @@ def add_url_source(
             # Insert new record
             cur = conn.execute(
                 """
-                INSERT INTO url_sources (url, title, description, content, og_image, created_at, last_used_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO url_sources (url, title, description, content, og_image, created_at, last_used_at, user_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (url, title, description, content, og_image, created_at, created_at),
+                (url, title, description, content, og_image, created_at, created_at, uid),
             )
             conn.commit()
             return cur.lastrowid
 
-def list_url_sources(db_path: str = DB_PATH) -> List[sqlite3.Row]:
-    """List all saved URL sources, ordered by last used date.
-    
+def list_url_sources(user_id: int, db_path: str = DB_PATH) -> List[sqlite3.Row]:
+    """List a user's saved URL sources, ordered by last used date.
+
+    Args:
+        user_id: Owner of the sources
+
     Returns:
         List of url_sources rows
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
             """
             SELECT * FROM url_sources
+            WHERE user_id = ?
             ORDER BY last_used_at DESC
-            """
+            """,
+            (uid,),
         )
         return cur.fetchall()
 
-def get_url_source(source_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+def get_url_source(source_id: int, user_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Get a single URL source by ID.
-    
+
     Args:
         source_id: The source ID
-        
+        user_id: Owner of the source
+
     Returns:
         The url_sources row or None if not found
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
-            "SELECT * FROM url_sources WHERE id = ?",
-            (source_id,),
+            "SELECT * FROM url_sources WHERE id = ? AND user_id = ?",
+            (source_id, uid),
         )
         return cur.fetchone()
 
-def get_url_source_by_url(url: str, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
-    """Get a URL source by its URL.
-    
+def get_url_source_by_url(url: str, user_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+    """Get a user's URL source by its URL.
+
     Args:
         url: The source URL
-        
+        user_id: Owner of the source
+
     Returns:
         The url_sources row or None if not found
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
-            "SELECT * FROM url_sources WHERE url = ?",
-            (url,),
+            "SELECT * FROM url_sources WHERE url = ? AND user_id = ?",
+            (url, uid),
         )
         return cur.fetchone()
 
-def delete_url_source(source_id: int, db_path: str = DB_PATH) -> bool:
-    """Delete a URL source by ID.
-    
+def delete_url_source(source_id: int, user_id: int, db_path: str = DB_PATH) -> bool:
+    """Delete a user's URL source by ID.
+
     Args:
         source_id: The source ID to delete
-        
+        user_id: Owner of the source
+
     Returns:
         True if a row was deleted, False otherwise
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
-            "DELETE FROM url_sources WHERE id = ?",
-            (source_id,),
+            "DELETE FROM url_sources WHERE id = ? AND user_id = ?",
+            (source_id, uid),
         )
         conn.commit()
         return cur.rowcount > 0
 
-def update_url_source_last_used(source_id: int, db_path: str = DB_PATH) -> None:
-    """Update the last_used_at timestamp for a URL source.
-    
+def update_url_source_last_used(source_id: int, user_id: int, db_path: str = DB_PATH) -> None:
+    """Update the last_used_at timestamp for a user's URL source.
+
     Args:
         source_id: The source ID
+        user_id: Owner of the source
     """
+    uid = _require_user(user_id)
     now = datetime.utcnow().isoformat()
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE url_sources SET last_used_at = ? WHERE id = ?",
-            (now, source_id),
+            "UPDATE url_sources SET last_used_at = ? WHERE id = ? AND user_id = ?",
+            (now, source_id, uid),
         )
         conn.commit()
 
 def update_url_source_content(
     source_id: int,
+    user_id: int,
     title: str,
     description: str,
     content: str,
     og_image: Optional[str] = None,
     db_path: str = DB_PATH
 ) -> bool:
-    """Update the content of a URL source (for re-extraction).
-    
+    """Update the content of a user's URL source (for re-extraction).
+
     Args:
         source_id: The source ID to update
+        user_id: Owner of the source
         title: New title
         description: New description
         content: New extracted content
         og_image: New OG image URL (optional)
-        
+
     Returns:
         True if updated successfully
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
             """
-            UPDATE url_sources 
+            UPDATE url_sources
             SET title = ?, description = ?, content = ?, og_image = ?
-            WHERE id = ?
+            WHERE id = ? AND user_id = ?
             """,
-            (title, description, content, og_image, source_id),
+            (title, description, content, og_image, source_id, uid),
         )
         conn.commit()
         return cur.rowcount > 0
@@ -3120,6 +3144,7 @@ def add_uploaded_image(
     filename: str,
     url: str,
     storage: str,
+    user_id: int,
     size: int = 0,
     media_type: str = 'image',
     db_path: str = DB_PATH,
@@ -3130,77 +3155,92 @@ def add_uploaded_image(
         filename: Original or generated filename
         url: The URL to access the media (local path or Cloudinary URL)
         storage: 'local' or 'cloudinary'
+        user_id: Owner of the media
         size: File size in bytes
         media_type: 'image' or 'video'
 
     Returns:
         The id of the inserted record
     """
+    uid = _require_user(user_id)
     created_at = datetime.utcnow().isoformat()
     with sqlite3.connect(db_path) as conn:
-        # Check if URL already exists (avoid duplicates)
-        cur = conn.execute("SELECT id FROM uploaded_images WHERE url = ?", (url,))
+        # Check if URL already exists for this user (avoid duplicates);
+        # the column-level UNIQUE on url keeps filenames (UUIDs) unique globally
+        cur = conn.execute(
+            "SELECT id FROM uploaded_images WHERE url = ? AND user_id = ?", (url, uid)
+        )
         existing = cur.fetchone()
         if existing:
             return existing[0]
 
         cur = conn.execute(
             """
-            INSERT INTO uploaded_images (filename, url, storage, size, created_at, media_type)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO uploaded_images (filename, url, storage, size, created_at, media_type, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (filename, url, storage, size, created_at, media_type),
+            (filename, url, storage, size, created_at, media_type, uid),
         )
         conn.commit()
         return cur.lastrowid
 
-def list_uploaded_images(db_path: str = DB_PATH) -> List[sqlite3.Row]:
-    """List all uploaded images, ordered by most recent first.
-    
+def list_uploaded_images(user_id: int, db_path: str = DB_PATH) -> List[sqlite3.Row]:
+    """List a user's uploaded images, ordered by most recent first.
+
+    Args:
+        user_id: Owner of the media
+
     Returns:
         List of uploaded_images rows
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
             """
             SELECT * FROM uploaded_images
+            WHERE user_id = ?
             ORDER BY created_at DESC
-            """
+            """,
+            (uid,),
         )
         return cur.fetchall()
 
-def delete_uploaded_image(image_id: int, db_path: str = DB_PATH) -> bool:
-    """Delete an uploaded image record by ID.
-    
+def delete_uploaded_image(image_id: int, user_id: int, db_path: str = DB_PATH) -> bool:
+    """Delete a user's uploaded image record by ID.
+
     Args:
         image_id: The image ID to delete
-        
+        user_id: Owner of the media
+
     Returns:
         True if a row was deleted, False otherwise
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
-            "DELETE FROM uploaded_images WHERE id = ?",
-            (image_id,),
+            "DELETE FROM uploaded_images WHERE id = ? AND user_id = ?",
+            (image_id, uid),
         )
         conn.commit()
         return cur.rowcount > 0
 
-def get_uploaded_image(image_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
-    """Get an uploaded image by ID.
-    
+def get_uploaded_image(image_id: int, user_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+    """Get a user's uploaded image by ID.
+
     Args:
         image_id: The image ID
-        
+        user_id: Owner of the media
+
     Returns:
         The uploaded_images row or None if not found
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
-            "SELECT * FROM uploaded_images WHERE id = ?",
-            (image_id,),
+            "SELECT * FROM uploaded_images WHERE id = ? AND user_id = ?",
+            (image_id, uid),
         )
         return cur.fetchone()
 
@@ -3352,63 +3392,70 @@ def delete_prompts_bulk(prompt_contents: List[str], user_id: int, db_path: str =
 # Prompt Library Functions
 # =============================================================================
 
-def add_library_prompt(title: str, content: str, db_path: str = DB_PATH) -> int:
+def add_library_prompt(title: str, content: str, user_id: int, db_path: str = DB_PATH) -> int:
     """Save a named, reusable prompt to the library and return its id."""
+    uid = _require_user(user_id)
     now = datetime.utcnow().isoformat(timespec="seconds")
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
             """
-            INSERT INTO prompt_library (title, content, created_at, updated_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO prompt_library (title, content, created_at, updated_at, user_id)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (title.strip(), content, now, now),
+            (title.strip(), content, now, now, uid),
         )
         conn.commit()
         return cur.lastrowid
 
-def list_library_prompts(db_path: str = DB_PATH) -> List[sqlite3.Row]:
-    """Return all saved library prompts, most recently updated first."""
+def list_library_prompts(user_id: int, db_path: str = DB_PATH) -> List[sqlite3.Row]:
+    """Return a user's saved library prompts, most recently updated first."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
-            "SELECT * FROM prompt_library ORDER BY updated_at DESC, id DESC"
+            "SELECT * FROM prompt_library WHERE user_id = ? ORDER BY updated_at DESC, id DESC",
+            (uid,),
         )
         return cur.fetchall()
 
-def get_library_prompt(prompt_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
-    """Return a single library prompt by id, or ``None`` if it does not exist."""
+def get_library_prompt(prompt_id: int, user_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+    """Return a user's single library prompt by id, or ``None`` if it does not exist."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
-            "SELECT * FROM prompt_library WHERE id = ?", (prompt_id,)
+            "SELECT * FROM prompt_library WHERE id = ? AND user_id = ?", (prompt_id, uid)
         )
         return cur.fetchone()
 
 def update_library_prompt(
     prompt_id: int,
+    user_id: int,
     title: str,
     content: str,
     db_path: str = DB_PATH,
 ) -> int:
-    """Update a library prompt's title and content. Returns rows affected."""
+    """Update a user's library prompt title and content. Returns rows affected."""
+    uid = _require_user(user_id)
     now = datetime.utcnow().isoformat(timespec="seconds")
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
             """
             UPDATE prompt_library
             SET title = ?, content = ?, updated_at = ?
-            WHERE id = ?
+            WHERE id = ? AND user_id = ?
             """,
-            (title.strip(), content, now, prompt_id),
+            (title.strip(), content, now, prompt_id, uid),
         )
         conn.commit()
         return cur.rowcount
 
-def delete_library_prompt(prompt_id: int, db_path: str = DB_PATH) -> int:
-    """Delete a library prompt by id. Returns rows affected."""
+def delete_library_prompt(prompt_id: int, user_id: int, db_path: str = DB_PATH) -> int:
+    """Delete a user's library prompt by id. Returns rows affected."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
-            "DELETE FROM prompt_library WHERE id = ?", (prompt_id,)
+            "DELETE FROM prompt_library WHERE id = ? AND user_id = ?", (prompt_id, uid)
         )
         conn.commit()
         return cur.rowcount
@@ -3426,58 +3473,66 @@ def add_generated_thumbnail(
     style: str,
     prompt: str,
     image_relpath: str,
+    user_id: int,
     db_path: str = DB_PATH,
 ) -> int:
-    """Insert a generated thumbnail record and return its ``id``."""
+    """Insert a user's generated thumbnail record and return its ``id``."""
+    uid = _require_user(user_id)
     created_at = datetime.utcnow().isoformat()
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
             """
             INSERT INTO generated_thumbnails
-                (youtube_url, video_id, title, channel, aspect, style, prompt, image_relpath, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (youtube_url, video_id, title, channel, aspect, style, prompt, image_relpath, created_at, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (youtube_url, video_id, title, channel, aspect, style, prompt, image_relpath, created_at),
+            (youtube_url, video_id, title, channel, aspect, style, prompt, image_relpath, created_at, uid),
         )
         conn.commit()
         return cur.lastrowid
 
 def list_generated_thumbnails(
+    user_id: int,
     limit: int = 50,
     offset: int = 0,
     db_path: str = DB_PATH,
 ) -> List[sqlite3.Row]:
-    """Return saved thumbnails, newest first."""
+    """Return a user's saved thumbnails, newest first."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
-            "SELECT * FROM generated_thumbnails ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            (limit, offset),
+            "SELECT * FROM generated_thumbnails WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (uid, limit, offset),
         )
         return cur.fetchall()
 
 def get_generated_thumbnail(
     thumbnail_id: int,
+    user_id: int,
     db_path: str = DB_PATH,
 ) -> Optional[sqlite3.Row]:
-    """Return a single generated thumbnail by ``id``, or ``None``."""
+    """Return a user's single generated thumbnail by ``id``, or ``None``."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
-            "SELECT * FROM generated_thumbnails WHERE id = ?",
-            (thumbnail_id,),
+            "SELECT * FROM generated_thumbnails WHERE id = ? AND user_id = ?",
+            (thumbnail_id, uid),
         )
         return cur.fetchone()
 
 def delete_generated_thumbnail(
     thumbnail_id: int,
+    user_id: int,
     db_path: str = DB_PATH,
 ) -> bool:
-    """Delete a generated thumbnail row. Returns ``True`` if a row was removed."""
+    """Delete a user's generated thumbnail row. Returns ``True`` if a row was removed."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
-            "DELETE FROM generated_thumbnails WHERE id = ?",
-            (thumbnail_id,),
+            "DELETE FROM generated_thumbnails WHERE id = ? AND user_id = ?",
+            (thumbnail_id, uid),
         )
         conn.commit()
         return cur.rowcount > 0
