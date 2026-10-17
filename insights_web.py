@@ -3057,11 +3057,12 @@ def _enrich_post_group(group, scheduled_info, posted_info, brief_names):
 @app.route('/compose')
 def compose_page():
     """Command Center page for generating social media posts."""
+    uid = current_user()['id']
     # All saved posts (newest first) — cheap to load; we only render the first page.
-    posts = list_standalone_posts()
+    posts = list_standalone_posts(uid)
 
     # Map brief ids -> names so agent-curated posts can show/filter by their brief
-    brief_names = {brief['id']: brief['name'] for brief in list_content_briefs()}
+    brief_names = {brief['id']: brief['name'] for brief in list_content_briefs(uid)}
 
     # One card per distinct post; only the first page of cards is enriched and
     # rendered, so the payload stays small however many posts are saved.
@@ -3071,8 +3072,8 @@ def compose_page():
     first_page = groups[:POSTS_PAGE_SIZE]
 
     page_ids = [row['id'] for group in first_page for row in group['platforms'].values()]
-    scheduled_info = get_pending_schedules_for_standalone_posts(page_ids) if page_ids else {}
-    posted_info = get_posted_info_for_standalone_posts(page_ids) if page_ids else {}
+    scheduled_info = get_pending_schedules_for_standalone_posts(page_ids, uid) if page_ids else {}
+    posted_info = get_posted_info_for_standalone_posts(page_ids, uid) if page_ids else {}
     post_groups = [
         _enrich_post_group(group, scheduled_info, posted_info, brief_names)
         for group in first_page
@@ -3090,16 +3091,16 @@ def compose_page():
     ]
     
     # Get saved URL sources for the "From Saved Source" tab
-    saved_sources = list_url_sources()
-    
+    saved_sources = list_url_sources(uid)
+
     # Check if a specific source is requested
     selected_source_id = request.args.get('source_id', type=int)
     selected_source = None
     if selected_source_id:
-        selected_source = get_url_source(selected_source_id)
-    
+        selected_source = get_url_source(selected_source_id, uid)
+
     # Get recent freeform prompts for reuse
-    recent_prompts = list_recent_prompts(limit=20)
+    recent_prompts = list_recent_prompts(uid, limit=20)
     recent_prompts_list = [
         {
             'content': p['source_content'],
@@ -3110,7 +3111,7 @@ def compose_page():
     ]
     
     # Get recent image prompt+image combos for reuse
-    recent_img = list_recent_image_prompts(limit=10)
+    recent_img = list_recent_image_prompts(uid, limit=10)
     recent_image_prompts_list = [
         {
             'prompt': r['source_content'] or '',
@@ -3179,6 +3180,7 @@ def compose_posts_more():
     ``limit`` sets how many cards to return (default POSTS_PAGE_SIZE, at most
     POSTS_MAX_BATCH); "Load all" and scroll loading page with it.
     """
+    uid = current_user()['id']
     offset = request.args.get('offset', 0, type=int) or 0
     if offset < 0:
         offset = 0
@@ -3192,9 +3194,9 @@ def compose_posts_more():
     has_more = total > offset + len(page)
 
     ids = [row['id'] for group in page for row in group['platforms'].values()]
-    scheduled_info = get_pending_schedules_for_standalone_posts(ids) if ids else {}
-    posted_info = get_posted_info_for_standalone_posts(ids) if ids else {}
-    brief_names = {brief['id']: brief['name'] for brief in list_content_briefs()}
+    scheduled_info = get_pending_schedules_for_standalone_posts(ids, uid) if ids else {}
+    posted_info = get_posted_info_for_standalone_posts(ids, uid) if ids else {}
+    brief_names = {brief['id']: brief['name'] for brief in list_content_briefs(uid)}
     enriched = [
         _enrich_post_group(group, scheduled_info, posted_info, brief_names)
         for group in page
@@ -3312,10 +3314,11 @@ def _filtered_post_groups(args):
 
     ``args`` is a request.args multidict or a plain dict of the same keys.
     """
+    uid = current_user()['id']
     filters = {key: (args.get(key) or '').strip() for key in _POST_FILTER_KEYS}
     filters['platform'] = _valid_post_platform(args.get('platform'))
 
-    groups = _group_standalone_posts(list_standalone_posts())
+    groups = _group_standalone_posts(list_standalone_posts(uid))
 
     index_by_id = {}
     for position, group in enumerate(groups, start=1):
@@ -3327,7 +3330,7 @@ def _filtered_post_groups(args):
     scheduled_info = {}
     if filters['queued']:
         ids = list(index_by_id)
-        scheduled_info = get_pending_schedules_for_standalone_posts(ids) if ids else {}
+        scheduled_info = get_pending_schedules_for_standalone_posts(ids, uid) if ids else {}
 
     matched = [
         group for group in groups
@@ -3511,6 +3514,7 @@ def compose_posts_replace():
     user unticked, and ``excluded_matches`` the individual matches they clicked
     to skip (both only exist for posts that were rendered).
     """
+    uid = current_user()['id']
     from database import bulk_replace_post_content
 
     payload = request.get_json(silent=True) or {}
@@ -3582,6 +3586,7 @@ def compose_posts_replace():
             find_text=find_text,
             replace_text=replace_text,
             post_type='standalone',
+            user_id=uid,
             case_sensitive=case_sensitive,
             whole_word=whole_word,
             post_ids=target_ids,
@@ -3599,7 +3604,8 @@ def compose_posts_replace():
 @app.route('/compose/recent-prompts')
 def compose_recent_prompts():
     """Return recent freeform prompts for reuse via AJAX."""
-    prompts = list_recent_prompts(limit=20)
+    uid = current_user()['id']
+    prompts = list_recent_prompts(uid, limit=20)
     prompts_list = [
         {
             'content': p['source_content'],
@@ -3616,8 +3622,9 @@ def compose_recent_prompts():
 @app.route('/compose/clear-prompts', methods=['POST'])
 def compose_clear_prompts():
     """Clear the recent prompts history."""
+    uid = current_user()['id']
     try:
-        count = clear_recent_prompts()
+        count = clear_recent_prompts(uid)
         return jsonify({
             "success": True,
             "message": f"Cleared {count} prompt(s) from history",
@@ -3630,13 +3637,14 @@ def compose_clear_prompts():
 @app.route('/compose/delete-prompt', methods=['POST'])
 def compose_delete_prompt():
     """Delete a single prompt from history."""
+    uid = current_user()['id']
     prompt_content = request.form.get('prompt', '').strip()
-    
+
     if not prompt_content:
         return jsonify({"error": "Prompt content is required"}), 400
-    
+
     try:
-        count = delete_prompt_by_content(prompt_content)
+        count = delete_prompt_by_content(prompt_content, uid)
         return jsonify({
             "success": True,
             "message": f"Deleted prompt from history",
@@ -3649,14 +3657,15 @@ def compose_delete_prompt():
 @app.route('/compose/delete-prompts-bulk', methods=['POST'])
 def compose_delete_prompts_bulk():
     """Delete multiple prompts from history."""
+    uid = current_user()['id']
     data = request.get_json() or {}
     prompts = data.get('prompts', [])
-    
+
     if not prompts:
         return jsonify({"error": "No prompts provided"}), 400
-    
+
     try:
-        count = delete_prompts_bulk(prompts)
+        count = delete_prompts_bulk(prompts, uid)
         return jsonify({
             "success": True,
             "message": f"Deleted {len(prompts)} prompt(s) from history",
@@ -3672,8 +3681,9 @@ def compose_delete_prompts_bulk():
 
 def _serialize_library_prompts():
     """Return the saved library prompts as plain dicts for JSON / templates."""
+    uid = current_user()['id']
     result = []
-    for p in list_library_prompts():
+    for p in list_library_prompts(uid):
         content = p['content'] or ''
         result.append({
             'id': p['id'],
@@ -3692,6 +3702,7 @@ def compose_library_list():
 @app.route('/compose/library/save', methods=['POST'])
 def compose_library_save():
     """Create a new named prompt in the library."""
+    uid = current_user()['id']
     data = request.get_json(silent=True) or request.form
     title = (data.get('title') or '').strip()
     content = (data.get('content') or '').strip()
@@ -3702,7 +3713,7 @@ def compose_library_save():
         return jsonify({"error": "Prompt text cannot be empty"}), 400
 
     try:
-        prompt_id = add_library_prompt(title, content)
+        prompt_id = add_library_prompt(title, content, uid)
         return jsonify({
             "success": True,
             "message": "Prompt saved to library",
@@ -3716,6 +3727,7 @@ def compose_library_save():
 @app.route('/compose/library/update', methods=['POST'])
 def compose_library_update():
     """Update an existing library prompt's name and/or text."""
+    uid = current_user()['id']
     data = request.get_json(silent=True) or request.form
     try:
         prompt_id = int(data.get('id'))
@@ -3729,11 +3741,11 @@ def compose_library_update():
     if not content:
         return jsonify({"error": "Prompt text cannot be empty"}), 400
 
-    if not get_library_prompt(prompt_id):
+    if not get_library_prompt(prompt_id, uid):
         return jsonify({"error": "Prompt not found"}), 404
 
     try:
-        update_library_prompt(prompt_id, title, content)
+        update_library_prompt(prompt_id, uid, title, content)
         return jsonify({
             "success": True,
             "message": "Prompt updated",
@@ -3746,6 +3758,7 @@ def compose_library_update():
 @app.route('/compose/library/delete', methods=['POST'])
 def compose_library_delete():
     """Delete a library prompt by id."""
+    uid = current_user()['id']
     data = request.get_json(silent=True) or request.form
     try:
         prompt_id = int(data.get('id'))
@@ -3753,7 +3766,9 @@ def compose_library_delete():
         return jsonify({"error": "A valid prompt id is required"}), 400
 
     try:
-        count = delete_library_prompt(prompt_id)
+        count = delete_library_prompt(prompt_id, uid)
+        if not count:
+            return jsonify({"error": "Prompt not found"}), 404
         return jsonify({
             "success": True,
             "message": "Prompt deleted from library",
@@ -4091,7 +4106,8 @@ def compose_ollama_status():
 @app.route('/compose/post/<int:post_id>', methods=['GET'])
 def compose_get_post(post_id: int):
     """Get a standalone post by ID."""
-    post = get_standalone_post(post_id)
+    uid = current_user()['id']
+    post = get_standalone_post(post_id, uid)
     if not post:
         return jsonify({"error": "Post not found"}), 404
     return jsonify(dict(post))
@@ -5809,12 +5825,13 @@ def compose_list_images():
     """
     from datetime import datetime as dt
 
+    uid = current_user()['id']
     wanted = 'video' if request.args.get('type') == 'video' else 'image'
     images = []
     seen_urls = set()
-    
+
     # First, get images from the database (includes Cloudinary images)
-    db_images = list_uploaded_images()
+    db_images = list_uploaded_images(uid)
     for img in db_images:
         kind = (img['media_type'] if 'media_type' in img.keys() else None) or 'image'
         if kind != wanted:
