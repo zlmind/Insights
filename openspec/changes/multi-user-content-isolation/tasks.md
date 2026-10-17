@@ -18,12 +18,12 @@
 - [x] 3.1 源与文章路由（/、/feed/*、/articles、/article/*、episode 操作）按 current_user 过滤与校验，跨用户 404
 - [x] 3.2 发布工作台路由（/compose 及其全部子接口）按 current_user 过滤与校验，跨用户 404
 - [x] 3.3 briefs 与 schedule 路由按 current_user 过滤与校验，跨用户 404
-- [ ] 3.4 用量/活动页「全部」视角仅 admin 可用，非 admin 请求按"我的"处理
+- [x] 3.4 用量/活动页「全部」视角仅 admin 可用，非 admin 请求按"我的"处理
 
 ## 4. 后台与通道
 
-- [ ] 4.1 episode 处理 / content_agent 跑批 / YouTube 频道回填 worker：按行上归属执行，产物写归属
-- [ ] 4.2 brief 定时跑批：查询过滤补齐，跑批产物归属 brief 的 user_id（沿用现有用量归属链路）
+- [x] 4.1 episode 处理 / content_agent 跑批 / YouTube 频道回填 worker：按行上归属执行，产物写归属
+- [x] 4.2 brief 定时跑批：查询过滤补齐，跑批产物归属 brief 的 user_id（沿用现有用量归属链路）
 
 ## 5. 验证与门禁
 

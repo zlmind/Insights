@@ -691,7 +691,7 @@ git commit -m "Web 层：sources/thumbnails/briefs/schedule 路由按 current_us
 **Interfaces:**
 - Consumes: 既有 `current_user()['is_admin']`。
 - Produces: 非 admin 请求 `/activity`、`/activity.csv` 一律固定 `user_id=本人`，`?user_id=` 参数被忽略；admin 可带 `?user_id=` 筛选或不带看全部。`/usage` 已有 `_usage_scope_user_id()`（831 行，scope=all 仅 admin）无需改动——验证步骤覆盖。
-- [ ] **Step 1: 改 `_parse_activity_filters`**
+- [x] **Step 1: 改 `_parse_activity_filters`**
 
 ```python
 user = current_user()
@@ -705,8 +705,8 @@ else:
 
 （`current_user` 此时已非 None——登录门槛保证；保守起见 `user` 为 None 时沿用 requested。）
 
-- [ ] **Step 2: `templates/activity.html` 用户筛选控件包 `<% if current_user and current_user['is_admin'] %>`**
-- [ ] **Step 3: 验证（临时库双账号）**
+- [x] **Step 2: `templates/activity.html` 用户筛选控件包 `<% if current_user and current_user['is_admin'] %>`**
+- [x] **Step 3: 验证（临时库双账号）**
 
 Run:
 ```bash
@@ -734,7 +734,7 @@ print('ACTIVITY_USAGE_SCOPE_OK')
 "
 ```
 Expected: `ACTIVITY_USAGE_SCOPE_OK`。
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add insights_web.py templates/activity.html
@@ -756,8 +756,8 @@ git commit -m "活动页收口：非 admin 固定本人视角，忽略 user_id �
 - Produces:
   - `worker()`：队列 item 携带的 `user_id` 即归属（入队路由 Task 7 已强制 feed 归属校验 + `queue_episode(..., uid)` 落行）。两处 `update_episode_status(url, s, item['user_id'])`（processing 与 error 分支）；两处 `save_episode(..., user_id=item['user_id'])`；item 无 user_id（防御）时抛错进 except 分支置 error，不产 NULL。`_backfill_youtube_source(url, t, s, user_id=item['user_id'])` → 内部 `get_url_source_by_url(url, user_id)` + `update_url_source_content(id, user_id, ...)`。
   - `refresh_feed_metadata(feed_id, feed_url, user_id: int 必填)` → `update_feed_metadata(feed_id, ..., user_id)`；全部调用点（`view_feed`、`process_*`、`refresh_feed`、`refresh_all_feeds` 的 worker、`index` POST）已在 Task 7 持有 uid/行归属。
-- [ ] **Step 1: 按上述改 worker 与 refresh_feed_metadata**
-- [ ] **Step 2: 验证（临时库，直接驱动 worker 函数体逻辑所需的最小路径——不入真网络，用假 summarize/transcribe）**
+- [x] **Step 1: 按上述改 worker 与 refresh_feed_metadata**
+- [x] **Step 2: 验证（临时库，直接驱动 worker 函数体逻辑所需的最小路径——不入真网络，用假 summarize/transcribe）**
 
 Run:
 ```bash
@@ -778,7 +778,7 @@ print('WORKER_ATTRIBUTION_OK')
 "
 ```
 Expected: `WORKER_ATTRIBUTION_OK`。
-- [ ] **Step 3: 冒烟 + 提交**
+- [x] **Step 3: 冒烟 + 提交**
 
 Run: `venv/Scripts/python.exe -c "import insights_web"`
 ```bash
@@ -804,8 +804,8 @@ git commit -m "worker：episode 落库与状态更新按入队者归属，元数
   - `run_brief`：行读取改为 `database.get_content_brief_unscoped(brief_id)`（Task 6 新增的白名单 helper），从 `row['user_id']` 取 owner（行上必非 NULL：create 时已强制）；`ResearchBrief(..., user_id=owner)`；`_persist_posts(..., user_id=owner)` → `add_standalone_post(..., user_id=owner)`；`_attach_image(pid, content)` 加 owner 参数、晚导入调用改为 `_maybe_attach_link_image(pid, str(content), user_id=owner)`（执行线程无请求上下文，见 Task 9）；两处 `add_article(..., user_id=owner)`；`_auto_queue` → `add_scheduled_post(..., user_id=owner)`；`create_brief_run(brief_id, owner, trigger=trigger)`、`finalize_brief_run(run_id, owner, status=...)`。owner 为 None 时 fail-fast（defensive：`if not owner: raise ValueError`）。
   - `research_engine._gather_existing`：`list_url_sources(brief.user_id)`、`list_all_episodes('published', brief.user_id)`；`_web_hits_to_items`：`get_url_source_by_url(canon, brief.user_id)`、`add_url_source(..., user_id=brief.user_id)`；`_drop_already_posted`：`count_standalone_posts_by_source_urls(urls, brief.user_id)`。
   - `content_agent_worker`：调度分支按 `brief['user_id']` 建 run；既有 `usage_meter.user_context(owner...)` 链路不动（用量归属沿用）。
-- [ ] **Step 1: 按上述改造三文件**
-- [ ] **Step 2: 验证（临时库；不跑真模型，用 monkeypatch 假 generate）**
+- [x] **Step 1: 按上述改造三文件**
+- [x] **Step 2: 验证（临时库；不跑真模型，用 monkeypatch 假 generate）**
 
 Run:
 ```bash
@@ -830,7 +830,7 @@ print('BRIEF_ATTRIBUTION_OK')
 "
 ```
 Expected: `BRIEF_ATTRIBUTION_OK`。
-- [ ] **Step 3: 冒烟 + 提交**
+- [x] **Step 3: 冒烟 + 提交**
 
 Run: `venv/Scripts/python.exe -c "import content_agent, research_engine"`
 ```bash
