@@ -167,3 +167,10 @@ Insights 已有认证体系（`users` 表、session 登录门槛、`current_user
 - `content_agent.py` / `insights.py`：worker 按行上归属执行与落库。
 - `scripts/check_content_isolation.py`（gate，并入 `run_all_gates.py`）。
 - delta spec：`openspec/changes/multi-user-content-isolation/specs/user-content-scoping/spec.md`。
+
+## 10. Implementation Divergence（verify 阶段记录，2026-10-18）
+
+1. **§5.1 三表重建替代 drop 索引**：`feeds`/`episodes`/`url_sources` 的 `url TEXT UNIQUE` 是表级内联约束（自动索引），SQLite 不允许 DROP——按官方 12 步流程重建。行为与 spec 场景一致（批次 A 审查确认）。
+2. **§5.1 uploaded_images 全局 UNIQUE 改为移除**（批次 C 评审裁定）：全局 UNIQUE 与按用户去重矛盾（stock 图外链 URL 可跨用户相同 → IntegrityError 500 + 素材库缺图），统一为 `(url, user_id)` 去重语义；spec「同一 URL 多用户互不相干」的本意覆盖素材库。
+3. **§5.5 usage 页无按用户筛选控件**（计划开放问题 3）：「全部」由 `scope=all` 满足；按用户筛选仅 activity 页有，最小实现。
+4. **worker 白名单 7 项**（计划 5 项 + `get_next_available_slot`/`count_scheduled_posts_for_day`）：时段/日限流计算全局性（§3 约束）的直接推论，gate scan 白名单带「每项必须仍被命中」防腐校验。
