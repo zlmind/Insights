@@ -2063,7 +2063,7 @@ def enqueue_episode():
     queue_episode(audio_url, title, feed_id, published, uid)
     _user = current_user()
     task_queue.put({'url': audio_url, 'title': title, 'feed_id': feed_id, 'published': published,
-                    'user_id': _user['id'] if _user else None,
+                    'user_id': uid,
                     'username': _user['username'] if _user else None})
     return redirect(url_for('status_page'))
 
@@ -2531,7 +2531,7 @@ def reprocess_episode(episode_id: int):
             'title': episode['title'],
             'feed_id': episode['feed_id'],
             'published': episode['published'],
-            'user_id': _user['id'] if _user else None,
+            'user_id': uid,
             'username': _user['username'] if _user else None,
         })
         return redirect(url_for('status_page'))
@@ -2565,7 +2565,16 @@ def bulk_delete_episodes():
 
 @app.route('/episodes/backfill-channels', methods=['POST'])
 def backfill_youtube_channels():
-    """Populate channel names for existing YouTube episodes missing them."""
+    """Populate channel names for existing YouTube episodes missing them.
+
+    Admin-only maintenance: the two helpers below are the worker lane's
+    whitelist functions that deliberately ignore ownership, so the route must
+    not hand them to every signed-in user. Non-admins get the same 404 an
+    unmapped URL gets — the endpoint is not advertised to them.
+    """
+    user = current_user()
+    if not (user and user["is_admin"]):
+        abort(404)
     episodes = get_youtube_episodes_missing_channel()
     updated = 0
     for ep in episodes:

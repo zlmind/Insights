@@ -182,7 +182,11 @@ def _auto_queue(brief: dict, post_ids: list) -> int:
     now = datetime.now()  # local, to match get_next_available_slot
     queued = 0
     for pid in post_ids:
-        row = database.get_standalone_post(pid)
+        # Owner-scoped read: the drafts were just created for this brief's
+        # owner, so that is the only viewer that must see them. A missing
+        # user_id here used to raise TypeError inside run_brief's swallowed
+        # auto-queue except — auto-scheduling silently did nothing.
+        row = database.get_standalone_post(pid, brief["user_id"])
         if not row:
             continue
         platform = dict(row).get("platform")

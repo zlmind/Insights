@@ -28,8 +28,10 @@ user_id。违例函数必须榜上有名（白名单），且白名单每一项�
 ``e2e`` 钉端到端：双账号（admin 首号 + 新账号 B）走真路由跑九个场景——
 B 五页全空、直访他人四个详情路由 404 且响应体与不存在逐字节一致、同名
 prompt 的帖子各自可见、存量 NULL 行双方不可见且仍在库、/enqueue 与 brief
-跑批产物按操作者/主人归属、/activity /usage 非 admin 固定本人视角而
-admin 全景见双方、同一 URL 双用户 sources/feeds 各一行互不去重。迁移幂等
+跑批产物按操作者/主人归属且 auto_queue 真落排期归 brief 主人、
+backfill-channels 非 admin 404 与不存在同响应体而 admin 可用、/activity
+/usage 非 admin 固定本人视角而 admin 全景见双方、同一 URL 双用户
+sources/feeds 各一行互不去重。迁移幂等
 由 schema 节钉死，e2e 不重复。抓网页面的两处（sources POST、add feed）
 在内存里替换 trafilatura / parse_feed_with_fallback，整节仍然不联网。
 
@@ -183,6 +185,7 @@ _OLD_DDL = (
         status TEXT,
         published TEXT,
         processed_at TEXT,
+        channel TEXT,
         FOREIGN KEY(feed_id) REFERENCES feeds(id)
     )
     """,
@@ -225,8 +228,9 @@ def _build_old_schema_db(db_path):
                      "VALUES ('https://old.example/a.xml', 'A', '2020-01-01')")
         conn.execute("INSERT INTO feeds (url, title, last_checked) "
                      "VALUES ('https://old.example/b.xml', 'B', '2020-01-01')")
-        conn.execute("INSERT INTO episodes (feed_id, url, title, status) "
-                     "VALUES (1, 'https://old.example/a.mp3', 'EA', 'complete')")
+        conn.execute("INSERT INTO episodes (feed_id, url, title, status, channel) "
+                     "VALUES (1, 'https://old.example/a.mp3', 'EA', 'complete', "
+                     "'Legacy Channel')")
         conn.execute("INSERT INTO url_sources (url, title, created_at) "
                      "VALUES ('https://old.example/page', 'P', '2020-01-01')")
         conn.execute("INSERT INTO uploaded_images (filename, url, storage) "
@@ -286,6 +290,27 @@ def section_schema():
     for table, expected in seeded.items():
         check(_total(old_path, table) == expected,
               f"旧库升级后 {table} 行数应为 {expected}，实为 {_total(old_path, table)}")
+    # 重建不得丢列：存量库的 channel 是升级链先补上的列，_NEW_DDL/_COPY_COLS
+    # 漏掉它就会在重建时连数据一起静默蒸发，随后 YouTube 链路 no such column。
+    with sqlite3.connect(old_path) as conn:
+        ep_cols = [r[1] for r in
+                   conn.execute("PRAGMA table_info(episodes)").fetchall()]
+        kept = conn.execute(
+            "SELECT channel FROM episodes WHERE url = 'https://old.example/a.mp3'"
+        ).fetchone()
+        ep_id = conn.execute(
+            "SELECT id FROM episodes WHERE url = 'https://old.example/a.mp3'"
+        ).fetchone()[0]
+    check("channel" in ep_cols, "旧库升级后 episodes 应仍带 channel 列")
+    check(kept == ("Legacy Channel",),
+          f"旧库升级后 channel 值应保留，实为 {kept!r}")
+    # 回填白名单两函数照常可跑：列若被丢，SELECT/UPDATE channel 直接抛
+    # no such column。
+    check(database.get_youtube_episodes_missing_channel(db_path=old_path) == [],
+          "升级库上 channel 回填查询应可运行（旧种子非 YouTube，命中 0 行）")
+    database.set_episode_channel(ep_id, "Backfilled Channel", db_path=old_path)
+    check(_count(old_path, "episodes", "channel", "Backfilled Channel") == 1,
+          "升级库上 set_episode_channel 应可写入")
     newcomer = database.create_user("newcomer", generate_password_hash("p"),
                                     db_path=old_path)
     database.add_feed("https://old.example/a.xml", "newcomer",
@@ -301,7 +326,8 @@ def section_schema():
               f"实为 {_total(old_path, table)}）")
 
     print("迁移幂等：12 表带 user_id，feeds/episodes/url_sources 复合唯一，"
-          "uploaded_images 一并去 UNIQUE，同 URL 双用户各一行，旧库升级行数不变")
+          "uploaded_images 一并去 UNIQUE，同 URL 双用户各一行，旧库升级行数不变，"
+          "episodes channel 列与值跨重建保留且回填函数可跑")
     print("CONTENT_ISOLATION_SCHEMA_OK")
 
 
@@ -847,7 +873,55 @@ def section_e2e():
               for row in database.list_standalone_posts(admin_id,
                                                         db_path=database.DB_PATH)),
           "brief 跑批不得产出 admin 视角的孤儿帖")
-    print("INFO e2e 6/9 episode 与 brief 跑批产物均按操作者/brief 主人归属")
+
+    # ── auto_queue 接线（终审 I1 回归钉）：开启 auto_queue 的 brief 跑批后必须
+    # 真落排期且排期行归 brief 主人。此前 _auto_queue 里 get_standalone_post
+    # 少传 user_id 的 TypeError 被 run_brief 的 except 吞掉，自动排期静默失效。
+    # SCHEDULABLE 生产上刻意为空（国内平台暂无发布 API），内存里临时放开一个
+    # 平台只为止于驱动这条链路；时段先清空再放一枚 (今天+3) 星期位的远端格，
+    # 下一次出现必在 2-3 天后，稳过默认 24h 审查窗且不受其他槽位干扰。──
+    with sqlite3.connect(database.DB_PATH) as conn:
+        conn.execute("DELETE FROM time_slot_platforms")
+        conn.execute("DELETE FROM schedule_time_slots")
+        conn.commit()
+    far_dow = (datetime.now().weekday() + 3) % 7
+    database.add_time_slot(day_of_week=far_dow, time_slot="23:00", enabled=True,
+                           db_path=database.DB_PATH)
+    saved_schedulable = content_agent.SCHEDULABLE
+    content_agent.SCHEDULABLE = {"wechat"}
+    try:
+        bid_q = database.create_content_brief(
+            "ZXE2EQUEUE brief", "do posts", content_type="posts",
+            platforms=["wechat"], auto_queue=True, **b)
+        summary_q = content_agent.run_brief(bid_q, trigger="scheduled")
+        check(summary_q.get("queued") == 1,
+              f"auto_queue brief 应自动排期 1 帖（{summary_q}）")
+        with sqlite3.connect(database.DB_PATH) as conn:
+            queued_rows = conn.execute(
+                "SELECT user_id, platform FROM scheduled_posts "
+                "WHERE standalone_post_id IN "
+                "(SELECT id FROM standalone_posts WHERE brief_id = ?)",
+                (bid_q,)).fetchall()
+        check(len(queued_rows) == 1
+              and queued_rows[0][0] == uid_b and queued_rows[0][1] == "wechat",
+              f"自动排期应恰 1 行且归 brief 主人 B（{queued_rows}）")
+    finally:
+        content_agent.SCHEDULABLE = saved_schedulable
+
+    # ── backfill-channels 是 worker 白名单函数的实例级维护口（终审 I2 钉）：
+    # 两个函数刻意跨用户，路由必须 admin 专属——非 admin 一律 404，且与不存在
+    # 路由同响应体（不泄露端点存在）；admin 在空库上照常跑通。──
+    r_non_admin = client_b.post("/episodes/backfill-channels")
+    r_unmapped = client_b.post("/definitely-not-a-route")
+    check(r_non_admin.status_code == 404,
+          f"非 admin POST backfill-channels 应 404（{r_non_admin.status_code}）")
+    check(r_non_admin.get_data() == r_unmapped.get_data(),
+          "非 admin 的 backfill-channels 404 应与不存在路由逐字节一致")
+    r_admin = client.post("/episodes/backfill-channels")
+    check(r_admin.status_code == 200 and r_admin.get_json().get("success") is True,
+          f"admin 应可用 backfill-channels（空库 0 行）（{r_admin.status_code}）")
+    print("INFO e2e 6/9 episode/brief 产物按主人归属，auto_queue 真落排期归主人，"
+          "backfill-channels 非 admin 404、admin 可用")
 
     # ── 场景 7：/activity /usage 视角——B 带 ?user_id=<admin>&scope=all 仍只
     # 见自己；admin 全景见双方。──
@@ -917,8 +991,9 @@ def section_e2e():
 
     # 场景 9（迁移幂等）由 schema 节钉死，e2e 不重复。
     print("双账号端到端：新账号全页空、跨用户 404 同响应、同名 prompt 各见各帖、"
-          "存量 NULL 不可见仍在库、episode/brief 产物按主人归属、"
-          "/activity /usage 视角正确、同 URL 各行各见（迁移幂等在 schema 节）")
+          "存量 NULL 不可见仍在库、episode/brief 产物按主人归属、auto_queue 落排期归主人、"
+          "backfill-channels admin 专属、/activity /usage 视角正确、同 URL 各行各见"
+          "（迁移幂等在 schema 节）")
     print("CONTENT_ISOLATION_E2E_OK")
 
 

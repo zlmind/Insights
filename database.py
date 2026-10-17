@@ -43,6 +43,7 @@ _NEW_DDL = {
             status TEXT,
             published TEXT,
             processed_at TEXT,
+            channel TEXT,
             user_id INTEGER REFERENCES users(id),
             FOREIGN KEY(feed_id) REFERENCES feeds(id)
         )
@@ -79,7 +80,7 @@ _NEW_DDL = {
 _COPY_COLS = {
     "feeds": "id, url, title, feed_type, last_post, item_count, last_checked, user_id",
     "episodes": ("id, feed_id, url, title, transcript, summary, action_items, "
-                 "status, published, processed_at, user_id"),
+                 "status, published, processed_at, channel, user_id"),
     "url_sources": ("id, url, title, description, content, og_image, "
                     "created_at, last_used_at, user_id"),
     "uploaded_images": ("id, filename, url, storage, size, created_at, "
@@ -684,12 +685,27 @@ def init_db(db_path: str = DB_PATH) -> None:
                 (table,)).fetchone()
             if not row or not re.search(r"url\s+TEXT\s+UNIQUE", row[0] or "", re.I):
                 continue
-            conn.execute(f"DROP TABLE IF EXISTS {table}_new")
-            conn.execute(_NEW_DDL[table])
-            conn.execute(f"INSERT INTO {table}_new ({_COPY_COLS[table]}) "
-                         f"SELECT {_COPY_COLS[table]} FROM {table}")
-            conn.execute(f"DROP TABLE {table}")
-            conn.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
+            # One transaction per table: a crash between the DROP of the old
+            # table and the RENAME must roll the whole rebuild back, not leave
+            # an empty table where the data used to be. The connection may
+            # already carry an outer transaction (the is_admin backfill above
+            # opens one), and a SAVEPOINT behaves the same either way — with
+            # no outer transaction its RELEASE commits, otherwise it only
+            # collapses into the enclosing one.
+            sp = f"{table}_rebuild"
+            conn.execute(f"SAVEPOINT {sp}")
+            try:
+                conn.execute(f"DROP TABLE IF EXISTS {table}_new")
+                conn.execute(_NEW_DDL[table])
+                conn.execute(f"INSERT INTO {table}_new ({_COPY_COLS[table]}) "
+                             f"SELECT {_COPY_COLS[table]} FROM {table}")
+                conn.execute(f"DROP TABLE {table}")
+                conn.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
+                conn.execute(f"RELEASE {sp}")
+            except BaseException:
+                conn.execute(f"ROLLBACK TO {sp}")
+                conn.execute(f"RELEASE {sp}")
+                raise
 
         for stmt in (
             # Same URL twice only across users, never within one.
