@@ -853,12 +853,12 @@ git commit -m "内容代理与跑批：产物按 brief 主人归属，research �
   1. 每个脚本顶部（或 isolated_app 之后）取 `uid = database.get_user_by_username('gate')['id']`（`_accounts_gate.isolated_app` 固定建 `gate` 用户）。
   2. 直接种子调用逐一补 `user_id=uid`（或按新位置传参）；路由驱动的调用不用改。
   3. 断言「全表可见」的脚本（如旧行为断言 list 总数）改为按 uid 断言。
-- [ ] **Step 1: 按文件逐个修复**（每改完一个脚本立即单独跑该脚本确认自身 token 通过）
-- [ ] **Step 2: 全量跑既有 gate**
+- [x] **Step 1: 按文件逐个修复**（每改完一个脚本立即单独跑该脚本确认自身 token 通过）
+- [x] **Step 2: 全量跑既有 gate**
 
 Run: `venv/Scripts/python.exe scripts/run_all_gates.py`
 Expected: 除（尚未存在的）isolation gate 外全部 PASS；无 unregistered gate 报警。
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add scripts/check_ig_people.py scripts/check_video.py scripts/check_bulk_platform.py scripts/check_crosspost.py scripts/check_queue_groups.py scripts/check_scheduler_accounts.py scripts/check_manual_posts.py scripts/check_domestic_publisher.py scripts/check_backcompat.py scripts/_video_ui_gate.py scripts/check_accounts_ui.py scripts/check_agent_push.py scripts/check_brief_fallback.py scripts/check_accounts_model.py scripts/check_compose_paging.py scripts/check_agent_ui.py scripts/check_login_without_identity.py scripts/check_bulk_platform_ui.py scripts/check_channel_defaults.py scripts/check_compose_js.py
@@ -881,10 +881,10 @@ git commit -m "gate 脚本适配数据层 user 归属签名"
   - `... data` → `CONTENT_ISOLATION_DATA_OK`
   - `... scan` → `CONTENT_ISOLATION_SCAN_OK`
 - 白名单（scan 节豁免，函数名→理由）：`get_due_content_briefs`（worker 队列，行上归属）、`get_content_brief_unscoped`（run_brief worker 入口，先取行再按行上 user_id 行事）、`get_youtube_episodes_missing_channel`（元数据回填）、`set_episode_channel`（元数据回填）、`get_pending_scheduled_posts`（发布侧全局队列消费）。
-- [ ] **Step 1: schema 节**——临时库 init_db 跑两遍；断言 12 表有 user_id；断言三表复合唯一索引存在且建表 SQL 不再含 `url ... UNIQUE`；双用户同 URL 各插一行（feeds/episodes/url_sources 三表）；构造旧 schema 库升级后行数不变；**迁移幂等**（第二次 init_db 后 `PRAGMA table_info` 无重复列）。
-- [ ] **Step 2: data 节**——双账号覆盖：每张内容表至少一条「B 直访/改/删 A 的行 → None/False/0」「NULL 归属行对 A、B 及 admin 均不可见且行仍在」「bulk 只删自己的 id」「写入口缺 user_id 抛 ValueError」「404 与不存在响应一致（走路由的两组代表路由：`/article/<id>`、`/sources/<id>`）」。
-- [ ] **Step 3: scan 节**——`ast.parse` 读 `database.py` 源；对 12 张内容表（`_CONTENT_TABLES` 11 表 ∪ `content_briefs`）：函数体内 SQL 字符串常量含 `SELECT ... FROM <t>` / `UPDATE <t>` / `DELETE FROM <t>` / `INSERT INTO <t>` 的，要求 SQL 文本含 `user_id`，否则该函数必须在白名单；INSERT 额外要求列清单含 `user_id`。任一违例打印函数名与 SQL 摘要并 fail。
-- [ ] **Step 4: run_all_gates.py 注册**
+- [x] **Step 1: schema 节**——临时库 init_db 跑两遍；断言 12 表有 user_id；断言三表复合唯一索引存在且建表 SQL 不再含 `url ... UNIQUE`；双用户同 URL 各插一行（feeds/episodes/url_sources 三表）；构造旧 schema 库升级后行数不变；**迁移幂等**（第二次 init_db 后 `PRAGMA table_info` 无重复列）。
+- [x] **Step 2: data 节**——双账号覆盖：每张内容表至少一条「B 直访/改/删 A 的行 → None/False/0」「NULL 归属行对 A、B 及 admin 均不可见且行仍在」「bulk 只删自己的 id」「写入口缺 user_id 抛 ValueError」「404 与不存在响应一致（走路由的两组代表路由：`/article/<id>`、`/sources/<id>`）」。
+- [x] **Step 3: scan 节**——`ast.parse` 读 `database.py` 源；对 12 张内容表（`_CONTENT_TABLES` 11 表 ∪ `content_briefs`）：函数体内 SQL 字符串常量含 `SELECT ... FROM <t>` / `UPDATE <t>` / `DELETE FROM <t>` / `INSERT INTO <t>` 的，要求 SQL 文本含 `user_id`，否则该函数必须在白名单；INSERT 额外要求列清单含 `user_id`。任一违例打印函数名与 SQL 摘要并 fail。
+- [x] **Step 4: run_all_gates.py 注册**
 
 ```python
 ISOLATION_GATES = [
@@ -901,11 +901,11 @@ ISOLATION_GATES = [
 ```
 并入 `ALL_GATES` 元组拼接。
 
-- [ ] **Step 5: 验证**
+- [x] **Step 5: 验证**
 
 Run: `venv/Scripts/python.exe scripts/check_content_isolation.py schema && venv/Scripts/python.exe scripts/check_content_isolation.py data && venv/Scripts/python.exe scripts/check_content_isolation.py scan`
 Expected: 三个 token 齐打。再 `venv/Scripts/python.exe scripts/run_all_gates.py` 全绿。
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add scripts/check_content_isolation.py scripts/run_all_gates.py
@@ -925,7 +925,7 @@ git commit -m "门禁：内容隔离 schema/数据/静态扫描三 gate 并入�
 **Interfaces:**
 - Consumes: Task 7–13 的全部路由与 worker 行为；`isolated_app()` 双会话（`session_transaction` 切换 user_id）。
 - Produces: `venv/Scripts/python.exe scripts/check_content_isolation.py e2e` → `CONTENT_ISOLATION_E2E_OK`
-- [ ] **Step 1: e2e 节场景**（一次跑完，逐场景 `check()`）：
+- [x] **Step 1: e2e 节场景**（一次跑完，逐场景 `check()`）：
   1. admin（首个账号 gate 设为 admin：`database` 无 is_admin 参数时直接 SQL 置 1）+ 新注册账号 B（走 `/signup` 或 create_user）。
   2. B 登录后五页全空：`/`（feeds）、`/articles`、`/compose`、`/briefs`、`/schedule` 不含 admin 种子数据的任何标题/正文片段。
   3. B 直访 admin 的 `/article/<id>`、`/sources/<id>`、`/feed/<id>`、`/compose/post/<id>` → 404 且响应体与访问不存在 id 时逐字节一致。
@@ -935,18 +935,18 @@ git commit -m "门禁：内容隔离 schema/数据/静态扫描三 gate 并入�
   7. `/activity`、`/usage`：B 带 `?user_id=<admin>&scope=all` → 只见自己；admin `?scope=all` → 见双方。
   8. 同 URL 双用户：A、B 各自 `/sources` POST 同一 URL → 各自 1 行互不去重；A、B 各自 add_feed 同一 RSS URL → feeds 各 1 行。
   9. 迁移幂等（对临时库二次 init_db）——已在 schema 节，e2e 不重复。
-- [ ] **Step 2: run_all_gates 注册追加**
+- [x] **Step 2: run_all_gates 注册追加**
 
 ```python
     ("check_content_isolation.py", "CONTENT_ISOLATION_E2E_OK",
      "双账号端到端：新账号全页空、直访他人 404 同响应、存量 NULL 不可见、worker 产物归属、/activity /usage 视角",
      ("e2e",)),
 ```
-- [ ] **Step 3: 全量验证**
+- [x] **Step 3: 全量验证**
 
 Run: `venv/Scripts/python.exe scripts/run_all_gates.py`
 Expected: 全部 PASS，末行 `ALL_GATES_OK`。
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add scripts/check_content_isolation.py scripts/run_all_gates.py
