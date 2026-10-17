@@ -200,8 +200,8 @@ def _require_user(user_id) -> int:
     return int(user_id)
 ```
 
-- [ ] **Step 1: 按 Interfaces 逐函数改签名与 SQL**（所有权谓词统一 `AND user_id = ?`；`_require_user(user_id)` 置于函数体首行）
-- [ ] **Step 2: 验证归属语义（临时库）**
+- [x] **Step 1: 按 Interfaces 逐函数改签名与 SQL**（所有权谓词统一 `AND user_id = ?`；`_require_user(user_id)` 置于函数体首行）
+- [x] **Step 2: 验证归属语义（临时库）**
 
 Run:
 ```bash
@@ -228,7 +228,7 @@ print('FEEDS_EPISODES_SCOPING_OK')
 ```
 Expected: `FEEDS_EPISODES_SCOPING_OK`。
 
-- [ ] **Step 3: 冒烟 + 提交**
+- [x] **Step 3: 冒烟 + 提交**
 
 Run: `venv/Scripts/python.exe -c "import database"`
 ```bash
@@ -255,8 +255,8 @@ git commit -m "数据层：feeds/episodes 按 user 作用域，写入口强制�
   - `add_social_post(article_id, platform, content, user_id: int（必填，位置在 content 后）, image_url=None, db_path=...) -> int`。
   - `list_social_posts(article_id, user_id, db_path=...)`、`get_social_post(post_id, user_id, ...)`、`delete_social_post(post_id, user_id, ...)`、`delete_social_posts_bulk(post_ids, user_id, ...)`、`delete_social_posts_for_article(article_id, user_id, ...)`、`mark_social_post_used(post_id, used=True, user_id 必填于 used 后, ...)`、`update_social_post(post_id, content, user_id, ...)`、`update_social_post_image(post_id, image_url, user_id, ...)`。
   - `bulk_replace_post_content(find_text, replace_text, post_type, user_id: int（必填，位置在 post_type 后）, case_sensitive=False, whole_word=False, post_ids=None, excluded_matches=None, db_path=...)`：两处 SELECT 与 UPDATE 均加 `AND user_id = ?`。
-- [ ] **Step 1: 按 Interfaces 改签名与 SQL**
-- [ ] **Step 2: 验证（临时库）**
+- [x] **Step 1: 按 Interfaces 改签名与 SQL**
+- [x] **Step 2: 验证（临时库）**
 
 Run:
 ```bash
@@ -280,7 +280,7 @@ print('ARTICLES_SOCIAL_SCOPING_OK')
 "
 ```
 Expected: `ARTICLES_SOCIAL_SCOPING_OK`。
-- [ ] **Step 3: 冒烟 + 提交**
+- [x] **Step 3: 冒烟 + 提交**
 
 Run: `venv/Scripts/python.exe -c "import database"`
 ```bash
@@ -305,8 +305,8 @@ git commit -m "数据层：articles/social_posts 按 user 作用域，批量替�
   - `get_standalone_post(post_id, user_id, ...)`、`list_standalone_posts_by_source_url(url, user_id, db_path=...)`、`count_standalone_posts_by_source_urls(urls, user_id, db_path=...)`。
   - `update_standalone_post(post_id, user_id, content, image_url=None, clear_image=False, db_path=...)`、`update_standalone_post_image(post_id, image_url, user_id, ...)`、`update_standalone_post_video(post_id, video_url, user_id, ...)`、`delete_standalone_post(post_id, user_id, ...)`、`delete_standalone_posts_bulk(post_ids, user_id, ...)`、`mark_standalone_post_used(post_id, used=True, user_id 必填, ...)`。
   - prompts（派生自 standalone_posts，自动隔离，但 SQL 仍显式带 `user_id = ?`）：`list_recent_prompts(user_id, limit=20, db_path=...)`、`list_recent_image_prompts(user_id, limit=10, db_path=...)`、`clear_recent_prompts(user_id, db_path=...)`、`delete_prompt_by_content(prompt_content, user_id, db_path=...)`、`delete_prompts_bulk(prompt_contents, user_id, db_path=...)`。
-- [ ] **Step 1: 按 Interfaces 改签名与 SQL**
-- [ ] **Step 2: 验证（临时库）**
+- [x] **Step 1: 按 Interfaces 改签名与 SQL**
+- [x] **Step 2: 验证（临时库）**
 
 Run:
 ```bash
@@ -327,7 +327,7 @@ print('STANDALONE_SCOPING_OK')
 "
 ```
 Expected: `STANDALONE_SCOPING_OK`。
-- [ ] **Step 3: 冒烟 + 提交**
+- [x] **Step 3: 冒烟 + 提交**
 
 Run: `venv/Scripts/python.exe -c "import database"`
 ```bash

@@ -7,8 +7,8 @@
 
 ## 2. 数据层作用域
 
-- [ ] 2.1 feeds/episodes：list 按 user 过滤，get/update/delete 归属校验（不匹配按不存在处理）
-- [ ] 2.2 articles/social_posts/standalone_posts：同上（含 bulk 操作的归属限定）
+- [x] 2.1 feeds/episodes：list 按 user 过滤，get/update/delete 归属校验（不匹配按不存在处理）
+- [x] 2.2 articles/social_posts/standalone_posts：同上（含 bulk 操作的归属限定）
 - [ ] 2.3 url_sources/uploaded_images/generated_thumbnails/prompt 库与最近 prompts：同上
 - [ ] 2.4 content_briefs/content_brief_runs：补齐查询过滤（列已存在）；scheduled_posts：归属 + 查询过滤
 - [ ] 2.5 写入口强制归属：内容域 create/import/enqueue 函数签名要求 user_id，缺失即失败
