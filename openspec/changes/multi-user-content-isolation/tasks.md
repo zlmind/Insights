@@ -2,8 +2,8 @@
 
 ## 1. 数据层迁移
 
-- [ ] 1.1 内容域数据表 in-place 加 `user_id` 列（feeds、episodes、articles、social_posts、standalone_posts、url_sources、uploaded_images、generated_thumbnails、prompt_library、content_brief_runs、scheduled_posts；content_briefs 列已存在；幂等，沿用 `PRAGMA table_info` 检测）；episodes 的 url 全局唯一索引改为 (url, user_id) 复合唯一；无回填、无标志位
-- [ ] 1.2 存量数据不迁移（2026-10-17 改定）：旧数据 NULL 归属对所有用户不可见（含 admin），数据保留在库中，可后续手工 SQL 划归或清理；核查无任何代码路径自动为 NULL 归属赋值
+- [x] 1.1 内容域数据表 in-place 加 `user_id` 列（feeds、episodes、articles、social_posts、standalone_posts、url_sources、uploaded_images、generated_thumbnails、prompt_library、content_brief_runs、scheduled_posts；content_briefs 列已存在；幂等，沿用 `PRAGMA table_info` 检测）；episodes 的 url 全局唯一索引改为 (url, user_id) 复合唯一；无回填、无标志位
+- [x] 1.2 存量数据不迁移（2026-10-17 改定）：旧数据 NULL 归属对所有用户不可见（含 admin），数据保留在库中，可后续手工 SQL 划归或清理；核查无任何代码路径自动为 NULL 归属赋值
 
 ## 2. 数据层作用域
 

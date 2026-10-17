@@ -57,7 +57,7 @@ base-ref: 3d6cecefb68bc10cdb09ad7864c78ff48d34a129
 **Interfaces:**
 - Produces: 后续所有任务的基线 commit（base-ref 之上第一个提交）。
 
-- [ ] **Step 1: 精确 stage 并提交**
+- [x] **Step 1: 精确 stage 并提交**
 
 ```bash
 cd /d/git3/Insights
@@ -70,7 +70,7 @@ git add openspec/changes/multi-user-content-isolation/proposal.md \
 git commit -m "多用户内容隔离：proposal/design/tasks/spec 与实施计划"
 ```
 
-- [ ] **Step 2: 验证提交内容**
+- [x] **Step 2: 验证提交内容**
 
 Run: `git show --stat HEAD | head -20`
 Expected: 恰好 6 个文件，无其他文件混入；`git log -1 --format=%B` 无 attribution 行。
@@ -91,11 +91,11 @@ Expected: 恰好 6 个文件，无其他文件混入；`git log -1 --format=%B` 
 
 要点（关键事实）：三张表的 `url TEXT UNIQUE` 是**表级约束产生的自动索引**（`sqlite_autoindex_*`），SQLite 不允许 `DROP INDEX` 自动索引——设计文档写的「迁移内 drop 旧索引」实际落地为**官方 12 步表重建**（新建→拷贝→删旧→改名）。已写入计划「开放问题」第 1 条。
 
-- [ ] **Step 1: 改四张表的 CREATE TABLE（新库直出正确 schema）**
+- [x] **Step 1: 改四张表的 CREATE TABLE（新库直出正确 schema）**
 
 `feeds` / `episodes` / `url_sources` 的 `url TEXT UNIQUE` 改为 `url TEXT`，并各加一行 `user_id INTEGER REFERENCES users(id)`；`uploaded_images` 只加 `user_id` 行。`episodes` 保留既有 `FOREIGN KEY(feed_id) REFERENCES feeds(id)`。紧随其后加复合唯一索引（`CREATE UNIQUE INDEX IF NOT EXISTS idx_<t>_url_user ON <t>(url, user_id)`），以及三个普通 user 索引。
 
-- [ ] **Step 2: 追加存量库迁移块（init_db 末尾 app_settings 之前）**
+- [x] **Step 2: 追加存量库迁移块（init_db 末尾 app_settings 之前）**
 
 ```python
 # ── Multi-user content scoping: nullable ownership on every content table ──
@@ -129,7 +129,7 @@ for table in ("feeds", "episodes", "url_sources"):
 
 `_NEW_DDL` / `_COPY_COLS` 为模块级常量，列清单显式点名（不 `SELECT *`，列序无关）。重建放在加列之后：老库重建一次即带上 user_id，新库不命中正则直接跳过——幂等。
 
-- [ ] **Step 3: 双跑幂等 + schema 断言（临时库，不碰 insights.db）**
+- [x] **Step 3: 双跑幂等 + schema 断言（临时库，不碰 insights.db）**
 
 Run:
 ```bash
@@ -158,11 +158,11 @@ print('MIGRATION_OK')
 ```
 Expected: 输出 `MIGRATION_OK`，无 IntegrityError。
 
-- [ ] **Step 4: 存量库升级验证（构造带旧约束的库再跑 init_db）**
+- [x] **Step 4: 存量库升级验证（构造带旧约束的库再跑 init_db）**
 
 同一脚本里先用旧 DDL 文本建一个 `feeds (id, url TEXT UNIQUE, title)` 并插一行，跑 `database.init_db(p)`，断言旧行保留（`COUNT(*)==1`）且新 schema 生效。Expected: 行数不变、复合索引存在。
 
-- [ ] **Step 5: 冒烟 + 提交**
+- [x] **Step 5: 冒烟 + 提交**
 
 Run: `venv/Scripts/python.exe -c "import database, insights_web"`
 ```bash
