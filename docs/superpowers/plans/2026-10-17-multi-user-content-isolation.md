@@ -526,8 +526,8 @@ git commit -m "Web 层：源/文章/episode 路由按 current_user 过滤，跨�
 **Interfaces:**
 - Consumes: Task 4/5/6 签名。
 - Produces: Compose 页与子接口只见本人帖子/prompts/库。
-- [ ] **Step 1: 逐路由改造**
-- [ ] **Step 2: 验证（临时库双账号）**
+- [x] **Step 1: 逐路由改造**
+- [x] **Step 2: 验证（临时库双账号）**
 
 Run:
 ```bash
@@ -548,7 +548,7 @@ print('WEB_COMPOSE_LIST_SCOPED_OK')
 "
 ```
 Expected: `WEB_COMPOSE_LIST_SCOPED_OK`。
-- [ ] **Step 3: 冒烟 + 提交**
+- [x] **Step 3: 冒烟 + 提交**
 
 Run: `venv/Scripts/python.exe -c "import insights_web"`
 ```bash
@@ -584,8 +584,8 @@ git commit -m "Web 层：Compose 列表/搜索/prompt/图库路由按 current_us
 **Interfaces:**
 - Consumes: Task 4/5 签名 + Task 8 的 `_selected_standalone_posts`。
 - Produces: Compose 全部写路径落库行带当前用户归属；他人资源一律 404。
-- [ ] **Step 1: 逐路由改造**
-- [ ] **Step 2: 验证（临时库双账号，走真实 POST 路由）**
+- [x] **Step 1: 逐路由改造**
+- [x] **Step 2: 验证（临时库双账号，走真实 POST 路由）**
 
 Run:
 ```bash
@@ -609,7 +609,7 @@ print('WEB_COMPOSE_WRITE_SCOPED_OK')
 "
 ```
 Expected: `WEB_COMPOSE_WRITE_SCOPED_OK`。
-- [ ] **Step 3: 冒烟 + 提交**
+- [x] **Step 3: 冒烟 + 提交**
 
 Run: `venv/Scripts/python.exe -c "import insights_web"`
 ```bash
@@ -644,8 +644,8 @@ git commit -m "Web 层：Compose 生成/导入/媒体/推送路由写入当前�
 **Interfaces:**
 - Consumes: Task 5/6 签名。
 - Produces: 源页/封面页/briefs 页/日程月历仅本人数据。
-- [ ] **Step 1: 逐路由改造**
-- [ ] **Step 2: 验证（临时库双账号）**
+- [x] **Step 1: 逐路由改造**
+- [x] **Step 2: 验证（临时库双账号）**
 
 Run:
 ```bash
@@ -671,7 +671,7 @@ print('WEB_SOURCES_BRIEFS_SCOPED_OK')
 "
 ```
 Expected: `WEB_SOURCES_BRIEFS_SCOPED_OK`。
-- [ ] **Step 3: 冒烟 + 提交**
+- [x] **Step 3: 冒烟 + 提交**
 
 Run: `venv/Scripts/python.exe -c "import insights_web"`
 ```bash
