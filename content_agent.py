@@ -127,20 +127,21 @@ def _caps_hit(draft_count: int, max_drafts: int, since_ts: str, max_cost: float 
 
 # ── Persistence ─────────────────────────────────────────────────────────────
 
-def _attach_image(post_id: int, content: str) -> None:
+def _attach_image(post_id: int, content: str, user_id: int) -> None:
     try:
         from insights_web import _maybe_attach_link_image  # late import: avoid cycle
-        _maybe_attach_link_image(post_id, content)
+        _maybe_attach_link_image(post_id, content, user_id=user_id)
     except Exception:
         logger.debug("link-image attach unavailable", exc_info=True)
 
 
 def _persist_posts(generated, platforms, *, source_label, image_url,
-                   brief_id, run_id, remaining) -> list:
+                   brief_id, run_id, user_id, remaining) -> list:
     """Normalize generator output and save each post as an unused agent draft.
 
     Mirrors the platform normalization in ``compose_generate`` (lowercase,
     drop unrequested platforms, coerce str->list). Returns the new post ids.
+    Drafts are owned by ``user_id`` (the brief's owner).
     """
     requested = {p.lower() for p in platforms}
     ids: list = []
@@ -161,13 +162,14 @@ def _persist_posts(generated, platforms, *, source_label, image_url,
                 source_content=(source_label or "")[:1000],
                 platform=norm,
                 content=str(content),
+                user_id=user_id,
                 image_url=image_url,
                 brief_id=brief_id,
                 brief_run_id=run_id,
             )
             ids.append(pid)
             if not image_url:
-                _attach_image(pid, str(content))
+                _attach_image(pid, str(content), user_id)
     return ids
 
 
@@ -196,7 +198,7 @@ def _auto_queue(brief: dict, post_ids: list) -> int:
         if (slot_dt - now).total_seconds() < window_hours * 3600:
             continue
         database.add_scheduled_post(
-            scheduled_for=slot, post_type="standalone",
+            scheduled_for=slot, post_type="standalone", user_id=brief["user_id"],
             standalone_post_id=pid, platform=platform, status="pending",
         )
         queued += 1
@@ -217,14 +219,21 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
     Returns a summary dict: ``{status, posts_created, articles_created,
     sources_found, sources_used, queued, cost_cny, run_id, warnings}``.
     """
-    row = database.get_content_brief(brief_id)
+    row = database.get_content_brief_unscoped(brief_id)
     if not row:
-        if run_id is not None:
-            database.finalize_brief_run(run_id, status="error",
-                                        error_message=f"brief {brief_id} not found")
+        # No owner to finalize a pre-created run row with (finalize_brief_run
+        # is owner-scoped). Every caller holds a live brief and passes run_id
+        # only after creating it, so this path is effectively unreachable.
+        logger.error("run_brief: brief %s not found", brief_id)
         return {"status": "error", "error": "brief not found", "run_id": run_id}
 
     brief = _brief_to_dict(row)
+    owner = brief.get("user_id")
+    if not owner:
+        # Defensive: content rows are always owned (create_content_brief
+        # enforces it), so an ownerless brief is a data bug. Fail fast rather
+        # than writing NULL-owned drafts nobody can see.
+        raise ValueError(f"brief {brief_id} has no owner")
     lang = (lang or os.getenv("CONTENT_LANG") or "zh").strip().lower()
 
     # Context labels follow the brief's language, matching the research notes.
@@ -244,7 +253,7 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
             return prompts_zh.why_relevant(text)
         return f"Why this source is relevant: {text}"
     if run_id is None:
-        run_id = database.create_brief_run(brief_id, trigger=trigger)
+        run_id = database.create_brief_run(brief_id, owner, trigger=trigger)
 
     since_ts = _cost_snapshot()
     max_cost = float(brief.get("max_cost_cny") or 0) or None
@@ -278,6 +287,7 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
         rres = None
         if research_attempted:
             rbrief = research_engine.ResearchBrief(
+                user_id=owner,
                 topic=instructions,
                 keywords=brief["must_include_keywords"],
                 focus_domains=brief["focus_sources_domains"],
@@ -293,7 +303,9 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
             sources_found = len(rres.items)
 
         items = rres.items if rres else []
-        research_text = rres.research_brief if rres else ""
+        # The synthesis text is only consumed below alongside ``items``; read
+        # it off the result there (a research result always carries it).
+        research_text = rres.research_brief if items else ""
 
         # ── Social posts ─────────────────────────────────────────────────
         if want_posts and items:
@@ -323,7 +335,7 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
                     generated, platforms,
                     source_label=(item.url or brief["name"]),
                     image_url=item.image_url, brief_id=brief_id, run_id=run_id,
-                    remaining=max_drafts - len(post_ids),
+                    user_id=owner, remaining=max_drafts - len(post_ids),
                 )
                 post_ids.extend(ids)
                 if ids:
@@ -342,7 +354,7 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
                 post_ids.extend(_persist_posts(
                     generated, platforms, source_label=brief["name"],
                     image_url=None, brief_id=brief_id, run_id=run_id,
-                    remaining=max_drafts,
+                    user_id=owner, remaining=max_drafts,
                 ))
             except Exception:
                 logger.exception("prompt-only post generation failed for brief %s", brief_id)
@@ -380,6 +392,7 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
                 aid = database.add_article(
                     None, (instructions[:200] or item.title),
                     brief.get("article_style") or "blog", content,
+                    user_id=owner,
                     brief_id=brief_id, brief_run_id=run_id, source_type="agent",
                 )
                 article_ids.append(aid)
@@ -403,6 +416,7 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
                     aid = database.add_article(
                         None, (instructions[:200] or brief["name"]),
                         brief.get("article_style") or "blog", content,
+                        user_id=owner,
                         brief_id=brief_id, brief_run_id=run_id, source_type="agent",
                     )
                     article_ids.append(aid)
@@ -433,7 +447,7 @@ def run_brief(brief_id: int, *, trigger: str = "manual", run_id: int | None = No
 
     cost = _current_cost(since_ts)
     database.finalize_brief_run(
-        run_id, status=status,
+        run_id, owner, status=status,
         sources_found=sources_found, sources_used=sources_used,
         posts_created=len(post_ids), articles_created=len(article_ids),
         cost_cny=cost, error_message=err,

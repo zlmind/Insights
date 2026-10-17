@@ -57,6 +57,9 @@ _TRACKING = {
 class ResearchBrief:
     """Input to :func:`run_research` (parsed from a content_briefs row)."""
 
+    # Owner of the brief driving the research: saved-source reads and
+    # url_source writes below are scoped to this user.
+    user_id: int
     topic: str
     keywords: List[str] = field(default_factory=list)
     focus_domains: List[str] = field(default_factory=list)
@@ -325,7 +328,7 @@ def _web_hits_to_items(hits, brief, stats, warnings) -> List[SourceItem]:
         image = None
 
         # 1) Reuse cached url_sources content when present (no network).
-        cached = database.get_url_source_by_url(canon)
+        cached = database.get_url_source_by_url(canon, brief.user_id)
         if cached is not None:
             cd = dict(cached)
             if not text and cd.get("content"):
@@ -358,6 +361,7 @@ def _web_hits_to_items(hits, brief, stats, warnings) -> List[SourceItem]:
                 url=canon, title=h.title or canon,
                 description=(h.snippet or "")[:500],
                 content=text[:_MAX_TEXT], og_image=image,
+                user_id=brief.user_id,
             )
         except Exception:
             sid = None
@@ -382,7 +386,7 @@ def _gather_existing(brief) -> List[SourceItem]:
     items: List[SourceItem] = []
 
     try:
-        url_rows = database.list_url_sources()[:_CANDIDATE_CAP]
+        url_rows = database.list_url_sources(brief.user_id)[:_CANDIDATE_CAP]
     except Exception:
         url_rows = []
     for row in url_rows:
@@ -404,7 +408,7 @@ def _gather_existing(brief) -> List[SourceItem]:
         ))
 
     try:
-        ep_rows = database.list_all_episodes("published")[:_CANDIDATE_CAP]
+        ep_rows = database.list_all_episodes("published", brief.user_id)[:_CANDIDATE_CAP]
     except Exception:
         ep_rows = []
     for row in ep_rows:
@@ -427,12 +431,12 @@ def _gather_existing(brief) -> List[SourceItem]:
 
 # ── Stage 5: dedup + rank + select ──────────────────────────────────────────
 
-def _drop_already_posted(items: List[SourceItem], stats) -> List[SourceItem]:
+def _drop_already_posted(items: List[SourceItem], stats, brief: ResearchBrief) -> List[SourceItem]:
     urls = [it.url for it in items if it.url]
     if not urls:
         return items
     try:
-        counts = database.count_standalone_posts_by_source_urls(urls)
+        counts = database.count_standalone_posts_by_source_urls(urls, brief.user_id)
     except Exception:
         return items
     kept = []
@@ -576,7 +580,7 @@ def run_research(brief: ResearchBrief, *, use_local: bool = False) -> ResearchRe
         warnings.append("no_candidates")
         return ResearchResult(brief.topic, query_plan, "", [], stats, warnings)
 
-    candidates = _drop_already_posted(candidates, stats)
+    candidates = _drop_already_posted(candidates, stats, brief)
     selected = _score_and_select(candidates, brief, max_items)
     selected = _dedupe_titles(selected, stats)
 

@@ -7083,7 +7083,7 @@ def brief_run_now(brief_id):
             except Exception:
                 app.logger.exception("Manual brief run %s failed", brief_id)
                 try:
-                    finalize_brief_run(run_id, status='error', error_message='unhandled')
+                    finalize_brief_run(run_id, uid, status='error', error_message='unhandled')
                 except Exception:
                     pass
 
@@ -7156,12 +7156,20 @@ def content_agent_worker() -> None:
                 now_iso = datetime.now().isoformat(timespec="seconds")
                 for brief in get_due_content_briefs(now_iso):
                     bid = brief["id"]
-                    if get_active_brief_run(bid):
+                    owner_id = brief["user_id"]
+                    if owner_id is None:
+                        # Defensive: legacy ownerless briefs cannot produce an
+                        # attributed run (every content write is owner-scoped).
+                        # Log and skip; the row stays invisible to all users.
+                        app.logger.error(
+                            "Scheduled brief %s has no owner; run skipped", bid)
+                        continue
+                    if get_active_brief_run(bid, owner_id):
                         continue  # a manual run is already in flight
-                    run_id = create_brief_run(bid, trigger="scheduled")
+                    run_id = create_brief_run(bid, owner_id, trigger="scheduled")
                     # Attribute this brief's usage to its owner; legacy rows with
                     # a NULL user_id resolve to no override (events stay NULL).
-                    owner = get_user_by_id(brief["user_id"]) if brief["user_id"] is not None else None
+                    owner = get_user_by_id(owner_id) if owner_id is not None else None
                     try:
                         with usage_meter.user_context(
                             owner["id"] if owner else None,
@@ -7171,10 +7179,10 @@ def content_agent_worker() -> None:
                     except Exception:
                         app.logger.exception("Scheduled brief %s failed", bid)
                     finally:
-                        run = get_brief_run(run_id)
+                        run = get_brief_run(run_id, owner_id)
                         status = dict(run)["status"] if run else "error"
                         set_content_brief_schedule(
-                            bid, next_run_at=_compute_next_run_at(brief),
+                            bid, owner_id, next_run_at=_compute_next_run_at(brief),
                             last_run_at=now_iso, last_run_status=status,
                         )
             except Exception:
