@@ -2371,7 +2371,8 @@ def schedule_page():
         nxt_y, nxt_m = year, month + 1
     last = "%04d-%02d-01" % (nxt_y, nxt_m)
 
-    rows = database.list_scheduled_posts(date_from=first, date_to=last, sort_order='asc')
+    uid = current_user()['id']
+    rows = database.list_scheduled_posts(uid, date_from=first, date_to=last, sort_order='asc')
     PLATFORM_META = {
         'xiaohongshu': {'label': '小红书', 'color': '#FF2442'},
         'douyin':      {'label': '抖音',   'color': '#FE2C55'},
@@ -6252,9 +6253,10 @@ def compose_clear_all():
 @app.route('/sources')
 def sources_page():
     """Display saved URL sources."""
-    sources = list_url_sources()
+    uid = current_user()['id']
+    sources = list_url_sources(uid)
     post_counts = count_standalone_posts_by_source_urls(
-        [s['url'] for s in sources if s['url']]
+        [s['url'] for s in sources if s['url']], uid
     )
     sources_with_status = []
     for s in sources:
@@ -6262,7 +6264,7 @@ def sources_page():
         s_dict['is_youtube'] = is_youtube_url(s_dict.get('url', ''))
         s_dict['post_count'] = post_counts.get(s_dict.get('url', ''), 0)
         if s_dict['is_youtube']:
-            ep = get_episode(s_dict['url'])
+            ep = get_episode(s_dict['url'], uid)
             if ep:
                 s_dict['episode_status'] = ep['status']
                 s_dict['episode_id'] = ep['id']
@@ -6275,13 +6277,14 @@ def sources_page():
 @app.route('/sources/<int:source_id>/posts')
 def source_posts(source_id: int):
     """Return the standalone posts generated from a saved source as JSON."""
-    source = get_url_source(source_id)
+    uid = current_user()['id']
+    source = get_url_source(source_id, uid)
     if not source:
         return jsonify({"error": "Source not found"}), 404
 
-    posts = list_standalone_posts_by_source_url(source['url'])
+    posts = list_standalone_posts_by_source_url(source['url'], uid)
     post_ids = [p['id'] for p in posts]
-    posted_info = get_posted_info_for_standalone_posts(post_ids) if post_ids else {}
+    posted_info = get_posted_info_for_standalone_posts(post_ids, uid) if post_ids else {}
 
     result = []
     for p in posts:
@@ -6313,7 +6316,8 @@ def source_posts(source_id: int):
 def add_source():
     """Add a new URL source by extracting content from a URL."""
     import trafilatura
-    
+    uid = current_user()['id']
+
     # Accept URL from JSON or form data
     if request.is_json:
         url = request.json.get('url', '').strip()
@@ -6327,8 +6331,9 @@ def add_source():
     if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
     
-    # Check if URL already exists
-    existing = get_url_source_by_url(url)
+    # Check if URL already exists for this user; another user keeping their
+    # own row for the same URL is expected, not a conflict.
+    existing = get_url_source_by_url(url, uid)
     if existing:
         return jsonify({
             "error": "This URL has already been saved",
@@ -6353,6 +6358,7 @@ def add_source():
             source_id = add_url_source(
                 url=url, title=title,
                 description=description, content="", og_image=og_image,
+                user_id=uid,
             )
             return jsonify({
                 "success": True,
@@ -6445,6 +6451,7 @@ def add_source():
             description=description,
             content=body_content,
             og_image=og_image,
+            user_id=uid,
         )
         
         return jsonify({
@@ -6466,7 +6473,8 @@ def add_source():
 @app.route('/sources/<int:source_id>')
 def get_source(source_id: int):
     """Get a single URL source by ID."""
-    source = get_url_source(source_id)
+    uid = current_user()['id']
+    source = get_url_source(source_id, uid)
     if not source:
         return jsonify({"error": "Source not found"}), 404
     return jsonify(dict(source))
@@ -6474,32 +6482,34 @@ def get_source(source_id: int):
 @app.route('/sources/<int:source_id>', methods=['DELETE'])
 def delete_source(source_id: int):
     """Delete a URL source."""
-    source = get_url_source(source_id)
+    uid = current_user()['id']
+    source = get_url_source(source_id, uid)
     if not source:
         return jsonify({"error": "Source not found"}), 404
-    
-    deleted = delete_url_source(source_id)
+
+    deleted = delete_url_source(source_id, uid)
     return jsonify({"success": deleted})
 
 @app.route('/sources/<int:source_id>/transcribe', methods=['POST'])
 def transcribe_source(source_id: int):
     """Queue a YouTube source for background audio transcription."""
-    source = get_url_source(source_id)
+    uid = current_user()['id']
+    source = get_url_source(source_id, uid)
     if not source:
         return jsonify({"error": "Source not found"}), 404
     if not is_youtube_url(source['url']):
         return jsonify({"error": "Only YouTube sources can be transcribed"}), 400
-    existing = get_episode(source['url'])
+    existing = get_episode(source['url'], uid)
     if existing and existing['status'] in ('queued', 'processing'):
         return redirect(url_for('status_page'))
-    queue_episode(source['url'], source['title'] or source['url'], None, None)
+    queue_episode(source['url'], source['title'] or source['url'], None, None, user_id=uid)
     _user = current_user()
     task_queue.put({
         "url": source['url'],
         "title": source['title'] or source['url'],
         "feed_id": None,
         "published": None,
-        "user_id": _user['id'] if _user else None,
+        "user_id": uid,
         "username": _user['username'] if _user else None,
     })
     return redirect(url_for('status_page'))
@@ -6508,8 +6518,9 @@ def transcribe_source(source_id: int):
 def reextract_source(source_id: int):
     """Re-extract content from a URL source using improved extraction."""
     import trafilatura
-    
-    source = get_url_source(source_id)
+
+    uid = current_user()['id']
+    source = get_url_source(source_id, uid)
     if not source:
         return jsonify({"error": "Source not found"}), 404
     
@@ -6532,6 +6543,7 @@ def reextract_source(source_id: int):
                 og_image = f"https://img.youtube.com/vi/{video_id}/mqdefault.jpg"
             updated = update_url_source_content(
                 source_id=source_id,
+                user_id=uid,
                 title=title,
                 description=description,
                 content="",
@@ -6612,6 +6624,7 @@ def reextract_source(source_id: int):
         # Update the source in the database
         updated = update_url_source_content(
             source_id=source_id,
+            user_id=uid,
             title=title,
             description=description,
             content=body_content,
@@ -6807,6 +6820,8 @@ def thumbnails_generate():
     import base64 as b64module
     import uuid as uuid_mod
 
+    uid = current_user()['id']
+
     url = (request.form.get('url') or '').strip()
     aspect = request.form.get('aspect', '16:9')
     style = request.form.get('style', 'bold')
@@ -6848,6 +6863,7 @@ def thumbnails_generate():
             style=style,
             prompt=result["prompt"],
             image_relpath=image_relpath,
+            user_id=uid,
         )
 
         return jsonify({
@@ -6865,7 +6881,8 @@ def thumbnails_generate():
 @app.route('/thumbnails/saved')
 def thumbnails_saved_list():
     """Return all saved thumbnails as JSON."""
-    rows = list_generated_thumbnails(limit=100)
+    uid = current_user()['id']
+    rows = list_generated_thumbnails(uid, limit=100)
     items = []
     for r in rows:
         items.append({
@@ -6885,7 +6902,8 @@ def thumbnails_saved_list():
 @app.route('/thumbnails/saved/<int:thumb_id>', methods=['DELETE'])
 def thumbnails_saved_delete(thumb_id: int):
     """Delete a saved thumbnail (DB row + file on disk)."""
-    row = get_generated_thumbnail(thumb_id)
+    uid = current_user()['id']
+    row = get_generated_thumbnail(thumb_id, uid)
     if not row:
         return jsonify({"error": "Thumbnail not found"}), 404
 
@@ -6897,7 +6915,7 @@ def thumbnails_saved_delete(thumb_id: int):
         except OSError:
             app.logger.warning("Could not delete thumbnail file: %s", row["image_relpath"])
 
-    delete_generated_thumbnail(thumb_id)
+    delete_generated_thumbnail(thumb_id, uid)
     return jsonify({"success": True})
 
 def _backfill_youtube_channels_bg():
@@ -6954,8 +6972,9 @@ def _parse_brief_form(form) -> dict:
 @app.route('/briefs')
 def briefs_page():
     """List content briefs with their latest run status."""
+    uid = current_user()['id']
     briefs = []
-    for row in list_content_briefs():
+    for row in list_content_briefs(uid):
         d = dict(row)
         try:
             d['platforms_list'] = json.loads(d.get('platforms') or '[]')
@@ -6973,62 +6992,71 @@ def briefs_page():
             d['run_days_list'] = json.loads(d.get('run_days') or '[]')
         except Exception:
             d['run_days_list'] = []
-        runs = list_brief_runs(d['id'], limit=1)
+        runs = list_brief_runs(d['id'], uid, limit=1)
         d['last_run'] = dict(runs[0]) if runs else None
         briefs.append(d)
     return render_template('briefs.html', briefs=briefs)
 
 @app.route('/briefs/create', methods=['POST'])
 def brief_create():
+    uid = current_user()['id']
     data = _parse_brief_form(request.form)
     if not data['instructions']:
         return jsonify({"error": "Instructions (the prompt) are required"}), 400
     # Stamp the creator so the brief's AI usage (scheduled or manual) is
     # attributed to them on the /usage page.
-    data['user_id'] = current_user()['id']
+    data['user_id'] = uid
     brief_id = create_content_brief(**data)
     if data['cadence'] != 'manual':
-        set_content_brief_schedule(brief_id, next_run_at=_compute_next_run_at(get_content_brief(brief_id)))
+        set_content_brief_schedule(brief_id, uid, next_run_at=_compute_next_run_at(get_content_brief(brief_id, uid)))
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return jsonify({"success": True, "id": brief_id})
     return redirect(url_for('briefs_page'))
 
 @app.route('/briefs/<int:brief_id>/edit', methods=['POST'])
 def brief_edit(brief_id):
-    if not get_content_brief(brief_id):
+    uid = current_user()['id']
+    if not get_content_brief(brief_id, uid):
         return jsonify({"error": "Brief not found"}), 404
     data = _parse_brief_form(request.form)
-    update_content_brief(brief_id, **data)
-    next_at = _compute_next_run_at(get_content_brief(brief_id)) if data['cadence'] != 'manual' else None
-    set_content_brief_schedule(brief_id, next_run_at=next_at)
+    update_content_brief(brief_id, uid, **data)
+    next_at = _compute_next_run_at(get_content_brief(brief_id, uid)) if data['cadence'] != 'manual' else None
+    set_content_brief_schedule(brief_id, uid, next_run_at=next_at)
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return jsonify({"success": True, "id": brief_id})
     return redirect(url_for('briefs_page'))
 
 @app.route('/briefs/<int:brief_id>/delete', methods=['POST'])
 def brief_delete(brief_id):
-    delete_content_brief(brief_id)
+    uid = current_user()['id']
+    if not get_content_brief(brief_id, uid):
+        return jsonify({"error": "Brief not found"}), 404
+    delete_content_brief(brief_id, uid)
     return jsonify({"success": True})
 
 @app.route('/briefs/<int:brief_id>/toggle', methods=['POST'])
 def brief_toggle(brief_id):
-    brief = get_content_brief(brief_id)
+    uid = current_user()['id']
+    brief = get_content_brief(brief_id, uid)
     if not brief:
         return jsonify({"error": "Brief not found"}), 404
     enabled = request.form.get('enabled', 'true').lower() in ('1', 'true', 'yes', 'on')
-    set_content_brief_enabled(brief_id, enabled)
+    set_content_brief_enabled(brief_id, uid, enabled)
     if enabled and (dict(brief).get('cadence') or 'manual') != 'manual':
-        set_content_brief_schedule(brief_id, next_run_at=_compute_next_run_at(brief))
+        set_content_brief_schedule(brief_id, uid, next_run_at=_compute_next_run_at(brief))
     return jsonify({"success": True, "enabled": enabled})
 
 @app.route('/briefs/<int:brief_id>/run', methods=['POST'])
 def brief_run_now(brief_id):
     """Kick off an on-demand run in a background thread; UI polls for status."""
-    if not get_content_brief(brief_id):
+    uid = current_user()['id']
+    if not get_content_brief(brief_id, uid):
         return jsonify({"error": "Brief not found"}), 404
-    if get_active_brief_run(brief_id):
+    if get_active_brief_run(brief_id, uid):
         return jsonify({"error": "A run is already in progress for this brief"}), 409
-    run_id = create_brief_run(brief_id, trigger='manual')
+    # The runner is the brief's owner: the list is already scoped, so a user
+    # can only ever start runs on their own briefs.
+    run_id = create_brief_run(brief_id, uid, trigger='manual')
     run_lang = g.lang  # read in request context; the background thread has none
     runner = current_user()  # same: captured here so usage is attributed to them
 
@@ -7050,11 +7078,15 @@ def brief_run_now(brief_id):
 
 @app.route('/briefs/<int:brief_id>/runs')
 def brief_runs(brief_id):
-    return jsonify({"runs": [dict(r) for r in list_brief_runs(brief_id, limit=20)]})
+    uid = current_user()['id']
+    if not get_content_brief(brief_id, uid):
+        return jsonify({"error": "Brief not found"}), 404
+    return jsonify({"runs": [dict(r) for r in list_brief_runs(brief_id, uid, limit=20)]})
 
 @app.route('/briefs/runs/<int:run_id>')
 def brief_run_status(run_id):
-    run = get_brief_run(run_id)
+    uid = current_user()['id']
+    run = get_brief_run(run_id, uid)
     if not run:
         return jsonify({"error": "Run not found"}), 404
     return jsonify(dict(run))
