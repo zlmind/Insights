@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 
 DB_PATH = "insights.db"
 
-# Rebuild DDLs for the three tables born with `url TEXT UNIQUE`: column for
+# Rebuild DDLs for the tables born with `url TEXT UNIQUE`: column for
 # column the same as their CREATE TABLE in init_db (user_id included, no
 # UNIQUE on url), only created under a temporary _new name by the migration.
 _NEW_DDL = {
@@ -60,6 +60,18 @@ _NEW_DDL = {
             user_id INTEGER REFERENCES users(id)
         )
     """,
+    "uploaded_images": """
+        CREATE TABLE uploaded_images_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT,
+            url TEXT,
+            storage TEXT,
+            size INTEGER,
+            created_at TEXT,
+            media_type TEXT DEFAULT 'image',
+            user_id INTEGER REFERENCES users(id)
+        )
+    """,
 }
 
 # Explicit column lists for the copy step — named, not SELECT *, so the copy
@@ -70,6 +82,8 @@ _COPY_COLS = {
                  "status, published, processed_at, user_id"),
     "url_sources": ("id, url, title, description, content, og_image, "
                     "created_at, last_used_at, user_id"),
+    "uploaded_images": ("id, filename, url, storage, size, created_at, "
+                        "media_type, user_id"),
 }
 
 def init_db(db_path: str = DB_PATH) -> None:
@@ -316,14 +330,15 @@ def init_db(db_path: str = DB_PATH) -> None:
             """
         )
         # Uploaded images library - tracks images uploaded to Cloudinary or
-        # locally. url stays globally UNIQUE on purpose: filenames are UUIDs,
-        # so one row per URL is what add_uploaded_image dedupes on.
+        # locally. url is NOT globally unique: the same stock-image link can
+        # belong to two users as independent rows; add_uploaded_image dedupes
+        # per user on (url, user_id).
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS uploaded_images (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 filename TEXT,
-                url TEXT UNIQUE,
+                url TEXT,
                 storage TEXT,
                 size INTEGER,
                 created_at TEXT,
@@ -663,7 +678,7 @@ def init_db(db_path: str = DB_PATH) -> None:
         # rewrite those references onto the legacy name and leave them
         # dangling.
         # The rebuild below assumes connection-level PRAGMA foreign_keys stays OFF (project convention: it has never been enabled); if FKs are ever turned on, run `PRAGMA foreign_keys=OFF` before this migration.
-        for table in ("feeds", "episodes", "url_sources"):
+        for table in ("feeds", "episodes", "url_sources", "uploaded_images"):
             row = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
                 (table,)).fetchone()
@@ -3214,8 +3229,8 @@ def add_uploaded_image(
     uid = _require_user(user_id)
     created_at = datetime.utcnow().isoformat()
     with sqlite3.connect(db_path) as conn:
-        # Check if URL already exists for this user (avoid duplicates);
-        # the column-level UNIQUE on url keeps filenames (UUIDs) unique globally
+        # Check if URL already exists for this user (avoid duplicates); the
+        # same link stays independent per user, so dedupe is on (url, user_id)
         cur = conn.execute(
             "SELECT id FROM uploaded_images WHERE url = ? AND user_id = ?", (url, uid)
         )

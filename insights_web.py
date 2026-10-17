@@ -1348,12 +1348,13 @@ init_db()
 # Background processing queue used to process episodes without blocking the web request
 task_queue: Queue = Queue()
 
-def _backfill_youtube_source(url: str, transcript: str, summary: str) -> None:
+def _backfill_youtube_source(url: str, transcript: str, summary: str, user_id: int) -> None:
     """Update the matching URL source with the transcript after transcription."""
-    source = get_url_source_by_url(url)
+    source = get_url_source_by_url(url, user_id)
     if source:
         update_url_source_content(
             source['id'],
+            user_id,
             title=source['title'],
             description=summary,
             content=transcript,
@@ -1390,7 +1391,7 @@ def worker() -> None:
                         summary = summarize_text(transcript, lang=_worker_lang())
                         actions = extract_action_items(transcript, lang=_worker_lang())
                         save_episode(url, title, transcript, summary, actions, feed_id, published, channel=channel)
-                        _backfill_youtube_source(url, transcript, summary)
+                        _backfill_youtube_source(url, transcript, summary, item['user_id'])
                     finally:
                         if os.path.exists(audio_path):
                             os.remove(audio_path)
@@ -1875,9 +1876,10 @@ def remove_feed(feed_id: int):
 @app.route('/feeds/bulk-delete', methods=['POST'])
 def bulk_delete_feeds():
     """Delete multiple feeds at once."""
+    uid = current_user()['id']
     feed_ids = request.form.getlist('feed_ids', type=int)
     if feed_ids:
-        delete_feeds_bulk(feed_ids, current_user()['id'])
+        delete_feeds_bulk(feed_ids, uid)
     return redirect(url_for('index'))
 
 @app.route('/feed/<int:feed_id>/refresh')
@@ -2228,7 +2230,7 @@ def process_episode():
         save_episode(audio_url, title, transcript, summary, actions, feed_id, published, channel=channel,
                      user_id=uid)
         if is_youtube_url(audio_url):
-            _backfill_youtube_source(audio_url, transcript, summary)
+            _backfill_youtube_source(audio_url, transcript, summary, uid)
     finally:
         if os.path.exists(audio_path):
             os.remove(audio_path)
@@ -2537,9 +2539,10 @@ def delete_episode(episode_id: int):
 @app.route('/episodes/bulk-delete', methods=['POST'])
 def bulk_delete_episodes():
     """Delete multiple episodes at once."""
+    uid = current_user()['id']
     episode_ids = request.form.getlist('episode_ids', type=int)
     if episode_ids:
-        delete_episodes_bulk(episode_ids, current_user()['id'])
+        delete_episodes_bulk(episode_ids, uid)
     return redirect(url_for('status_page'))
 
 @app.route('/episodes/backfill-channels', methods=['POST'])
@@ -2579,7 +2582,7 @@ def create_article():
     is_text_source = not episode_url.lower().split('?')[0].endswith(audio_extensions)
 
     # Get the podcast/publication title for attribution
-    feed = get_feed_by_id(episode['feed_id']) if episode['feed_id'] else None
+    feed = get_feed_by_id(episode['feed_id'], uid) if episode['feed_id'] else None
     podcast_title = feed['title'] if feed else ("the publication" if is_text_source else "the podcast")
     episode_title = episode['title'] or ("this article" if is_text_source else "this episode")
 
@@ -2674,20 +2677,22 @@ def bulk_replace_posts():
     
     if post_type != 'standalone':
         return jsonify({"error": "post_type must be 'standalone'"}), 400
-    
+
+    uid = current_user()['id']
+
     # Convert post_ids to integers if provided
     if post_ids:
         try:
             post_ids = [int(pid) for pid in post_ids]
         except (ValueError, TypeError):
             return jsonify({"error": "Invalid post IDs"}), 400
-    
+
     try:
         affected_count = bulk_replace_post_content(
             find_text=find_text,
             replace_text=replace_text,
             post_type=post_type,
-            user_id=current_user()['id'],
+            user_id=uid,
             case_sensitive=case_sensitive,
             whole_word=whole_word,
             post_ids=post_ids,
@@ -2705,7 +2710,8 @@ def bulk_replace_posts():
 @app.route('/article/<int:article_id>/refine', methods=['POST'])
 def refine_article_with_ai(article_id: int):
     """Refine an article using AI based on user feedback."""
-    article = get_article(article_id, current_user()['id'])
+    uid = current_user()['id']
+    article = get_article(article_id, uid)
     if not article:
         return {"error": "Article not found"}, 404
 
@@ -2724,7 +2730,7 @@ def refine_article_with_ai(article_id: int):
         # Optionally auto-save the refined content
         auto_save = request.form.get('auto_save', 'false') == 'true'
         if auto_save:
-            update_article(article_id, current_user()['id'], content=refined_content)
+            update_article(article_id, uid, content=refined_content)
         
         return {"success": True, "refined_content": refined_content, "saved": auto_save}
     except Exception as exc:
