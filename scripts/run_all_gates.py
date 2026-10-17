@@ -300,8 +300,8 @@ IG_PEOPLE_GATES = [
 
 # Multi-user content isolation. One script, one gate per section, picked by
 # argument: the migration's schema guarantees, the data layer's per-user
-# scoping, and a static scan of database.py's SQL against the twelve content
-# tables. The e2e section (Task 16) joins the same script later.
+# scoping, a static scan of database.py's SQL against the twelve content
+# tables, and the two-account end-to-end pass over the real routes.
 ISOLATION_GATES = [
     ("check_content_isolation.py", "CONTENT_ISOLATION_SCHEMA_OK",
      "迁移幂等：12 表带 user_id，feeds/episodes/url_sources 复合唯一，同 URL 双用户各一行",
@@ -312,6 +312,9 @@ ISOLATION_GATES = [
     ("check_content_isolation.py", "CONTENT_ISOLATION_SCAN_OK",
      "database.py 内容表 SELECT 带 user 过滤、INSERT 带归属列（白名单除外）",
      ("scan",)),
+    ("check_content_isolation.py", "CONTENT_ISOLATION_E2E_OK",
+     "双账号端到端：新账号全页空、直访他人 404 同响应、存量 NULL 不可见、worker 产物归属、/activity /usage 视角",
+     ("e2e",)),
 ]
 
 # check_*.py files that are deliberately not gates, with the reason. Empty is the

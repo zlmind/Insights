@@ -1,8 +1,9 @@
-"""多用户内容隔离 gate：schema / data / scan 三节，各打印独立 token。
+"""多用户内容隔离 gate：schema / data / scan / e2e 四节，各打印独立 token。
 
     python scripts/check_content_isolation.py schema   CONTENT_ISOLATION_SCHEMA_OK
     python scripts/check_content_isolation.py data     CONTENT_ISOLATION_DATA_OK
     python scripts/check_content_isolation.py scan     CONTENT_ISOLATION_SCAN_OK
+    python scripts/check_content_isolation.py e2e      CONTENT_ISOLATION_E2E_OK
 
 ``schema`` 钉迁移本身：临时库 init_db 连跑两遍（幂等），12 张内容表全部带
 user_id 且无重复列；feeds/episodes/url_sources 各有 (url, user_id) 复合唯一
@@ -24,9 +25,18 @@ INTO）的函数，其 SQL 文本必须出现 user_id；INSERT 还要求列清�
 user_id。违例函数必须榜上有名（白名单），且白名单每一项都必须仍被命中——
 某天 SQL 补上了过滤，名单条目就该删掉，防止豁免名单腐化。
 
-三节都在临时目录/纯内存上运行：不联网、不触碰真实 insights.db。
+``e2e`` 钉端到端：双账号（admin 首号 + 新账号 B）走真路由跑九个场景——
+B 五页全空、直访他人四个详情路由 404 且响应体与不存在逐字节一致、同名
+prompt 的帖子各自可见、存量 NULL 行双方不可见且仍在库、/enqueue 与 brief
+跑批产物按操作者/主人归属、/activity /usage 非 admin 固定本人视角而
+admin 全景见双方、同一 URL 双用户 sources/feeds 各一行互不去重。迁移幂等
+由 schema 节钉死，e2e 不重复。抓网页面的两处（sources POST、add feed）
+在内存里替换 trafilatura / parse_feed_with_fallback，整节仍然不联网。
+
+四节都在临时目录/纯内存上运行：不联网、不触碰真实 insights.db。
 schema 节的核心断言抽在 ``_assert_content_schema``，scan 节抽在
-``_scan_violations``，供 mutation 测试在临时库/内存里直接驱动。
+``_scan_violations``，供 mutation 测试在临时库/内存里直接驱动；e2e 节
+经 ``section_e2e`` 可直接驱动，mutation 同样在内存里做归属破坏。
 """
 
 import ast
@@ -35,6 +45,7 @@ import re
 import sqlite3
 import sys
 import tempfile
+from datetime import datetime
 
 # 中文诊断信息按 UTF-8 直出：run_all_gates 以 UTF-8 解码子进程输出，Windows
 # 控制台默认代码页会把中文打成问号。
@@ -687,10 +698,235 @@ def section_scan():
     print("CONTENT_ISOLATION_SCAN_OK")
 
 
+# ── e2e 节 ───────────────────────────────────────────────────────────────────
+
+def section_e2e():
+    directory, database, web, publisher, client = isolated_app()
+
+    # ── 场景 1：admin（首号；create_user 无 is_admin 参数，直接 SQL 置 1）
+    # + 新账号 B。──
+    admin_id = database.get_user_by_username("gate")["id"]
+    with sqlite3.connect(database.DB_PATH) as conn:
+        conn.execute("UPDATE users SET is_admin = 1 WHERE id = ?", (admin_id,))
+        conn.commit()
+    check(database.get_user_by_id(admin_id, db_path=database.DB_PATH)["is_admin"] == 1,
+          "首号 gate 应被置为 admin")
+    uid_b = database.create_user("e2e_b", generate_password_hash("p"),
+                                 db_path=database.DB_PATH)
+    client_b = web.app.test_client()
+    with client_b.session_transaction() as session:
+        session["user_id"] = uid_b
+    print("INFO e2e 1/9 admin 首号 + 新账号 B 就绪")
+
+    a = dict(user_id=admin_id, db_path=database.DB_PATH)
+    b = dict(user_id=uid_b, db_path=database.DB_PATH)
+
+    def page(viewer, url):
+        response = viewer.get(url)
+        check(response.status_code == 200,
+              f"GET {url} 应 200，实为 {response.status_code}")
+        return response.get_data(as_text=True)
+
+    # admin 种子数据：每个列表页一枚独特标记，B 的任何页面一枚都不许见到。
+    feed_a = database.add_feed("https://admin.example/feed.xml",
+                               "ZXE2EFEED admin feed", **a)
+    art_a = database.add_article(None, "ZXE2EART admin topic", "blog",
+                                 "ZXE2EART admin body", **a)
+    post_a = database.add_standalone_post("freeform", "ZXE2EPROMPT", "xiaohongshu",
+                                          "ZXE2EPOST admin copy", **a)
+    database.create_content_brief("ZXE2EBRIEF admin brief", "i", **a)
+    src_a = database.add_url_source("https://admin.example/page", "ZXE2ESRC page",
+                                    "d", "admin body", **a)
+    now = datetime.now()
+    database.add_scheduled_post("%04d-%02d-28T09:00:00" % (now.year, now.month),
+                                "standalone", **a, standalone_post_id=post_a)
+
+    # ── 场景 2：B 登录后五页全空；正对照 admin 自己可见。──
+    markers = ("ZXE2EFEED", "ZXE2EART", "ZXE2EPOST", "ZXE2EBRIEF", "ZXE2ESRC")
+    for url in ("/", "/articles", "/compose", "/briefs", "/schedule"):
+        text = page(client_b, url)
+        for marker in markers:
+            check(marker not in text, f"B 的 {url} 泄漏了 admin 种子标记 {marker}")
+    check("ZXE2EFEED" in page(client, "/"), "正对照：admin 首页应见自己的 feed")
+    check("ZXE2EPOST" in page(client, "/compose"),
+          "正对照：admin 的 /compose 应见自己的帖")
+    print("INFO e2e 2/9 B 五页全空，admin 种子零泄漏（admin 正对照可见）")
+
+    # ── 场景 3：B 直访 admin 的四个详情路由 → 404，且与访问不存在的 id
+    # 响应体逐字节一致（不泄露存在性）。──
+    missing = 999999999
+    for template, row_id in (("/article/{}", art_a), ("/sources/{}", src_a),
+                             ("/feed/{}", feed_a), ("/compose/post/{}", post_a)):
+        r_other = client_b.get(template.format(row_id))
+        r_none = client_b.get(template.format(missing))
+        check(r_other.status_code == 404 and r_none.status_code == 404,
+              f"{template} 跨用户与缺失都应 404"
+              f"（{r_other.status_code}/{r_none.status_code}）")
+        check(r_other.get_data() == r_none.get_data(),
+              f"{template} 的跨用户 404 响应必须与不存在逐字节一致")
+    print("INFO e2e 3/9 直访他人 article/sources/feed/compose post 均 404 且与不存在同响应体")
+
+    # ── 场景 4：双账号各建同名 prompt 的帖子，/compose 各自只见自己的。──
+    database.add_standalone_post("freeform", "ZXE2ESHAREDPROMPT 同名提示",
+                                 "xiaohongshu", "ZXE2EACOPY A 的同名帖", **a)
+    database.add_standalone_post("freeform", "ZXE2ESHAREDPROMPT 同名提示",
+                                 "xiaohongshu", "ZXE2EBCOPY B 的同名帖", **b)
+    compose_a = page(client, "/compose")
+    compose_b = page(client_b, "/compose")
+    check("ZXE2EACOPY" in compose_a and "ZXE2EBCOPY" not in compose_a,
+          "同名 prompt 下 A 的 /compose 只应见自己的帖")
+    check("ZXE2EBCOPY" in compose_b and "ZXE2EACOPY" not in compose_b,
+          "同名 prompt 下 B 的 /compose 只应见自己的帖")
+    print("INFO e2e 4/9 同名 prompt 双账号各见各帖")
+
+    # ── 场景 5：存量 NULL——种子行后 SQL 置 user_id=NULL，双方列表/详情
+    # 均不可见，行仍在库。──
+    null_post = database.add_standalone_post("freeform", "ZXE2ENULL prompt",
+                                             "xiaohongshu", "ZXE2ENULLPOST 无主帖",
+                                             **a)
+    null_feed = database.add_feed("https://null.example/e2e.xml", "ZXE2ENULLFEED", **a)
+    with sqlite3.connect(database.DB_PATH) as conn:
+        conn.execute("UPDATE standalone_posts SET user_id = NULL WHERE id = ?",
+                     (null_post,))
+        conn.execute("UPDATE feeds SET user_id = NULL WHERE id = ?", (null_feed,))
+        conn.commit()
+    for viewer, who in ((client, "admin"), (client_b, "B")):
+        check("ZXE2ENULLPOST" not in page(viewer, "/compose"),
+              f"{who} 的 /compose 不得出现无主帖")
+        check("ZXE2ENULLFEED" not in page(viewer, "/"),
+              f"{who} 的首页不得出现无主 feed")
+        r = viewer.get(f"/compose/post/{null_post}")
+        check(r.status_code == 404, f"{who} 直访无主帖详情应 404（{r.status_code}）")
+    with sqlite3.connect(database.DB_PATH) as conn:
+        kept = (conn.execute("SELECT COUNT(*) FROM standalone_posts "
+                             "WHERE id = ? AND user_id IS NULL",
+                             (null_post,)).fetchone()[0],
+                conn.execute("SELECT COUNT(*) FROM feeds "
+                             "WHERE id = ? AND user_id IS NULL",
+                             (null_feed,)).fetchone()[0])
+    check(kept == (1, 1), f"无主行必须仍在库且保持无主（{kept}）")
+    print("INFO e2e 5/9 存量 NULL 对双方不可见且行仍在库")
+
+    # ── 场景 6：worker 产物归属——admin/B 各自 /enqueue 入队 episode 归各自；
+    # B 借 admin 的 feed_id 入队 404；brief 跑批产物归 brief 主人（Task 13 的
+    # 假 generate 路径：不联网、不跑真模型）。──
+    check(client.get(f"/enqueue?url=https://admin.example/ep.mp3"
+                     f"&title=ZXE2EEP&feed_id={feed_a}").status_code == 302,
+          "admin 入队自己的 feed 应 302")
+    ep_a_row = database.get_episode("https://admin.example/ep.mp3", **a)
+    check(ep_a_row is not None and ep_a_row["user_id"] == admin_id,
+          "admin 入队的 episode 应归属 admin")
+    check(client_b.get(f"/enqueue?url=https://x.example/e.mp3&title=t"
+                       f"&feed_id={feed_a}").status_code == 404,
+          "B 借 admin 的 feed_id 入队应 404")
+    feed_b = database.add_feed("https://b.example/own.xml", "B own feed", **b)
+    check(client_b.get(f"/enqueue?url=https://b.example/ep.mp3&title=ZXE2EEPB"
+                       f"&feed_id={feed_b}").status_code == 302,
+          "B 入队自己的 feed 应 302")
+    ep_b_row = database.get_episode("https://b.example/ep.mp3", **b)
+    check(ep_b_row is not None and ep_b_row["user_id"] == uid_b,
+          "B 入队的 episode 应归属 B")
+
+    import content_agent
+    import insights
+    import research_engine
+    research_engine.run_research = lambda brief, use_local=False: type(
+        "R", (), {"items": [], "warnings": ["no_candidates"], "query_plan": []})()
+    insights.generate_posts_from_prompt = lambda **kw: {
+        "wechat": "ZXE2EBRIEFGEN 生成的帖子"}
+    bid_b = database.create_content_brief("ZXE2ERUN brief", "do posts",
+                                          content_type="posts", **b)
+    summary = content_agent.run_brief(bid_b, trigger="scheduled")
+    check(summary.get("posts_created") == 1, f"brief 跑批应产 1 帖（{summary}）")
+    owned = [row for row in
+             database.list_standalone_posts(uid_b, db_path=database.DB_PATH)
+             if row["brief_id"] == bid_b]
+    check(len(owned) == 1 and owned[0]["user_id"] == uid_b,
+          "brief 跑批产物应恰 1 帖且归属 brief 主人 B")
+    check(all(row["brief_id"] != bid_b
+              for row in database.list_standalone_posts(admin_id,
+                                                        db_path=database.DB_PATH)),
+          "brief 跑批不得产出 admin 视角的孤儿帖")
+    print("INFO e2e 6/9 episode 与 brief 跑批产物均按操作者/brief 主人归属")
+
+    # ── 场景 7：/activity /usage 视角——B 带 ?user_id=<admin>&scope=all 仍只
+    # 见自己；admin 全景见双方。──
+    database.log_activity("zx_e2e_act", user_id=admin_id, username="gate",
+                          path="/zx-e2e-a", db_path=database.DB_PATH)
+    database.log_activity("zx_e2e_act", user_id=uid_b, username="e2e_b",
+                          path="/zx-e2e-b", db_path=database.DB_PATH)
+    database.log_usage(mode="proactive", category="compose", provider="gate",
+                       model="zx-e2e-model-a", user_id=admin_id, username="gate",
+                       db_path=database.DB_PATH)
+    database.log_usage(mode="proactive", category="compose", provider="gate",
+                       model="zx-e2e-model-b", user_id=uid_b, username="e2e_b",
+                       db_path=database.DB_PATH)
+    activity_b = page(client_b, f"/activity?user_id={admin_id}")
+    check("/zx-e2e-b" in activity_b and "/zx-e2e-a" not in activity_b,
+          "B 的 /activity 应固定本人视角（user_id 参数必须被忽略）")
+    activity_admin = page(client, "/activity?scope=all")
+    check("/zx-e2e-a" in activity_admin and "/zx-e2e-b" in activity_admin,
+          "admin 的 /activity 应见双方")
+    usage_b = page(client_b, f"/usage?user_id={admin_id}&scope=all")
+    check("zx-e2e-model-b" in usage_b and "zx-e2e-model-a" not in usage_b,
+          "B 的 /usage scope=all 应退回本人视角")
+    usage_admin = page(client, "/usage?scope=all")
+    check("zx-e2e-model-a" in usage_admin and "zx-e2e-model-b" in usage_admin,
+          "admin 的 /usage?scope=all 应见双方")
+    print("INFO e2e 7/9 /activity /usage：非 admin 固定本人，admin 全景见双方")
+
+    # ── 场景 8：同一 URL 双用户互不去重——sources POST 与 add feed 各自一行，
+    # 各自页面只见自己那行。抓网两处在内存里打桩，本节不联网。──
+    import trafilatura
+    trafilatura.fetch_url = lambda url: "<html><title>ZXE2ESHAREDSRC</title></html>"
+    trafilatura.extract = lambda html, **kw: "shared body"
+    trafilatura.extract_metadata = lambda html: type(
+        "M", (), {"title": "ZXE2ESHAREDSRC page", "description": "d",
+                  "image": None})()
+
+    shared_page = "https://shared.example/page"
+    check(client.post("/sources", data={"url": shared_page}).status_code == 200,
+          "A 存 shared URL 应成功")
+    seen_a = page(client, "/sources").count("ZXE2ESHAREDSRC page")
+    check(seen_a >= 1, "A 的 /sources 应显示自己的一行")
+    check(client_b.post("/sources", data={"url": shared_page}).status_code == 200,
+          "B 存同一 URL 应成功（不得被全局去重 409）")
+    check(_count(database.DB_PATH, "url_sources", "url", shared_page) == 2,
+          "同一 URL 双用户应各一行（sources）")
+    check(page(client, "/sources").count("ZXE2ESHAREDSRC page") == seen_a,
+          "A 的 /sources 行数不得因 B 的添加而变化")
+    check(page(client_b, "/sources").count("ZXE2ESHAREDSRC page") == seen_a,
+          "B 的 /sources 应恰见自己的那一行")
+
+    web.parse_feed_with_fallback = lambda url: type(
+        "F", (), {"feed": {"title": "ZXE2ESHAREDFEED"}, "entries": []})()
+    shared_rss = "https://shared.example/rss.xml"
+    check(client.post("/", data={"feed_url": shared_rss}).status_code == 302,
+          "A 加 shared RSS 应 302")
+    feeds_a = page(client, "/").count("ZXE2ESHAREDFEED")
+    check(feeds_a >= 1, "A 的首页应显示自己的 feed")
+    check(client_b.post("/", data={"feed_url": shared_rss}).status_code == 302,
+          "B 加同一 RSS 应 302")
+    check(_count(database.DB_PATH, "feeds", "url", shared_rss) == 2,
+          "同一 RSS 双用户应各一行（feeds）")
+    check(page(client, "/").count("ZXE2ESHAREDFEED") == feeds_a,
+          "A 的首页行数不得因 B 的添加而变化")
+    check(page(client_b, "/").count("ZXE2ESHAREDFEED") == feeds_a,
+          "B 的首页应恰见自己的那一行")
+    print("INFO e2e 8/9 同一 URL/RSS 双用户各一行、各见各行")
+
+    # 场景 9（迁移幂等）由 schema 节钉死，e2e 不重复。
+    print("双账号端到端：新账号全页空、跨用户 404 同响应、同名 prompt 各见各帖、"
+          "存量 NULL 不可见仍在库、episode/brief 产物按主人归属、"
+          "/activity /usage 视角正确、同 URL 各行各见（迁移幂等在 schema 节）")
+    print("CONTENT_ISOLATION_E2E_OK")
+
+
 SECTIONS = {
     "schema": section_schema,
     "data": section_data,
     "scan": section_scan,
+    "e2e": section_e2e,
 }
 
 if __name__ == "__main__":
