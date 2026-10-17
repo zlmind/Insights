@@ -7,12 +7,70 @@ web interface. Each function wraps a query so callers don't need to know SQL.
 from __future__ import annotations
 
 import json
+import re
 import secrets
 import sqlite3
 from typing import Dict, Iterable, Optional, List
 from datetime import datetime, timedelta
 
 DB_PATH = "insights.db"
+
+# Rebuild DDLs for the three tables born with `url TEXT UNIQUE`: column for
+# column the same as their CREATE TABLE in init_db (user_id included, no
+# UNIQUE on url), only created under a temporary _new name by the migration.
+_NEW_DDL = {
+    "feeds": """
+        CREATE TABLE feeds_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT,
+            title TEXT,
+            feed_type TEXT,
+            last_post TEXT,
+            item_count INTEGER,
+            last_checked TEXT,
+            user_id INTEGER REFERENCES users(id)
+        )
+    """,
+    "episodes": """
+        CREATE TABLE episodes_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            feed_id INTEGER,
+            url TEXT,
+            title TEXT,
+            transcript TEXT,
+            summary TEXT,
+            action_items TEXT,
+            status TEXT,
+            published TEXT,
+            processed_at TEXT,
+            user_id INTEGER REFERENCES users(id),
+            FOREIGN KEY(feed_id) REFERENCES feeds(id)
+        )
+    """,
+    "url_sources": """
+        CREATE TABLE url_sources_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT,
+            title TEXT,
+            description TEXT,
+            content TEXT,
+            og_image TEXT,
+            created_at TEXT,
+            last_used_at TEXT,
+            user_id INTEGER REFERENCES users(id)
+        )
+    """,
+}
+
+# Explicit column lists for the copy step — named, not SELECT *, so the copy
+# is independent of physical column order.
+_COPY_COLS = {
+    "feeds": "id, url, title, feed_type, last_post, item_count, last_checked, user_id",
+    "episodes": ("id, feed_id, url, title, transcript, summary, action_items, "
+                 "status, published, processed_at, user_id"),
+    "url_sources": ("id, url, title, description, content, og_image, "
+                    "created_at, last_used_at, user_id"),
+}
 
 def init_db(db_path: str = DB_PATH) -> None:
     """Create tables if the database file is empty."""
@@ -22,12 +80,13 @@ def init_db(db_path: str = DB_PATH) -> None:
             """
             CREATE TABLE IF NOT EXISTS feeds (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                url TEXT UNIQUE,
+                url TEXT,
                 title TEXT,
                 feed_type TEXT,
                 last_post TEXT,
                 item_count INTEGER,
-                last_checked TEXT
+                last_checked TEXT,
+                user_id INTEGER REFERENCES users(id)
             )
             """
         )
@@ -48,7 +107,7 @@ def init_db(db_path: str = DB_PATH) -> None:
             CREATE TABLE IF NOT EXISTS episodes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 feed_id INTEGER,
-                url TEXT UNIQUE,
+                url TEXT,
                 title TEXT,
                 transcript TEXT,
                 summary TEXT,
@@ -56,6 +115,7 @@ def init_db(db_path: str = DB_PATH) -> None:
                 status TEXT,
                 published TEXT,
                 processed_at TEXT,
+                user_id INTEGER REFERENCES users(id),
                 FOREIGN KEY(feed_id) REFERENCES feeds(id)
             )
             """
@@ -244,17 +304,20 @@ def init_db(db_path: str = DB_PATH) -> None:
             """
             CREATE TABLE IF NOT EXISTS url_sources (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                url TEXT UNIQUE,
+                url TEXT,
                 title TEXT,
                 description TEXT,
                 content TEXT,
                 og_image TEXT,
                 created_at TEXT,
-                last_used_at TEXT
+                last_used_at TEXT,
+                user_id INTEGER REFERENCES users(id)
             )
             """
         )
-        # Uploaded images library - tracks images uploaded to Cloudinary or locally
+        # Uploaded images library - tracks images uploaded to Cloudinary or
+        # locally. url stays globally UNIQUE on purpose: filenames are UUIDs,
+        # so one row per URL is what add_uploaded_image dedupes on.
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS uploaded_images (
@@ -264,7 +327,8 @@ def init_db(db_path: str = DB_PATH) -> None:
                 storage TEXT,
                 size INTEGER,
                 created_at TEXT,
-                media_type TEXT DEFAULT 'image'
+                media_type TEXT DEFAULT 'image',
+                user_id INTEGER REFERENCES users(id)
             )
             """
         )
@@ -573,6 +637,59 @@ def init_db(db_path: str = DB_PATH) -> None:
                     "UPDATE users SET is_admin = 1 "
                     "WHERE id = (SELECT MIN(id) FROM users)"
                 )
+
+        # ── Multi-user content scoping: nullable ownership on every content table ──
+        # Rows written before users existed stay ownerless (user_id NULL);
+        # nothing is backfilled.
+        _CONTENT_TABLES = ("feeds", "episodes", "articles", "social_posts",
+                           "standalone_posts", "url_sources", "uploaded_images",
+                           "generated_thumbnails", "prompt_library",
+                           "content_brief_runs", "scheduled_posts")
+        for table in _CONTENT_TABLES:
+            cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+            if cols and "user_id" not in cols:
+                conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN user_id INTEGER REFERENCES users(id)")
+
+        # feeds/episodes/url_sources were born with `url TEXT UNIQUE` — a
+        # table-level constraint SQLite cannot drop (its autoindex has no
+        # name). Rebuild each table by the official 12-step recipe when the
+        # old definition is still in sqlite_master; the composite unique
+        # indexes below then let two users hold the same URL as independent
+        # rows. Rows carry over untouched, user_id stays NULL. Create-new,
+        # copy, drop-old, rename is the order that keeps other tables'
+        # FOREIGN KEY references (episodes→feeds, articles→episodes) pointing
+        # at the real name throughout — a plain RENAME of the old table would
+        # rewrite those references onto the legacy name and leave them
+        # dangling.
+        for table in ("feeds", "episodes", "url_sources"):
+            row = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+                (table,)).fetchone()
+            if not row or not re.search(r"url\s+TEXT\s+UNIQUE", row[0] or "", re.I):
+                continue
+            conn.execute(f"DROP TABLE IF EXISTS {table}_new")
+            conn.execute(_NEW_DDL[table])
+            conn.execute(f"INSERT INTO {table}_new ({_COPY_COLS[table]}) "
+                         f"SELECT {_COPY_COLS[table]} FROM {table}")
+            conn.execute(f"DROP TABLE {table}")
+            conn.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
+
+        for stmt in (
+            # Same URL twice only across users, never within one.
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_feeds_url_user "
+            "ON feeds(url, user_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_episodes_url_user "
+            "ON episodes(url, user_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_url_sources_url_user "
+            "ON url_sources(url, user_id)",
+            # Per-user listing on the busiest tables.
+            "CREATE INDEX IF NOT EXISTS idx_articles_user ON articles(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_standalone_posts_user "
+            "ON standalone_posts(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_episodes_user ON episodes(user_id)",
+        ):
+            conn.execute(stmt)
 
         # Instance-wide settings set from the /settings page by an admin.
         # Reads fall back to environment variables, so an existing .env keeps
