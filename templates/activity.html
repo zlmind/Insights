@@ -5,6 +5,7 @@
 {% block content %}
 <div class="filter-bar">
     <form method="get" action="{{ url_for('activity_page') }}" class="row g-2 align-items-end">
+        {% if current_user and current_user['is_admin'] %}
         <div class="col-md-2">
             <label class="form-label" for="user_id">User</label>
             <select id="user_id" name="user_id" class="form-select">
@@ -14,6 +15,7 @@
                 {% endfor %}
             </select>
         </div>
+        {% endif %}
         <div class="col-md-3">
             <label class="form-label" for="action">Action contains</label>
             <input type="text" id="action" name="action" list="action-options" class="form-control"

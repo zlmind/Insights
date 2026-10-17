@@ -698,10 +698,13 @@ def instance_settings():
 
 def _parse_activity_filters():
     """Pull and normalize filter params from the querystring."""
+    user = current_user()
     raw_user = request.args.get("user_id") or ""
-    user_id: int | None = None
-    if raw_user.isdigit():
-        user_id = int(raw_user)
+    requested = int(raw_user) if raw_user.isdigit() else None
+    if user and not user["is_admin"]:
+        user_id = user["id"]        # 非 admin 固定本人视角；请求参数一律忽略
+    else:
+        user_id = requested         # admin：按参数筛选，不带参数看全部
 
     action = (request.args.get("action") or "").strip() or None
     start = (request.args.get("start") or "").strip() or None
