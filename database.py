@@ -1523,6 +1523,7 @@ def bulk_replace_post_content(
 def add_scheduled_post(
     scheduled_for: str,
     post_type: str,
+    user_id: int,
     social_post_id: int | None = None,
     article_id: int | None = None,
     standalone_post_id: int | None = None,
@@ -1540,6 +1541,7 @@ def add_scheduled_post(
     later, which is what lets two accounts on the same platform sit in the queue
     side by side.
     """
+    uid = _require_user(user_id)
     created_at = datetime.utcnow().isoformat(timespec="seconds")
     posted_at = created_at if status == "posted" else None
     if account_id is None:
@@ -1548,18 +1550,19 @@ def add_scheduled_post(
         cur = conn.execute(
             """
             INSERT INTO scheduled_posts
-                (social_post_id, article_id, standalone_post_id, post_type, platform, scheduled_for,
-                 status, linkedin_post_urn, created_at, posted_at, account_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (social_post_id, article_id, standalone_post_id, post_type, user_id, platform,
+                 scheduled_for, status, linkedin_post_urn, created_at, posted_at, account_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (social_post_id, article_id, standalone_post_id, post_type, platform, scheduled_for, 
-             status, linkedin_post_urn, created_at, posted_at, account_id),
+            (social_post_id, article_id, standalone_post_id, post_type, uid, platform,
+             scheduled_for, status, linkedin_post_urn, created_at, posted_at, account_id),
         )
         conn.commit()
         return cur.lastrowid
 
-def get_scheduled_post(scheduled_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+def get_scheduled_post(scheduled_id: int, user_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Get a single scheduled post by id with joined content data."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
@@ -1579,20 +1582,21 @@ def get_scheduled_post(scheduled_id: int, db_path: str = DB_PATH) -> Optional[sq
             LEFT JOIN social_posts soc ON sp.social_post_id = soc.id
             LEFT JOIN articles a ON sp.article_id = a.id
             LEFT JOIN standalone_posts st ON sp.standalone_post_id = st.id
-            WHERE sp.id = ?
+            WHERE sp.id = ? AND sp.user_id = ?
             """,
-            (scheduled_id,),
+            (scheduled_id, uid),
         )
         return cur.fetchone()
 
-def get_pending_schedules_for_social_posts(social_post_ids: List[int], db_path: str = DB_PATH) -> dict:
+def get_pending_schedules_for_social_posts(social_post_ids: List[int], user_id: int, db_path: str = DB_PATH) -> dict:
     """Get pending scheduled posts for a list of social post IDs.
-    
+
     Returns a dict mapping social_post_id -> list of {platform, scheduled_for} dicts
     """
+    uid = _require_user(user_id)
     if not social_post_ids:
         return {}
-    
+
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         placeholders = ",".join("?" for _ in social_post_ids)
@@ -1602,9 +1606,10 @@ def get_pending_schedules_for_social_posts(social_post_ids: List[int], db_path: 
             FROM scheduled_posts
             WHERE social_post_id IN ({placeholders})
             AND status = 'pending'
+            AND user_id = ?
             ORDER BY scheduled_for ASC
             """,
-            social_post_ids,
+            [*social_post_ids, uid],
         )
         
         result = {}
@@ -1618,14 +1623,15 @@ def get_pending_schedules_for_social_posts(social_post_ids: List[int], db_path: 
             })
         return result
 
-def get_pending_schedules_for_standalone_posts(standalone_post_ids: List[int], db_path: str = DB_PATH) -> dict:
+def get_pending_schedules_for_standalone_posts(standalone_post_ids: List[int], user_id: int, db_path: str = DB_PATH) -> dict:
     """Get pending scheduled posts for a list of standalone post IDs.
-    
+
     Returns a dict mapping standalone_post_id -> {platform: scheduled_for}
     """
+    uid = _require_user(user_id)
     if not standalone_post_ids:
         return {}
-    
+
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         placeholders = ",".join("?" for _ in standalone_post_ids)
@@ -1635,9 +1641,10 @@ def get_pending_schedules_for_standalone_posts(standalone_post_ids: List[int], d
             FROM scheduled_posts
             WHERE standalone_post_id IN ({placeholders})
             AND status = 'pending'
+            AND user_id = ?
             ORDER BY scheduled_for ASC
             """,
-            standalone_post_ids,
+            [*standalone_post_ids, uid],
         )
         
         result = {}
@@ -1649,13 +1656,14 @@ def get_pending_schedules_for_standalone_posts(standalone_post_ids: List[int], d
             result[post_id][row['platform']] = row['scheduled_for']
         return result
 
-def get_pending_schedule_ids_for_standalone_posts(standalone_post_ids: List[int], db_path: str = DB_PATH) -> dict:
+def get_pending_schedule_ids_for_standalone_posts(standalone_post_ids: List[int], user_id: int, db_path: str = DB_PATH) -> dict:
     """Map standalone_post_id -> [ids of its pending scheduled_posts entries].
 
     The entries themselves, not just when they run, so a caller that deletes a
     saved post can take its queue entries with it: deleting the post alone
     leaves a pending entry pointing at nothing.
     """
+    uid = _require_user(user_id)
     if not standalone_post_ids:
         return {}
 
@@ -1667,23 +1675,25 @@ def get_pending_schedule_ids_for_standalone_posts(standalone_post_ids: List[int]
             FROM scheduled_posts
             WHERE standalone_post_id IN ({placeholders})
             AND status = 'pending'
+            AND user_id = ?
             """,
-            list(standalone_post_ids),
+            [*standalone_post_ids, uid],
         )
         result = {}
         for post_id, scheduled_id in cur.fetchall():
             result.setdefault(post_id, []).append(scheduled_id)
         return result
 
-def get_posted_info_for_standalone_posts(standalone_post_ids: List[int], db_path: str = DB_PATH) -> dict:
+def get_posted_info_for_standalone_posts(standalone_post_ids: List[int], user_id: int, db_path: str = DB_PATH) -> dict:
     """Get posted info for a list of standalone post IDs.
-    
+
     Returns a dict mapping standalone_post_id -> {platform: {url, posted_at}}
     Only includes posts that have been successfully posted.
     """
+    uid = _require_user(user_id)
     if not standalone_post_ids:
         return {}
-    
+
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         placeholders = ",".join("?" for _ in standalone_post_ids)
@@ -1693,9 +1703,10 @@ def get_posted_info_for_standalone_posts(standalone_post_ids: List[int], db_path
             FROM scheduled_posts
             WHERE standalone_post_id IN ({placeholders})
             AND status = 'posted'
+            AND user_id = ?
             ORDER BY posted_at DESC
             """,
-            standalone_post_ids,
+            [*standalone_post_ids, uid],
         )
         
         result = {}
@@ -1716,6 +1727,7 @@ def get_posted_info_for_standalone_posts(standalone_post_ids: List[int], db_path
         return result
 
 def list_scheduled_posts(
+    user_id: int,
     status: str | None = None,
     platform: str | None = None,
     date_from: str | None = None,
@@ -1723,9 +1735,10 @@ def list_scheduled_posts(
     sort_order: str = 'asc',
     db_path: str = DB_PATH,
 ) -> List[sqlite3.Row]:
-    """List scheduled posts with optional filtering.
-    
+    """List a user's scheduled posts with optional filtering.
+
     Args:
+        user_id: Owner of the queue entries
         status: Filter by post status (pending, posted, failed, cancelled)
         platform: Filter by platform (e.g. 'xiaohongshu', 'douyin')
         date_from: Filter posts scheduled on or after this date (YYYY-MM-DD)
@@ -1733,10 +1746,11 @@ def list_scheduled_posts(
         sort_order: Sort order for scheduled_for column ('asc' or 'desc')
         db_path: Database path
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         query = """
-            SELECT sp.*, 
+            SELECT sp.*,
                    soc.content AS social_content, soc.platform AS social_platform,
                    soc.image_url AS social_image_url,
                    a.topic AS article_topic, a.content AS article_content,
@@ -1752,7 +1766,8 @@ def list_scheduled_posts(
             LEFT JOIN standalone_posts st ON sp.standalone_post_id = st.id
             WHERE 1=1
         """
-        params = []
+        params = [uid]
+        query += " AND sp.user_id = ?"
 
         if status:
             query += " AND sp.status = ?"
@@ -1827,18 +1842,20 @@ def group_scheduled_rows(rows):
             groups.append(group)
     return [group['rows'] for group in groups]
 
-def get_scheduled_group_ids(scheduled_id: int, db_path: str = DB_PATH) -> List[int]:
+def get_scheduled_group_ids(scheduled_id: int, user_id: int, db_path: str = DB_PATH) -> List[int]:
     """The ids of every queue entry shown in one row with ``scheduled_id``.
 
     A row that does not exist (or has no copies) is its own group.
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         found = conn.execute(
-            "SELECT status FROM scheduled_posts WHERE id = ?", (scheduled_id,)
+            "SELECT status FROM scheduled_posts WHERE id = ? AND user_id = ?",
+            (scheduled_id, uid),
         ).fetchone()
     if not found:
         return [scheduled_id]
-    for group in group_scheduled_rows(list_scheduled_posts(status=found[0], db_path=db_path)):
+    for group in group_scheduled_rows(list_scheduled_posts(uid, status=found[0], db_path=db_path)):
         ids = [row['id'] for row in group]
         if scheduled_id in ids:
             return ids
@@ -1846,8 +1863,12 @@ def get_scheduled_group_ids(scheduled_id: int, db_path: str = DB_PATH) -> List[i
 
 def get_pending_scheduled_posts(db_path: str = DB_PATH) -> List[sqlite3.Row]:
     """Get all pending scheduled posts that are due (scheduled_for <= now).
-    
+
     Uses local time since time slots are configured in local time by users.
+
+    Deliberately unscoped: this is the publisher's consumption queue — it reads
+    every owner's due entries so they publish on their global time slots; each
+    row's user_id, not a filter, is what ties a due entry back to its owner.
     """
     now = datetime.now().isoformat(timespec="seconds")
     with sqlite3.connect(db_path) as conn:
@@ -1878,26 +1899,28 @@ def get_pending_scheduled_posts(db_path: str = DB_PATH) -> List[sqlite3.Row]:
 
 def update_scheduled_post_time(
     scheduled_id: int,
+    user_id: int,
     scheduled_for: str,
     db_path: str = DB_PATH,
 ) -> bool:
     """Update the scheduled time for a pending post.
-    
+
     Returns True if updated successfully, False if post not found or not pending.
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
             """
             UPDATE scheduled_posts
             SET scheduled_for = ?
-            WHERE id = ? AND status = 'pending'
+            WHERE id = ? AND status = 'pending' AND user_id = ?
             """,
-            (scheduled_for, scheduled_id),
+            (scheduled_for, scheduled_id, uid),
         )
         conn.commit()
         return cur.rowcount > 0
 
-def redistribute_scheduled_posts(platform: str, db_path: str = DB_PATH) -> int:
+def redistribute_scheduled_posts(platform: str, user_id: int, db_path: str = DB_PATH) -> int:
     """Redistribute all pending posts for a platform to use the earliest available slots.
     
     This should be called when:
@@ -1909,29 +1932,31 @@ def redistribute_scheduled_posts(platform: str, db_path: str = DB_PATH) -> int:
     
     Args:
         platform: The platform to redistribute
+        user_id: Owner of the queue entries to redistribute
         db_path: Database path
-        
+
     Returns:
         Number of posts redistributed
     """
+    uid = _require_user(user_id)
     from datetime import datetime
-    
+
     # Get all pending posts for this platform, ordered by their creation time
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
             """
             SELECT id FROM scheduled_posts
-            WHERE platform = ? AND status = 'pending'
+            WHERE platform = ? AND status = 'pending' AND user_id = ?
             ORDER BY created_at ASC
             """,
-            (platform,),
+            (platform, uid),
         )
         pending_posts = [row['id'] for row in cur.fetchall()]
-    
+
     if not pending_posts:
         return 0
-    
+
     # Clear all scheduled times first (set to far future temporarily)
     # This ensures get_next_available_slot doesn't see conflicts
     with sqlite3.connect(db_path) as conn:
@@ -1939,37 +1964,37 @@ def redistribute_scheduled_posts(platform: str, db_path: str = DB_PATH) -> int:
             """
             UPDATE scheduled_posts
             SET scheduled_for = '9999-12-31T23:59:59'
-            WHERE platform = ? AND status = 'pending'
+            WHERE platform = ? AND status = 'pending' AND user_id = ?
             """,
-            (platform,),
+            (platform, uid),
         )
         conn.commit()
-    
+
     # Reassign each post to the next available slot
     redistributed = 0
     for post_id in pending_posts:
         next_slot = get_next_available_slot(platform, db_path)
         if next_slot:
-            update_scheduled_post_time(post_id, next_slot, db_path)
+            update_scheduled_post_time(post_id, uid, next_slot, db_path=db_path)
             redistributed += 1
         else:
             # No more slots available, leave at far future (will need manual intervention)
             pass
-    
+
     return redistributed
 
-def _assign_group_times(conn, groups, times):
+def _assign_group_times(conn, groups, times, user_id):
     """Give ``groups[i]`` the moment ``times[i]``, every entry of it at once."""
     for group, when in zip(groups, times):
         ids = [row['id'] for row in group]
         conn.execute(
             f"UPDATE scheduled_posts SET scheduled_for = ? "
-            f"WHERE status = 'pending' AND id IN ({','.join('?' for _ in ids)})",
-            [when, *ids],
+            f"WHERE status = 'pending' AND user_id = ? AND id IN ({','.join('?' for _ in ids)})",
+            [when, user_id, *ids],
         )
 
-def reorder_scheduled_posts(post_ids: List[int], db_path: str = DB_PATH) -> bool:
-    """Reorder pending scheduled posts by swapping their scheduled times.
+def reorder_scheduled_posts(post_ids: List[int], user_id: int, db_path: str = DB_PATH) -> bool:
+    """Reorder a user's pending scheduled posts by swapping their scheduled times.
 
     Takes a list of post IDs in the desired new order. The scheduled_for times
     are preserved but reassigned based on the new order.
@@ -1982,16 +2007,18 @@ def reorder_scheduled_posts(post_ids: List[int], db_path: str = DB_PATH) -> bool
 
     Args:
         post_ids: List of scheduled post IDs in the desired order
+        user_id: Owner of the queue entries
         db_path: Database path
 
     Returns:
         True if successful, False otherwise
     """
+    uid = _require_user(user_id)
     if not post_ids or len(post_ids) < 2:
         return True  # Nothing to reorder
 
     by_id = {}
-    for group in group_scheduled_rows(list_scheduled_posts(status='pending', db_path=db_path)):
+    for group in group_scheduled_rows(list_scheduled_posts(uid, status='pending', db_path=db_path)):
         for row in group:
             by_id[row['id']] = group
 
@@ -2007,13 +2034,14 @@ def reorder_scheduled_posts(post_ids: List[int], db_path: str = DB_PATH) -> bool
     # the new order gets the earliest, and so on.
     times = sorted(group[0]['scheduled_for'] for group in ordered)
     with sqlite3.connect(db_path) as conn:
-        _assign_group_times(conn, ordered, times)
+        _assign_group_times(conn, ordered, times, uid)
         conn.commit()
 
     return True
 
 def move_posts_to_position(
     post_ids: List[int],
+    user_id: int,
     position: str,
     db_path: str = DB_PATH,
 ) -> bool:
@@ -2024,18 +2052,20 @@ def move_posts_to_position(
 
     Args:
         post_ids: List of scheduled post IDs to move
+        user_id: Owner of the queue entries
         position: 'top' to move to earliest times, 'bottom' to move to latest times
         db_path: Database path
 
     Returns:
         True if successful, False otherwise
     """
+    uid = _require_user(user_id)
     if not post_ids:
         return True  # Nothing to move
 
     # Every pending post, earliest first, as groups; their moments are the
     # slots the new order is dealt into.
-    groups = group_scheduled_rows(list_scheduled_posts(status='pending', db_path=db_path))
+    groups = group_scheduled_rows(list_scheduled_posts(uid, status='pending', db_path=db_path))
     if len(groups) < 2:
         return True  # Not enough posts to reorder
 
@@ -2048,19 +2078,21 @@ def move_posts_to_position(
     new_order = selected + others if position == 'top' else others + selected
     times = [group[0]['scheduled_for'] for group in groups]
     with sqlite3.connect(db_path) as conn:
-        _assign_group_times(conn, new_order, times)
+        _assign_group_times(conn, new_order, times, uid)
         conn.commit()
 
     return True
 
 def update_scheduled_post_status(
     scheduled_id: int,
+    user_id: int,
     status: str,
     linkedin_post_urn: str | None = None,
     error_message: str | None = None,
     db_path: str = DB_PATH,
 ) -> None:
     """Update the status of a scheduled post."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         posted_at = None
         if status == "posted":
@@ -2073,36 +2105,39 @@ def update_scheduled_post_status(
                 linkedin_post_urn = ?,
                 error_message = ?,
                 posted_at = ?
-            WHERE id = ?
+            WHERE id = ? AND user_id = ?
             """,
-            (status, linkedin_post_urn, error_message, posted_at, scheduled_id),
+            (status, linkedin_post_urn, error_message, posted_at, scheduled_id, uid),
         )
         conn.commit()
 
-def increment_retry_count(scheduled_id: int, db_path: str = DB_PATH) -> int:
+def increment_retry_count(scheduled_id: int, user_id: int, db_path: str = DB_PATH) -> int:
     """Increment the retry count for a scheduled post and return the new value."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE scheduled_posts SET retry_count = COALESCE(retry_count, 0) + 1 WHERE id = ?",
-            (scheduled_id,),
+            "UPDATE scheduled_posts SET retry_count = COALESCE(retry_count, 0) + 1 "
+            "WHERE id = ? AND user_id = ?",
+            (scheduled_id, uid),
         )
         conn.commit()
         cur = conn.execute(
-            "SELECT retry_count FROM scheduled_posts WHERE id = ?",
-            (scheduled_id,),
+            "SELECT retry_count FROM scheduled_posts WHERE id = ? AND user_id = ?",
+            (scheduled_id, uid),
         )
         row = cur.fetchone()
         return row[0] if row else 0
 
-def cancel_scheduled_post(scheduled_id: int, db_path: str = DB_PATH) -> bool:
+def cancel_scheduled_post(scheduled_id: int, user_id: int, db_path: str = DB_PATH) -> bool:
     """Cancel a pending scheduled post. Returns True if cancelled."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
             """
             UPDATE scheduled_posts SET status = 'cancelled'
-            WHERE id = ? AND status = 'pending'
+            WHERE id = ? AND status = 'pending' AND user_id = ?
             """,
-            (scheduled_id,),
+            (scheduled_id, uid),
         )
         conn.commit()
         return cur.rowcount > 0
@@ -2110,73 +2145,87 @@ def cancel_scheduled_post(scheduled_id: int, db_path: str = DB_PATH) -> bool:
 def cancel_scheduled_post_by_source(
     post_type: str,
     post_id: int,
+    user_id: int,
     platform: str,
     db_path: str = DB_PATH,
 ) -> bool:
     """Cancel a pending scheduled post by its source post ID and platform.
-    
+
     Args:
         post_type: 'social' or 'standalone'
         post_id: The social_post_id or standalone_post_id
+        user_id: Owner of the queued entry
         platform: The platform of the queued entry
-        
+
     Returns True if a post was cancelled.
     """
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         if post_type == 'social':
             cur = conn.execute(
                 """
                 UPDATE scheduled_posts SET status = 'cancelled'
                 WHERE social_post_id = ? AND platform = ? AND status = 'pending'
+                AND user_id = ?
                 """,
-                (post_id, platform),
+                (post_id, platform, uid),
             )
         elif post_type == 'standalone':
             cur = conn.execute(
                 """
                 UPDATE scheduled_posts SET status = 'cancelled'
                 WHERE standalone_post_id = ? AND platform = ? AND status = 'pending'
+                AND user_id = ?
                 """,
-                (post_id, platform),
+                (post_id, platform, uid),
             )
         else:
             return False
         conn.commit()
         return cur.rowcount > 0
 
-def delete_scheduled_post(scheduled_id: int, db_path: str = DB_PATH) -> None:
+def delete_scheduled_post(scheduled_id: int, user_id: int, db_path: str = DB_PATH) -> None:
     """Delete a scheduled post."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
-        conn.execute("DELETE FROM scheduled_posts WHERE id = ?", (scheduled_id,))
+        conn.execute(
+            "DELETE FROM scheduled_posts WHERE id = ? AND user_id = ?",
+            (scheduled_id, uid),
+        )
         conn.commit()
 
-def clear_pending_scheduled_posts(db_path: str = DB_PATH) -> int:
-    """Clear all pending scheduled posts. Returns the count of deleted posts."""
+def clear_pending_scheduled_posts(user_id: int, db_path: str = DB_PATH) -> int:
+    """Clear a user's pending scheduled posts. Returns the count of deleted posts."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
-            "DELETE FROM scheduled_posts WHERE status = 'pending'"
+            "DELETE FROM scheduled_posts WHERE status = 'pending' AND user_id = ?",
+            (uid,),
         )
         conn.commit()
         return cur.rowcount
 
-def delete_scheduled_posts_bulk(post_ids: List[int], db_path: str = DB_PATH) -> int:
+def delete_scheduled_posts_bulk(post_ids: List[int], user_id: int, db_path: str = DB_PATH) -> int:
     """Delete multiple scheduled posts by their IDs. Returns count deleted."""
+    uid = _require_user(user_id)
     if not post_ids:
         return 0
     with sqlite3.connect(db_path) as conn:
         placeholders = ",".join("?" for _ in post_ids)
         cur = conn.execute(
-            f"DELETE FROM scheduled_posts WHERE id IN ({placeholders})",
-            post_ids,
+            f"DELETE FROM scheduled_posts WHERE id IN ({placeholders}) AND user_id = ?",
+            [*post_ids, uid],
         )
         conn.commit()
         return cur.rowcount
 
 def get_scheduled_posts_for_article(
     article_id: int,
+    user_id: int,
     db_path: str = DB_PATH,
 ) -> List[sqlite3.Row]:
     """Get all scheduled posts for a specific article."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
@@ -2184,10 +2233,10 @@ def get_scheduled_posts_for_article(
             SELECT sp.*, soc.content AS social_content
             FROM scheduled_posts sp
             LEFT JOIN social_posts soc ON sp.social_post_id = soc.id
-            WHERE sp.article_id = ? OR soc.article_id = ?
+            WHERE (sp.article_id = ? OR soc.article_id = ?) AND sp.user_id = ?
             ORDER BY sp.scheduled_for ASC
             """,
-            (article_id, article_id),
+            (article_id, article_id, uid),
         )
         return cur.fetchall()
 
@@ -4059,7 +4108,6 @@ _BRIEF_UPDATABLE = {
     "use_saved_sources", "cadence", "run_time", "run_days", "next_run_at",
     "enabled", "auto_queue", "review_window_hours", "max_sources_per_run",
     "max_cost_cny", "max_drafts_per_run", "last_run_at", "last_run_status",
-    "user_id",
 }
 
 def _encode_brief_value(key: str, value):
@@ -4101,8 +4149,10 @@ def create_content_brief(
 
     List-valued arguments (``platforms``, ``focus_sources``,
     ``must_include_keywords``, ``run_days``) accept Python lists and are stored
-    as JSON strings.
+    as JSON strings. ``user_id`` is required (the ``None`` default exists only
+    because keyword-only-free syntax puts it after defaulted parameters).
     """
+    uid = _require_user(user_id)
     now = datetime.utcnow().isoformat(timespec="seconds")
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
@@ -4127,17 +4177,19 @@ def create_content_brief(
                 json.dumps(list(run_days or [])), next_run_at,
                 1 if enabled else 0, 1 if auto_queue else 0, review_window_hours,
                 max_sources_per_run, max_cost_cny, max_drafts_per_run,
-                now, now, user_id,
+                now, now, uid,
             ),
         )
         conn.commit()
         return cur.lastrowid
 
-def update_content_brief(brief_id: int, db_path: str = DB_PATH, **fields) -> None:
-    """Update the given columns of a brief. Unknown keys are ignored.
+def update_content_brief(brief_id: int, user_id: int, db_path: str = DB_PATH, **fields) -> None:
+    """Update the given columns of a brief the user owns. Unknown keys are ignored.
 
     List-valued fields accept Python lists (JSON-encoded automatically).
+    Ownership is not updatable: ``user_id`` is the scope, not a field.
     """
+    uid = _require_user(user_id)
     updates = {k: v for k, v in fields.items() if k in _BRIEF_UPDATABLE}
     if not updates:
         return
@@ -4147,45 +4199,76 @@ def update_content_brief(brief_id: int, db_path: str = DB_PATH, **fields) -> Non
         params.append(_encode_brief_value(key, value))
     cols.append("updated_at = ?")
     params.append(datetime.utcnow().isoformat(timespec="seconds"))
-    params.append(brief_id)
+    params.extend([brief_id, uid])
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            f"UPDATE content_briefs SET {', '.join(cols)} WHERE id = ?", params
+            f"UPDATE content_briefs SET {', '.join(cols)} WHERE id = ? AND user_id = ?",
+            params,
         )
         conn.commit()
 
-def get_content_brief(brief_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
-    """Return a single content brief row by id."""
+def get_content_brief(brief_id: int, user_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+    """Return a single content brief row by id, if the user owns it."""
+    uid = _require_user(user_id)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute(
+            "SELECT * FROM content_briefs WHERE id = ? AND user_id = ?",
+            (brief_id, uid),
+        )
+        return cur.fetchone()
+
+def get_content_brief_unscoped(brief_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+    """Return a brief row by id with no owner filter.
+
+    Worker entry point only (``content_agent.run_brief``): the due-briefs queue
+    hands the worker an id before anyone knows the owner, and the row itself
+    carries the ``user_id`` every later step scopes by. Anything user-facing
+    goes through ``get_content_brief`` instead.
+    """
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute("SELECT * FROM content_briefs WHERE id = ?", (brief_id,))
         return cur.fetchone()
 
-def list_content_briefs(db_path: str = DB_PATH) -> List[sqlite3.Row]:
-    """Return all content briefs, most recently created first."""
+def list_content_briefs(user_id: int, db_path: str = DB_PATH) -> List[sqlite3.Row]:
+    """Return the user's content briefs, most recently created first."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        cur = conn.execute("SELECT * FROM content_briefs ORDER BY created_at DESC")
+        cur = conn.execute(
+            "SELECT * FROM content_briefs WHERE user_id = ? ORDER BY created_at DESC",
+            (uid,),
+        )
         return cur.fetchall()
 
-def delete_content_brief(brief_id: int, db_path: str = DB_PATH) -> None:
-    """Delete a brief and all of its run history."""
-    with sqlite3.connect(db_path) as conn:
-        conn.execute("DELETE FROM content_brief_runs WHERE brief_id = ?", (brief_id,))
-        conn.execute("DELETE FROM content_briefs WHERE id = ?", (brief_id,))
-        conn.commit()
-
-def set_content_brief_enabled(brief_id: int, enabled: bool, db_path: str = DB_PATH) -> None:
-    """Enable or disable a brief's recurring schedule."""
+def delete_content_brief(brief_id: int, user_id: int, db_path: str = DB_PATH) -> None:
+    """Delete a brief the user owns, and all of its run history with it."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE content_briefs SET enabled = ?, updated_at = ? WHERE id = ?",
-            (1 if enabled else 0, datetime.utcnow().isoformat(timespec="seconds"), brief_id),
+            "DELETE FROM content_brief_runs WHERE brief_id = ? AND user_id = ?",
+            (brief_id, uid),
+        )
+        conn.execute(
+            "DELETE FROM content_briefs WHERE id = ? AND user_id = ?",
+            (brief_id, uid),
+        )
+        conn.commit()
+
+def set_content_brief_enabled(brief_id: int, user_id: int, enabled: bool, db_path: str = DB_PATH) -> None:
+    """Enable or disable a brief's recurring schedule."""
+    uid = _require_user(user_id)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE content_briefs SET enabled = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+            (1 if enabled else 0, datetime.utcnow().isoformat(timespec="seconds"), brief_id, uid),
         )
         conn.commit()
 
 def set_content_brief_schedule(
     brief_id: int,
+    user_id: int,
     next_run_at: Optional[str] = None,
     last_run_at: Optional[str] = None,
     last_run_status: Optional[str] = None,
@@ -4197,6 +4280,7 @@ def set_content_brief_schedule(
     paused/manual brief). ``last_run_at``/``last_run_status`` are written only
     when provided.
     """
+    uid = _require_user(user_id)
     sets, params = ["next_run_at = ?"], [next_run_at]
     if last_run_at is not None:
         sets.append("last_run_at = ?")
@@ -4204,15 +4288,20 @@ def set_content_brief_schedule(
     if last_run_status is not None:
         sets.append("last_run_status = ?")
         params.append(last_run_status)
-    params.append(brief_id)
+    params.extend([brief_id, uid])
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            f"UPDATE content_briefs SET {', '.join(sets)} WHERE id = ?", params
+            f"UPDATE content_briefs SET {', '.join(sets)} WHERE id = ? AND user_id = ?",
+            params,
         )
         conn.commit()
 
 def get_due_content_briefs(now_iso: str, db_path: str = DB_PATH) -> List[sqlite3.Row]:
-    """Return enabled, recurring briefs whose ``next_run_at`` is due (<= now)."""
+    """Return enabled, recurring briefs whose ``next_run_at`` is due (<= now).
+
+    Deliberately unscoped: this is the worker's queue across all owners; each
+    row's user_id decides whose sources and drafts a run acts for.
+    """
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
@@ -4226,22 +4315,24 @@ def get_due_content_briefs(now_iso: str, db_path: str = DB_PATH) -> List[sqlite3
         )
         return cur.fetchall()
 
-def create_brief_run(brief_id: int, trigger: str = "manual", db_path: str = DB_PATH) -> int:
+def create_brief_run(brief_id: int, user_id: int, trigger: str = "manual", db_path: str = DB_PATH) -> int:
     """Insert a 'running' run row for a brief and return its id."""
+    uid = _require_user(user_id)
     now = datetime.utcnow().isoformat(timespec="seconds")
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
             """
-            INSERT INTO content_brief_runs (brief_id, trigger, status, started_at)
-            VALUES (?, ?, 'running', ?)
+            INSERT INTO content_brief_runs (brief_id, user_id, trigger, status, started_at)
+            VALUES (?, ?, ?, 'running', ?)
             """,
-            (brief_id, trigger, now),
+            (brief_id, uid, trigger, now),
         )
         conn.commit()
         return cur.lastrowid
 
 def finalize_brief_run(
     run_id: int,
+    user_id: int,
     status: str,
     sources_found: int = 0,
     sources_used: int = 0,
@@ -4253,6 +4344,7 @@ def finalize_brief_run(
     db_path: str = DB_PATH,
 ) -> None:
     """Mark a run finished and record its outcome counts. ``log`` may be a list/dict."""
+    uid = _require_user(user_id)
     now = datetime.utcnow().isoformat(timespec="seconds")
     log_str = json.dumps(log) if isinstance(log, (list, dict)) else log
     with sqlite3.connect(db_path) as conn:
@@ -4262,43 +4354,50 @@ def finalize_brief_run(
             SET status = ?, finished_at = ?, sources_found = ?, sources_used = ?,
                 posts_created = ?, articles_created = ?, cost_cny = ?,
                 error_message = ?, log = ?
-            WHERE id = ?
+            WHERE id = ? AND user_id = ?
             """,
             (
                 status, now, sources_found, sources_used, posts_created,
-                articles_created, cost_cny, error_message, log_str, run_id,
+                articles_created, cost_cny, error_message, log_str, run_id, uid,
             ),
         )
         conn.commit()
 
-def get_brief_run(run_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
-    """Return a single run row by id."""
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        cur = conn.execute("SELECT * FROM content_brief_runs WHERE id = ?", (run_id,))
-        return cur.fetchone()
-
-def list_brief_runs(brief_id: int, limit: int = 20, db_path: str = DB_PATH) -> List[sqlite3.Row]:
-    """Return recent runs for a brief, newest first."""
+def get_brief_run(run_id: int, user_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+    """Return a single run row by id, if the user owns it."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
-            "SELECT * FROM content_brief_runs WHERE brief_id = ? ORDER BY started_at DESC LIMIT ?",
-            (brief_id, limit),
+            "SELECT * FROM content_brief_runs WHERE id = ? AND user_id = ?",
+            (run_id, uid),
+        )
+        return cur.fetchone()
+
+def list_brief_runs(brief_id: int, user_id: int, limit: int = 20, db_path: str = DB_PATH) -> List[sqlite3.Row]:
+    """Return the user's recent runs for a brief, newest first."""
+    uid = _require_user(user_id)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute(
+            "SELECT * FROM content_brief_runs WHERE brief_id = ? AND user_id = ? "
+            "ORDER BY started_at DESC LIMIT ?",
+            (brief_id, uid, limit),
         )
         return cur.fetchall()
 
-def get_active_brief_run(brief_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
+def get_active_brief_run(brief_id: int, user_id: int, db_path: str = DB_PATH) -> Optional[sqlite3.Row]:
     """Return the brief's currently-running run, if any (concurrency guard)."""
+    uid = _require_user(user_id)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
             """
             SELECT * FROM content_brief_runs
-            WHERE brief_id = ? AND status = 'running'
+            WHERE brief_id = ? AND user_id = ? AND status = 'running'
             ORDER BY started_at DESC LIMIT 1
             """,
-            (brief_id,),
+            (brief_id, uid),
         )
         return cur.fetchone()
 
