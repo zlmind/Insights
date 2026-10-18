@@ -638,8 +638,8 @@ def section_publish():
         "wechat", "pub-wx-b", display_name="B 公众号", label="B 推送号",
         user_id=uid_b, db_path=db_path)
     # A platform only admin holds an account on.
-    database.upsert_social_account("zhihu", "pub-zh-1", label="Admin 知乎号",
-                                   user_id=uid, db_path=db_path)
+    account_admin_zhihu = database.upsert_social_account(
+        "zhihu", "pub-zh-1", label="Admin 知乎号", user_id=uid, db_path=db_path)
 
     def _targets_of(page):
         m = re.search(r"const PUBLISH_TARGETS = (.*?);", page)
@@ -677,6 +677,77 @@ def section_publish():
               "admin still resolves its own zhihu account")
         check(web._default_account_for("wechat") == account_admin,
               "admin resolves its own default wechat account")
+
+    # --- resolve_account_id: the same scoping at the write inlet -----------
+    # B naming no account on a platform only admin holds records no account
+    # (never admin's id); admin's explicit id is a foreign id for B; B's own
+    # account still resolves for B.
+    r = client_b.post("/compose/post/create",
+                      data={"platforms": "zhihu", "content": "B 裸平台名"})
+    check(r.status_code == 200, "B creates a bare-platform zhihu post")
+    for pid in r.get_json()["post_ids"]:
+        row = database.get_standalone_post(pid, uid_b)
+        check(row["account_id"] is None,
+              "B's bare zhihu platform must not resolve to admin's account")
+    r = client_b.post("/compose/post/create",
+                      data={"targets": f"zhihu:{account_admin_zhihu}",
+                            "content": "B 传 admin 账号 id"})
+    check(r.status_code == 400 and "not connected" in r.get_json()["error"],
+          "B hand-crafting admin's account id is the not-connected refusal")
+    r = client_b.post("/compose/post/create",
+                      data={"targets": f"wechat:{account_b}",
+                            "content": "B 自己的账号"})
+    check(r.status_code == 200
+          and all(t["account_id"] == account_b for t in r.get_json()["targets"]),
+          "B's own named account still resolves for B")
+
+    # --- the queue page annotates why a pending job is still pending -------
+    # Derived at render time from the post owner's own bucket, never stored:
+    # another user's online report never clears it, the owner's own report
+    # clears exactly the platforms they reported, and a finished job is
+    # history and carries no diagnosis.
+    jid_p = database.enqueue_agent_job(
+        "article_sync",
+        json.dumps({"title": "pending-reason-title",
+                    "items": [{"target": "wechat", "content": "x"},
+                              {"target": "zhihu", "content": "y"}]}),
+        user_id=uid, db_path=db_path)
+    page = client.get("/agent-jobs").get_data(as_text=True)
+    check("pending-reason-title" in page, "the queue page lists the new job")
+    check("平台未连接/登录态异常" in page and "公众号" in page and "知乎" in page,
+          "a pending job with no platform states shows per-platform reasons")
+
+    # B's online report is another browser: it never clears A's reasons.
+    r = agent.post("/agent/heartbeat", headers=B, json={
+        "tools": {"extension": {"available": True, "platforms": [
+            {"id": "wechat", "logged_in": True, "probed": True},
+            {"id": "zhihu", "logged_in": True, "probed": True}]}}})
+    check(r.status_code == 200, "token-b posts a logged-in heartbeat")
+    page = client.get("/agent-jobs").get_data(as_text=True)
+    check("公众号：平台未连接/登录态异常" in page
+          and "知乎：平台未连接/登录态异常" in page,
+          "another user's online report never clears the owner's reasons")
+
+    # A's own report clears exactly the platforms A reported.
+    r = agent.post("/agent/heartbeat", headers=A, json={
+        "tools": {"extension": {"available": True, "platforms": [
+            {"id": "wechat", "logged_in": True, "probed": True}]}}})
+    check(r.status_code == 200, "token-a reports wechat logged_in")
+    page = client.get("/agent-jobs").get_data(as_text=True)
+    check("公众号：平台未连接/登录态异常" not in page,
+          "the owner's own wechat report clears the wechat reason")
+    check("知乎：平台未连接/登录态异常" in page,
+          "the platform the owner did not report keeps its reason")
+
+    # A finished job is history, not a diagnosis.
+    r = agent.post(f"/agent/jobs/{jid_p}/events", headers=A,
+                   json={"type": "done", "results": [
+                       {"platform": "wechat", "success": True},
+                       {"platform": "zhihu", "success": True}]})
+    check(r.status_code == 200, "token-a reports the job done")
+    page = client.get("/agent-jobs").get_data(as_text=True)
+    check("平台未连接/登录态异常" not in page,
+          "a succeeded job carries no pending reasons")
 
     print("publish route owner-scoped 409/queue and target chip checks passed")
     print("CHANNEL_ISOLATION_PUBLISH_OK")

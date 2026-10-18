@@ -4195,7 +4195,8 @@ def compose_create_post():
                 "error": f"Invalid platform. Must be one of: {', '.join(COMPOSE_PLATFORMS)}"
             }), 400
         targets = [
-            {'platform': p, 'account_id': resolve_account_id(p)} for p in platforms
+            {'platform': p, 'account_id': resolve_account_id(p, user_id=uid)}
+            for p in platforms
         ]
     content = request.form.get('content', '').strip()
     image_url = request.form.get('image_url', '').strip() or None
@@ -4321,6 +4322,9 @@ def _requested_targets(field='targets'):
     whole feature exists to avoid.
     """
     targets, errors, seen = [], [], set()
+    # Every caller is a route behind the login wall, so the session user is
+    # whose accounts a target may resolve to — never the global pool.
+    uid = current_user()['id']
     for raw in _requested_platforms(field):
         platform, _, account_part = raw.partition(':')
         platform = platform.strip()
@@ -4334,12 +4338,12 @@ def _requested_targets(field='targets'):
             if not account_part.isdigit():
                 errors.append(f"Invalid account for {platform}")
                 continue
-            account_id = resolve_account_id(platform, int(account_part))
+            account_id = resolve_account_id(platform, int(account_part), user_id=uid)
             if not account_id:
                 errors.append(f"That {domestic_publisher.display_name(platform)} account is not connected")
                 continue
         else:
-            account_id = resolve_account_id(platform)
+            account_id = resolve_account_id(platform, user_id=uid)
 
         key = (platform, account_id)
         if key in seen:
@@ -4532,14 +4536,14 @@ def compose_toggle_post_platform(post_id: int):
     # single-account chips have always behaved.
     raw_account = (request.form.get('account_id') or '').strip()
     if raw_account:
-        account_id = resolve_account_id(platform, int(raw_account)) \
+        account_id = resolve_account_id(platform, int(raw_account), user_id=uid) \
             if raw_account.isdigit() else None
         if not account_id:
             return jsonify({
                 "error": f"That {domestic_publisher.display_name(platform)} account is not connected"
             }), 400
     else:
-        account_id = resolve_account_id(platform)
+        account_id = resolve_account_id(platform, user_id=uid)
 
     action = (request.form.get('action') or 'add').strip().lower()
     if action not in ('add', 'remove'):
@@ -6237,11 +6241,26 @@ def agent_jobs_page():
     jobs = database.list_agent_jobs(limit=100, user_id=current_user()['id'])
     for job in jobs:
         payload = json.loads(job['payload'] or '{}')
+        items = payload.get('items') or []
         job['targets'] = '、'.join(
             domestic_publisher.display_name(i.get('target', ''))
-            for i in payload.get('items') or [])
+            for i in items)
         job['title'] = payload.get('title') or ''
         job['results'] = json.loads(job['result'] or '[]')
+        # Why a pending job is still pending, diagnosed at render time from the
+        # post owner's own login bucket — never stored, so yesterday's outage
+        # never fossilises into today's queue. Only pending jobs get one: a
+        # claimed or finished job is not waiting on anyone.
+        job['pending_reasons'] = []
+        if job['status'] == 'pending':
+            states = agent_hub.platform_login_states(job['user_id'])
+            for item in items:
+                target = item.get('target', '')
+                state = states.get(target)
+                if state is None or state.get('logged_in') is False:
+                    job['pending_reasons'].append(
+                        f"{domestic_publisher.display_name(target)}"
+                        "：平台未连接/登录态异常")
     return render_template('agent_jobs.html', jobs=jobs,
                            agent_online=agent_hub.agent_online(current_user()['id']))
 

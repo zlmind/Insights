@@ -41,17 +41,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _accounts_gate import isolated_app, check  # noqa: E402
 
 
-def connect_draft_account(database, platform, external_id, label):
+def connect_draft_account(database, platform, external_id, label, user_id=None):
     """Connect one draft-only account, returning its id.
 
     The draft-only platforms have no OAuth and no token store, so an account is
     just a row in social_accounts naming where a draft is aimed (the Western
     token tables behind ``_accounts_gate.connect`` do not cover them). The first
     account a platform gets becomes its default, which is what a bare platform
-    target resolves to.
+    target resolves to. ``user_id`` owns the row: account resolution is scoped
+    to the session user, and an unowned row is invisible to that resolution.
     """
     account_id = database.upsert_social_account(
-        platform, external_id, display_name=label, label=label)
+        platform, external_id, display_name=label, label=label, user_id=user_id)
     assert account_id, f"connecting {platform}:{external_id} made no account"
     return account_id
 
@@ -63,10 +64,14 @@ def rig():
     # real Cloudinary when the repo .env is found; a gate must not.
     web._maybe_attach_link_image = lambda *a, **k: None
     ids = {
-        "xhs_work": connect_draft_account(database, "xiaohongshu", "xhs-work", "Work"),
-        "xhs_studio": connect_draft_account(database, "xiaohongshu", "xhs-studio", "Studio"),
-        "douyin": connect_draft_account(database, "douyin", "dy-1", "Douyin"),
-        "wechat": connect_draft_account(database, "wechat", "wx-1", "WeChat"),
+        "xhs_work": connect_draft_account(database, "xiaohongshu", "xhs-work",
+                                          "Work", user_id=uid),
+        "xhs_studio": connect_draft_account(database, "xiaohongshu", "xhs-studio",
+                                            "Studio", user_id=uid),
+        "douyin": connect_draft_account(database, "douyin", "dy-1", "Douyin",
+                                        user_id=uid),
+        "wechat": connect_draft_account(database, "wechat", "wx-1", "WeChat",
+                                        user_id=uid),
     }
     return database, web, client, ids, uid
 

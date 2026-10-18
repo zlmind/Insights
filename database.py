@@ -1665,7 +1665,7 @@ def add_scheduled_post(
     created_at = datetime.utcnow().isoformat(timespec="seconds")
     posted_at = created_at if status == "posted" else None
     if account_id is None:
-        account_id = resolve_account_id(platform, db_path=db_path)
+        account_id = resolve_account_id(platform, db_path=db_path, user_id=uid)
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
             """
@@ -2770,7 +2770,7 @@ def add_standalone_post(
     uid = _require_user(user_id)
     created_at = datetime.utcnow().isoformat(timespec="seconds")
     if account_id is None:
-        account_id = resolve_account_id(platform, db_path=db_path)
+        account_id = resolve_account_id(platform, db_path=db_path, user_id=uid)
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
             """
@@ -4582,15 +4582,25 @@ def find_social_account(
         ).fetchone()
 
 def get_default_social_account(
-    platform: str, db_path: str = DB_PATH
+    platform: str, user_id: Optional[int] = None, db_path: str = DB_PATH
 ) -> Optional[sqlite3.Row]:
-    """The account a bare platform name means, or None if none are connected."""
+    """The account a bare platform name means, or None if none are connected.
+
+    ``user_id`` scopes the pool to that user's logins; None reads the global
+    pool, which only the pre-user gates and internal tooling still do.
+    """
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
+        if user_id is None:
+            return conn.execute(
+                "SELECT * FROM social_accounts WHERE platform = ? AND status != 'removed' "
+                "ORDER BY is_default DESC, id LIMIT 1",
+                (platform,),
+            ).fetchone()
         return conn.execute(
             "SELECT * FROM social_accounts WHERE platform = ? AND status != 'removed' "
-            "ORDER BY is_default DESC, id LIMIT 1",
-            (platform,),
+            "AND user_id = ? ORDER BY is_default DESC, id LIMIT 1",
+            (platform, user_id),
         ).fetchone()
 
 def upsert_social_account(
@@ -4700,20 +4710,28 @@ def delete_social_account(account_id: int, db_path: str = DB_PATH) -> bool:
         return True
 
 def resolve_account_id(
-    platform: str, account_id: int | None = None, db_path: str = DB_PATH
+    platform: str, account_id: int | None = None, db_path: str = DB_PATH,
+    *, user_id: Optional[int] = None,
 ) -> Optional[int]:
     """The account a publish should use, given an explicit id or none.
 
     An id that belongs to another platform (a stale pick from the browser) is
     refused rather than quietly redirected, because posting a card to the wrong
-    account is worse than not posting it.
+    account is worse than not posting it. ``user_id`` adds the same refusal for
+    another user's account — an id that exists but is not this user's reads as
+    the same None as one that does not exist, so a foreign id from a hand-built
+    form is indistinguishable from a stale one. The default branch reads only
+    that user's logins; without ``user_id`` the global pool stands, which is the
+    pre-user view the gates and tooling still rely on.
     """
     if account_id:
         account = get_social_account(int(account_id), db_path=db_path)
         if not account or account["platform"] != platform:
             return None
+        if user_id is not None and account["user_id"] != user_id:
+            return None
         return account["id"]
-    default = get_default_social_account(platform, db_path=db_path)
+    default = get_default_social_account(platform, user_id=user_id, db_path=db_path)
     return default["id"] if default else None
 
 def count_social_accounts(platform: str | None = None, db_path: str = DB_PATH) -> int:

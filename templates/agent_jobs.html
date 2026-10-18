@@ -56,7 +56,13 @@
             <td>{{ job.id }}</td>
             <td>{{ job.title }}</td>
             <td>{{ job.targets }}</td>
-            <td><span class="badge bg-secondary">{{ job.status }}</span></td>
+            <td>
+                <span class="badge bg-secondary">{{ job.status }}</span>
+                {# 渲染时派生的排队原因：通道恢复后自动消失，所以只作小字注解 #}
+                {% for reason in job.get('pending_reasons') or [] %}
+                    <div class="small text-muted">{{ reason }}</div>
+                {% endfor %}
+            </td>
             <td class="small">
                 {% for r in job.results %}
                     {{ '✅' if r.success else '❌' }} {{ r.detail or r.error }}<br>
