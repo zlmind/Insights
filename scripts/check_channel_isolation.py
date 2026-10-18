@@ -3,13 +3,17 @@
     python scripts/check_channel_isolation.py schema   CHANNEL_ISOLATION_SCHEMA_OK
     python scripts/check_channel_isolation.py tokens   CHANNEL_ISOLATION_TOKENS_OK
     python scripts/check_channel_isolation.py heartbeat CHANNEL_ISOLATION_HEARTBEAT_OK
+    python scripts/check_channel_isolation.py accounts CHANNEL_ISOLATION_ACCOUNTS_OK
 
 ``schema`` pins the agent_tokens table and the legacy global token migration;
 ``tokens`` pins the /agent/* door's per-user identity: claim, events and the
 read paths only ever serve the token's own user, and cross-user reads answer
 with the same bytes as reads of things that do not exist; ``heartbeat`` pins
 the per-user heartbeat buckets: login states, the online pill and the compose
-selector read the viewer's own bucket and nobody else's.
+selector read the viewer's own bucket and nobody else's; ``accounts`` pins
+social_accounts' per-user isolation: the widened unique key, the legacy rows
+settling with admin, the per-user account list and page, and the token
+manager's revocation rules.
 """
 
 import json
@@ -445,10 +449,121 @@ def section_heartbeat():
     print("CHANNEL_ISOLATION_HEARTBEAT_OK")
 
 
+def section_accounts():
+    """social_accounts is scoped per user: the unique key widens to include
+    user_id, legacy rows settle with admin on upgrade, the /accounts page and
+    the list read only the viewer's rows, and the token manager on the same
+    page revokes one's own tokens and nobody else's.
+    """
+    directory, database, web, publisher, client = isolated_app()
+    db_path = database.DB_PATH
+    uid = database.get_user_by_username("gate")["id"]
+    uid_b = database.create_user("acct_b", generate_password_hash("p"),
+                                 db_path=db_path)
+    client_b = web.app.test_client()
+    with client_b.session_transaction() as session:
+        session["user_id"] = uid_b
+
+    # --- schema: the unique key is (platform, external_id, user_id) --------
+    with sqlite3.connect(db_path) as conn:
+        cols = _table_columns(conn, "social_accounts")
+        check("user_id" in cols, "social_accounts missing column user_id")
+        idx_cols = [r[2] for r in conn.execute(
+            "PRAGMA index_info(idx_social_accounts_identity_user)").fetchall()]
+        check(idx_cols == ["platform", "external_id", "user_id"],
+              f"unique index is not (platform, external_id, user_id): {idx_cols}")
+
+    # --- same (platform, external_id) for two users coexists (场景 4) -------
+    account_admin = database.upsert_social_account(
+        "wechat", "wx-1", display_name="Admin 公众号", label="Admin 号",
+        user_id=uid, db_path=db_path)
+    account_b = database.upsert_social_account(
+        "wechat", "wx-1", display_name="B 公众号", label="B 号",
+        user_id=uid_b, db_path=db_path)
+    check(account_admin != account_b,
+          "the same (platform, external_id) for two users collapsed into one row")
+
+    # --- a legacy pre-migration row (user_id NULL) settles with admin ------
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO social_accounts (platform, external_id, label, user_id) "
+            "VALUES ('zhihu', 'legacy-1', '存量知乎', NULL)")
+        conn.commit()
+    database.init_db(db_path)  # the upgrade pass every boot runs
+    with sqlite3.connect(db_path) as conn:
+        legacy_uid = conn.execute(
+            "SELECT user_id FROM social_accounts "
+            "WHERE platform = 'zhihu' AND external_id = 'legacy-1'"
+        ).fetchone()[0]
+    check(legacy_uid == uid,
+          "a legacy NULL-user row did not settle with admin on upgrade")
+
+    # --- the list only serves the viewer's rows -----------------------------
+    ids_admin = {r["id"] for r in
+                 database.list_social_accounts(user_id=uid, db_path=db_path)}
+    ids_b = {r["id"] for r in
+             database.list_social_accounts(user_id=uid_b, db_path=db_path)}
+    check(account_b in ids_b and account_admin not in ids_b,
+          "B's list leaks admin's account (or drops B's own)")
+    check(account_admin in ids_admin and account_b not in ids_admin,
+          "admin's list leaks B's account (or drops admin's own)")
+
+    # --- the /accounts page is per user --------------------------------------
+    page_admin = client.get("/accounts").get_data(as_text=True)
+    page_b = client_b.get("/accounts").get_data(as_text=True)
+    check("Admin 号" in page_admin,
+          "admin's accounts page does not show admin's own account")
+    check("Admin 号" not in page_b and "Admin 公众号" not in page_b
+          and "wx-1" not in page_b,
+          "B's accounts page leaks admin's account label or external_id")
+    check("B 号" in page_b, "B's accounts page does not show B's own account")
+
+    # --- token manager: own tokens listed, revocation per user (场景 6) -----
+    admin_token = database.create_agent_token(uid, "tok-admin", "Admin 浏览器",
+                                              db_path=db_path)
+    b_token = database.create_agent_token(uid_b, "tok-b", "B 的浏览器",
+                                          db_path=db_path)
+    b_other = database.create_agent_token(uid_b, "tok-b2", "B 的另一台",
+                                          db_path=db_path)
+
+    page_b = client_b.get("/accounts").get_data(as_text=True)
+    check("已配对的浏览器扩展" in page_b and "B 的浏览器" in page_b
+          and "吊销" in page_b,
+          "the accounts page does not list the user's own paired extensions")
+    check("Admin 浏览器" not in page_b,
+          "B's token list leaks admin's extension label")
+
+    # B revoking admin's token and a missing token: the same 404 body.
+    r_cross = client_b.post(f"/accounts/tokens/{admin_token}/revoke")
+    r_missing = client_b.post("/accounts/tokens/999999/revoke")
+    check(r_cross.status_code == 404 and r_missing.status_code == 404,
+          "revoking another user's token or a missing one is not 404")
+    check(r_cross.get_data() == r_missing.get_data(),
+          "the two revoke 404 bodies are byte-for-byte identical")
+    check(database.find_agent_user_by_token("tok-admin", db_path=db_path) == uid,
+          "B's revoke attempt must not kill admin's token")
+
+    # B revokes its own: 200, the token dies immediately, siblings survive.
+    r = client_b.post(f"/accounts/tokens/{b_token}/revoke")
+    check(r.status_code == 200 and r.get_json() == {"success": True},
+          "revoking one's own token does not answer success")
+    check(database.find_agent_user_by_token("tok-b", db_path=db_path) is None,
+          "a revoked token still resolves (must 401 on next use)")
+    check(database.find_agent_user_by_token("tok-b2", db_path=db_path) == uid_b,
+          "revoking one token disturbed the user's other token")
+    check(any(r["id"] == b_token and r["revoked"]
+              for r in database.list_agent_tokens(uid_b, db_path=db_path)),
+          "the revoked token is not marked revoked in the list")
+
+    print("social_accounts per-user isolation and token manager checks passed")
+    print("CHANNEL_ISOLATION_ACCOUNTS_OK")
+
+
 SECTIONS = {
     "schema": section_schema,
     "tokens": section_tokens,
     "heartbeat": section_heartbeat,
+    "accounts": section_accounts,
 }
 
 if __name__ == "__main__":

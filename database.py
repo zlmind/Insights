@@ -603,21 +603,40 @@ def init_db(db_path: str = DB_PATH) -> None:
                 avatar_url TEXT,
                 is_default INTEGER DEFAULT 0,
                 status TEXT DEFAULT 'active',
+                user_id INTEGER,
                 created_at TEXT,
                 updated_at TEXT
             )
             """
         )
+        # Ownership for connected accounts: an account belongs to the user who
+        # connected it, so the same platform identity can exist once per user.
+        # An upgraded database gets the column in place and its pre-user rows
+        # settle with the oldest account (admin) — unlike the content tables,
+        # a login nobody owns is a login nobody can see or re-connect.
+        acct_cols = [r[1] for r in conn.execute(
+            "PRAGMA table_info(social_accounts)").fetchall()]
+        if acct_cols and "user_id" not in acct_cols:
+            conn.execute("ALTER TABLE social_accounts ADD COLUMN user_id INTEGER")
+        # The old key was (platform, external_id); it must go before the new
+        # one arrives, or the widened key never takes effect.
+        conn.execute("DROP INDEX IF EXISTS idx_social_accounts_identity")
         for stmt in (
-            # One row per login. external_id is the platform's own id for the
-            # account, so re-running OAuth for an account already connected
-            # updates it instead of adding a duplicate.
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_social_accounts_identity "
-            "ON social_accounts(platform, external_id)",
+            # One row per login per user. external_id is the platform's own id
+            # for the account, so re-running OAuth for an account a user already
+            # connected updates it instead of adding a duplicate.
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_social_accounts_identity_user "
+            "ON social_accounts(platform, external_id, user_id)",
             "CREATE INDEX IF NOT EXISTS idx_social_accounts_platform "
             "ON social_accounts(platform, is_default DESC, id)",
         ):
             conn.execute(stmt)
+        conn.execute(
+            """
+            UPDATE social_accounts SET user_id = (SELECT MIN(id) FROM users)
+            WHERE user_id IS NULL AND EXISTS (SELECT 1 FROM users)
+            """
+        )
 
         conn.execute(
             """
@@ -863,18 +882,21 @@ def _upsert_account_row(
     handle=None,
     avatar_url=None,
     label=None,
+    user_id=None,
     now=None,
 ) -> int:
     """Insert or refresh one account, returning its id.
 
     The first account a platform gets becomes its default; later ones do not
     steal that, so connecting a second login never silently redirects posts
-    that were already going to the first.
+    that were already going to the first. ``user_id`` is part of the row's
+    identity: the same platform login can exist once per user.
     """
     now = now or datetime.utcnow().isoformat(timespec="seconds")
     cur = conn.execute(
-        "SELECT id FROM social_accounts WHERE platform = ? AND external_id = ?",
-        (platform, external_id),
+        "SELECT id FROM social_accounts "
+        "WHERE platform = ? AND external_id = ? AND user_id IS ?",
+        (platform, external_id, user_id),
     )
     existing = cur.fetchone()
     if existing:
@@ -921,11 +943,11 @@ def _upsert_account_row(
         """
         INSERT INTO social_accounts
             (platform, external_id, label, handle, display_name, avatar_url,
-             is_default, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+             is_default, status, user_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
         """,
         (platform, external_id, label, handle, display_name, avatar_url,
-         is_default, now, now),
+         is_default, user_id, now, now),
     )
     return cur.lastrowid
 
@@ -4512,9 +4534,15 @@ def get_active_brief_run(brief_id: int, user_id: int, db_path: str = DB_PATH) ->
 def list_social_accounts(
     platform: str | None = None,
     include_removed: bool = False,
+    *,
+    user_id: Optional[int] = None,
     db_path: str = DB_PATH,
 ) -> List[sqlite3.Row]:
-    """Connected accounts, defaults first, then oldest first within a platform."""
+    """Connected accounts, defaults first, then oldest first within a platform.
+
+    ``user_id`` scopes the list to one user's logins; a NULL-owned row (there
+    should be none after the upgrade backfill) is invisible to every user.
+    """
     sql = "SELECT * FROM social_accounts"
     clauses, params = [], []
     if platform:
@@ -4522,6 +4550,9 @@ def list_social_accounts(
         params.append(platform)
     if not include_removed:
         clauses.append("status != 'removed'")
+    if user_id is not None:
+        clauses.append("user_id = ?")
+        params.append(user_id)
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY platform, is_default DESC, id"
@@ -4569,6 +4600,8 @@ def upsert_social_account(
     handle: str | None = None,
     avatar_url: str | None = None,
     label: str | None = None,
+    *,
+    user_id: Optional[int] = None,
     db_path: str = DB_PATH,
 ) -> int:
     """Record a connected login, returning its account id.
@@ -4576,6 +4609,8 @@ def upsert_social_account(
     Called from every OAuth callback. Re-authorising an account already
     connected refreshes it in place; authorising a different one adds a second
     account rather than replacing the first, which is the whole point.
+    ``user_id`` owns the row; None stores NULL, which no user-scoped read
+    ever sees, so an unowned account isolates itself.
     """
     with sqlite3.connect(db_path) as conn:
         account_id = _upsert_account_row(
@@ -4586,6 +4621,7 @@ def upsert_social_account(
             handle=handle,
             avatar_url=avatar_url,
             label=label,
+            user_id=user_id,
         )
         conn.commit()
         return account_id

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Accounts | Insights{% endblock %}
+{% block header %}平台账号{% endblock %}
+{% block subtitle %}<p class="page-subtitle">每个平台同时登录一个账号，登录态保存在本机浏览器。换号后在浏览器登录新账号即可，系统会自动识别；发布历史保留每个帖子的账号归属。</p>{% endblock %}
+{% block content %}
+<style>
+    .notice {
+        display: flex; align-items: flex-start; gap: .6rem;
+        background: var(--brand-50); border: 1px solid var(--brand-100);
+        border-radius: var(--radius-lg); padding: .8rem 1rem; margin-bottom: 1.25rem;
+        font-size: .85rem; color: var(--ink-800);
+    }
+    .plat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+    @media (max-width: 900px) { .plat-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 640px) { .plat-grid { grid-template-columns: 1fr; } }
+    .plat-sec {
+        border: 1px solid var(--line); border-radius: var(--radius-lg);
+        background: var(--surface); overflow: hidden;
+    }
+    .plat-head {
+        display: flex; align-items: center; gap: .6rem;
+        padding: .8rem 1rem; border-bottom: 1px solid var(--line);
+    }
+    .pmark-lg {
+        width: 34px; height: 34px; flex: none; border-radius: 9px;
+        color: #fff; font-size: .95rem; font-weight: 700;
+        display: inline-flex; align-items: center; justify-content: center;
+    }
+    .plat-head b { font-size: .95rem; }
+    .plat-state { margin-left: auto; }
+    .status-pill {
+        font-size: .72rem; font-weight: 600; border-radius: 999px; padding: .12rem .55rem;
+        display: inline-flex; align-items: center; gap: .3rem;
+    }
+    .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .is-ok   { color: #16A34A; background: #ECFDF3; }
+    .is-warn { color: #B45309; background: #FFFBEB; }
+    .is-muted{ color: #5f636f; background: #f9fafb; }
+    .dot-ok   { background: #16A34A; }
+    .dot-warn { background: #F59E0B; }
+    .dot-off  { background: #9aa1ad; }
+    .plat-acct { display: flex; align-items: center; gap: .9rem; padding: .85rem 1rem; }
+    .acct-main { flex: 1; min-width: 0; }
+    .acct-name { font-weight: 600; }
+    .acct-empty { color: var(--muted); font-weight: 550; }
+    .acct-act { flex: none; }
+    .linklike { color: var(--brand-600); font-weight: 550; font-size: .85rem;
+                background: none; border: 0; cursor: pointer; border-radius: 6px; text-decoration: none; }
+    .linklike:hover { color: var(--brand-700); text-decoration: underline; }
+    .empty-note { padding: .85rem 1rem; color: var(--muted); font-size: .82rem; }
+    .token-sec {
+        margin-top: 1.5rem; border: 1px solid var(--line);
+        border-radius: var(--radius-lg); background: var(--surface); overflow: hidden;
+    }
+    .token-head {
+        display: flex; align-items: center; gap: .6rem;
+        padding: .8rem 1rem; border-bottom: 1px solid var(--line);
+    }
+    .token-row {
+        display: flex; align-items: center; gap: .9rem; padding: .7rem 1rem;
+        border-bottom: 1px solid var(--line);
+    }
+    .token-row:last-child { border-bottom: 0; }
+    .token-main { flex: 1; min-width: 0; }
+    .token-label { font-weight: 600; }
+    .token-meta { color: var(--muted); font-size: .78rem; margin-top: .15rem; }
+    .btn-danger {
+        flex: none; font-size: .8rem; font-weight: 600; cursor: pointer;
+        color: #B42318; background: #FEF3F2; border: 1px solid #FECDCA;
+        border-radius: 8px; padding: .3rem .7rem;
+    }
+    .btn-danger:hover { background: #FEE4E2; }
+</style>
+
+<div class="notice">
+    <span style="flex: none; font-weight:700; color:var(--brand-600)" aria-hidden="true">i</span>
+    <span>发布助手<span class="ms-1">{{ '在线' if agent_online else '未连接' }}</span>——
+       <strong>{{ summary['logged_in'] }}</strong> 个平台已登录，<strong>{{ summary['logged_out'] }}</strong> 个需重新登录，
+       <strong>{{ summary['unknown'] }}</strong> 个状态未知。</span>
+</div>
+
+<div class="plat-grid">
+    {% for pl in platforms %}
+    <section class="plat-sec">
+        <div class="plat-head">
+            <span class="pmark-lg" style="background: {{ pl.color }}" aria-hidden="true">{{ pl.label[:1] }}</span>
+            <b>{{ pl.label }}</b>
+            <span class="plat-state">
+                {% if pl.account %}
+                    {% if pl.state == 'ok' %}
+                    <span class="status-pill is-ok"><span class="dot dot-ok"></span>当前登录</span>
+                    {% elif pl.state == 'logged_out' %}
+                    <span class="status-pill is-warn"><span class="dot dot-warn"></span>登录失效</span>
+                    {% elif pl.state == 'offline' %}
+                    <span class="status-pill is-muted"><span class="dot dot-off"></span>发布助手未连接</span>
+                    {% else %}
+                    <span class="status-pill is-muted"><span class="dot dot-off"></span>状态未知</span>
+                    {% endif %}
+                {% else %}
+                <span class="status-pill is-muted"><span class="dot dot-off"></span>未接入</span>
+                {% endif %}
+            </span>
+        </div>
+        {% if pl.account %}
+        <div class="plat-acct">
+            <div class="acct-main">
+                <div class="acct-name">{{ pl.account.label }}</div>
+            </div>
+            <div class="acct-act">
+                {% if pl.state == 'logged_out' %}
+                <a class="linklike" href="{{ pl.login_url }}" target="_blank" rel="noopener">重新登录 →</a>
+                {% elif pl.state != 'ok' %}
+                <a class="linklike" href="{{ pl.login_url }}" target="_blank" rel="noopener">去登录 →</a>
+                {% else %}
+                <a class="linklike" href="{{ pl.login_url }}" target="_blank" rel="noopener">打开主页</a>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="empty-note">
+            {% if pl.state == 'offline' %}
+            连接发布助手后可在此查看平台登录状态。
+            {% else %}
+            尚未接入。在浏览器登录{{ pl.label }}后会自动识别。
+            {% endif %}
+        </div>
+        {% endif %}
+    </section>
+    {% endfor %}
+</div>
+
+<section class="token-sec">
+    <div class="token-head"><b>已配对的浏览器扩展</b></div>
+    {% if agent_tokens %}
+        {% for t in agent_tokens %}
+        <div class="token-row">
+            <div class="token-main">
+                <div class="token-label">{{ t.label or '未命名扩展' }}{% if t.revoked %}（已吊销）{% endif %}</div>
+                <div class="token-meta">配对时间 {{ t.created_at or '—' }} · 最近活跃 {{ t.last_seen or '从未' }}</div>
+            </div>
+            {% if not t.revoked %}
+            <form class="acct-act" method="post"
+                  action="{{ url_for('accounts_revoke_token', token_id=t.id) }}">
+                <button type="submit" class="btn-danger">吊销</button>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-note">还没有配对的浏览器扩展。在队列页生成配对码，浏览器扩展输入后即可完成配对。</div>
+    {% endif %}
+</section>
+{% endblock %}

@@ -2324,7 +2324,7 @@ def accounts_page():
     uid = user['id'] if user else None
     login = agent_hub.login_states_view(uid)
     states = login.get('platforms', {})
-    accounts = list_social_accounts()
+    accounts = list_social_accounts(user_id=uid)
     platforms = []
     for pid, m in meta.items():
         rows = [a for a in accounts if a['platform'] == pid]
@@ -2360,7 +2360,21 @@ def accounts_page():
         elif pl['state'] in ('unknown', 'offline'): summary['unknown'] += 1
     return render_template('accounts.html', platforms=platforms,
                            summary=summary,
-                           agent_online=agent_hub.agent_online(uid))
+                           agent_online=agent_hub.agent_online(uid),
+                           agent_tokens=database.list_agent_tokens(uid))
+
+@app.route('/accounts/tokens/<int:token_id>/revoke', methods=['POST'])
+def accounts_revoke_token(token_id):
+    """Revoke one of the session user's paired browser extensions.
+
+    Another user's token id and a missing one are the same 404: the row is
+    never revealed to exist. Revocation takes effect on the next request —
+    the token door reads the revoked flag on every call.
+    """
+    user = current_user()
+    if user is None or not database.revoke_agent_token(token_id, user['id']):
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"success": True})
 
 @app.route('/schedule')
 def schedule_page():

@@ -328,6 +328,9 @@ CHANNEL_GATES = [
     ("check_channel_isolation.py", "CHANNEL_ISOLATION_HEARTBEAT_OK",
      "心跳按用户分桶：登录态互不可见、离线互不影响、过期整桶清理、compose 按本人可选平台",
      ("heartbeat",)),
+    ("check_channel_isolation.py", "CHANNEL_ISOLATION_ACCOUNTS_OK",
+     "social_accounts 遗留数据隔离：唯一键放宽、存量归 admin、列表/吊销只认本人",
+     ("accounts",)),
 ]
 
 # check_*.py files that are deliberately not gates, with the reason. Empty is the
