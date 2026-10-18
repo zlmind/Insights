@@ -155,29 +155,34 @@ def login_states_view() -> dict:
 
 # ── Pairing: the extension bootstraps its bearer token with a short code ────
 # In-memory, like the heartbeat: one pending code at a time, one process.
-# The code is what lets a fresh extension obtain AGENT_TOKEN without anyone
-# copying a 43-character secret by hand — so it is short-lived, single-use,
-# and dies after five wrong guesses.
+# The code is bound to the user who minted it: redeeming proves nothing about
+# identity except that both sides saw the same screen, so the minter's user
+# is who the freshly issued token will belong to. The code is what lets a
+# fresh extension obtain a token without anyone copying a 43-character
+# secret by hand — so it is short-lived, single-use, and dies after five
+# wrong guesses.
 
 _PAIRING_TTL_SECONDS = 300
 _PAIRING_MAX_ATTEMPTS = 5
 _PAIRING_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"  # no 0/O/1/I/L to read aloud
 
-_PENDING_PAIRING: dict = {"code": None, "expires": 0.0, "attempts": 0}
+_PENDING_PAIRING: dict = {"code": None, "user_id": None,
+                          "expires": 0.0, "attempts": 0}
 
 
-def create_pairing_code() -> str:
-    """Mint a fresh pairing code, replacing any pending one."""
+def create_pairing_code(user_id: int) -> str:
+    """Mint a fresh pairing code for ``user_id``, replacing any pending one."""
     import secrets
     code = "".join(secrets.choice(_PAIRING_ALPHABET) for _ in range(8))
     _PENDING_PAIRING["code"] = code
+    _PENDING_PAIRING["user_id"] = user_id
     _PENDING_PAIRING["expires"] = time.time() + _PAIRING_TTL_SECONDS
     _PENDING_PAIRING["attempts"] = 0
     return code
 
 
-def redeem_pairing_code(code) -> str | None:
-    """The bearer token for one correct, live code; ``None`` otherwise.
+def redeem_pairing_code(code) -> int | None:
+    """The minter's ``user_id`` for one correct, live code; ``None`` otherwise.
 
     Wrong guesses burn the code after ``_PAIRING_MAX_ATTEMPTS`` tries, so
     the unauthenticated bootstrap endpoint cannot be brute-forced within
@@ -196,4 +201,19 @@ def redeem_pairing_code(code) -> str | None:
             _PENDING_PAIRING["code"] = None
         return None
     _PENDING_PAIRING["code"] = None
-    return agent_token()
+    user_id = _PENDING_PAIRING["user_id"]
+    _PENDING_PAIRING["user_id"] = None
+    return user_id
+
+
+def issue_agent_token(user_id: int, label: str = "") -> str:
+    """A new bearer token for ``user_id``; the plaintext exists only now.
+
+    The token is 32 random bytes in urlsafe encoding, stored as its sha256
+    hash through ``database.create_agent_token``. The plaintext comes back
+    exactly once, here, to be handed to the client that paired.
+    """
+    import secrets
+    token = secrets.token_urlsafe(32)
+    database.create_agent_token(user_id, token, label)
+    return token

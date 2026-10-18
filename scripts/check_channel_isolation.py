@@ -14,6 +14,7 @@ import os
 import sqlite3
 import sys
 import tempfile
+import time
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -268,6 +269,74 @@ def section_tokens():
     rows_b = database.list_agent_tokens(uid_b, db_path=db_path)
     check(all(r["last_seen"] is None for r in rows_b),
           "another user's token is not touched by someone else's heartbeat")
+
+    # --- pairing: a code is bound to its minter, the redeem mints the
+    # redeemer's own token — the extension protocol shape never changes ---
+    import agent_hub
+    r = client.post("/agent-jobs/pair-code")
+    body = r.get_json()
+    check(r.status_code == 200 and len(body["code"]) == 8,
+          "A mints an eight-character pairing code through the session")
+    code_a = body["code"]
+    r = agent.post("/agent/pair", json={"code": code_a})
+    paired = r.get_json()
+    check(r.status_code == 200 and isinstance(paired.get("token"), str)
+          and len(paired["token"]) >= 40,
+          "an anonymous client redeems A's code for a fresh long token")
+    token_paired_a = paired["token"]
+    check(database.find_agent_user_by_token(token_paired_a, db_path=db_path)
+          == uid,
+          "the token from A's code resolves to A, its minter (谁配对归谁)")
+    check("user_id" not in paired and set(paired) == {"token"},
+          "the pair response carries only the token — no new protocol keys")
+    with sqlite3.connect(db_path) as conn:
+        blob = " ".join(str(v) for row in conn.execute(
+            "SELECT * FROM agent_tokens").fetchall() for v in row)
+    check(token_paired_a not in blob,
+          "the plaintext token appears nowhere in agent_tokens (hash only)")
+
+    r = agent.post("/agent/pair", json={"code": code_a})
+    check(r.status_code == 403, "a pairing code is single-use — second redeem 403")
+
+    # Case and stray-space tolerance is part of the human-typed contract.
+    r = client.post("/agent-jobs/pair-code")
+    code_tol = r.get_json()["code"]
+    spaced = " ".join(code_tol.lower())
+    r = agent.post("/agent/pair", json={"code": spaced})
+    check(r.status_code == 200,
+          "redeem still tolerates lower case and inserted spaces")
+
+    # Five wrong guesses burn the pending code; a locked code stays 403.
+    r = client.post("/agent-jobs/pair-code")
+    code_burn = r.get_json()["code"]
+    for _ in range(5):
+        r = agent.post("/agent/pair", json={"code": "wrongwrong"})
+    check(r.status_code == 403 and agent_hub._PENDING_PAIRING["code"] is None,
+          "five wrong tries kill the pending code")
+    check(agent.post("/agent/pair", json={"code": code_burn}).status_code == 403,
+          "a burned code no longer redeems")
+
+    # An expired code is refused.
+    r = client.post("/agent-jobs/pair-code")
+    code_exp = r.get_json()["code"]
+    agent_hub._PENDING_PAIRING["expires"] = time.time() - 1
+    check(agent.post("/agent/pair", json={"code": code_exp}).status_code == 403,
+          "an expired code is refused")
+
+    # B's code yields B's token: the two minted tokens are distinct and each
+    # resolves to its own minter.
+    r = client_b.post("/agent-jobs/pair-code")
+    code_b = r.get_json()["code"]
+    r = agent.post("/agent/pair", json={"code": code_b})
+    token_paired_b = r.get_json()["token"]
+    check(r.status_code == 200 and token_paired_b != token_paired_a,
+          "B's redeem mints a different token than A's")
+    check(database.find_agent_user_by_token(token_paired_b, db_path=db_path)
+          == uid_b,
+          "the token from B's code resolves to B")
+    check(database.find_agent_user_by_token(token_paired_a, db_path=db_path)
+          == uid,
+          "A's minted token still resolves to A after B paired")
 
     print("agent token identity checks passed")
     print("CHANNEL_ISOLATION_TOKENS_OK")

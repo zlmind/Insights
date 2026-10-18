@@ -179,21 +179,25 @@ def main():
                                  db_path=database.DB_PATH) == [],
           "agent requests are not written to the activity log")
 
-    # --- pairing: the extension bootstraps its token with a one-time code ---
-    code = agent_hub.create_pairing_code()
+    # --- pairing: the extension bootstraps a per-user token with a one-time
+    # code minted by the session user — never the legacy shared secret ---
+    code = agent_hub.create_pairing_code(uid)
     check(len(code) == 8, "a pairing code is eight characters")
     r = client.post("/agent/pair", json={"code": code})
-    check(r.status_code == 200 and r.get_json()["token"] == "secret-token",
-          "a valid code redeems the configured token exactly once")
+    paired = r.get_json()
+    check(r.status_code == 200 and isinstance(paired.get("token"), str)
+          and paired["token"] != "secret-token"
+          and database.find_agent_user_by_token(paired["token"]) == uid,
+          "a valid code redeems a fresh token that resolves to the minter")
     r = client.post("/agent/pair", json={"code": code})
     check(r.status_code == 403,
           "a code is single-use — the second redeem is refused")
 
-    code = agent_hub.create_pairing_code()
+    code = agent_hub.create_pairing_code(uid)
     r = client.post("/agent/pair", json={"code": code.lower()})
     check(r.status_code == 200, "redeem tolerates case and is case-normalized")
 
-    code = agent_hub.create_pairing_code()
+    code = agent_hub.create_pairing_code(uid)
     for _ in range(5):
         r = client.post("/agent/pair", json={"code": "wrongwrong"})
     check(r.status_code == 403 and agent_hub._PENDING_PAIRING["code"] is None,
@@ -201,7 +205,7 @@ def main():
     r = client.post("/agent/pair", json={"code": code})
     check(r.status_code == 403, "a locked-out code no longer redeems")
 
-    code = agent_hub.create_pairing_code()
+    code = agent_hub.create_pairing_code(uid)
     agent_hub._PENDING_PAIRING["expires"] = time.time() - 1
     r = client.post("/agent/pair", json={"code": code})
     check(r.status_code == 403, "an expired code is refused")

@@ -6171,23 +6171,27 @@ def agent_pair_code():
     owner action, while redeeming on /agent/pair is the extension's one
     unauthenticated bootstrap.
     """
-    code = agent_hub.create_pairing_code()
+    code = agent_hub.create_pairing_code(current_user()['id'])
     return jsonify({"code": code, "expires_in": 300})
 
 @app.route("/agent/pair", methods=["POST"])
 def agent_pair():
-    """The extension's bootstrap: one live pairing code -> the bearer token.
+    """The extension's bootstrap: one live pairing code -> a bearer token.
 
     Deliberately outside the bearer door — this is how a fresh extension
-    gets the token at all. The code's short life, single use and five-try
-    lockout are the rate limit; every redeem attempt lands in the activity
-    log via the auto-tracker, which is the audit trail here.
+    gets a token at all. The code resolves to the user who minted it, and a
+    brand-new token is issued for that user right here, so the response's
+    shape stays exactly ``{"token": ...}`` — the extension protocol does not
+    learn that tokens became per-user. The code's short life, single use and
+    five-try lockout are the rate limit; every redeem attempt lands in the
+    activity log via the auto-tracker, which is the audit trail here.
     """
     body = request.get_json(silent=True)
     code = body.get("code") if isinstance(body, dict) else None
-    token = agent_hub.redeem_pairing_code(code)
-    if not token:
+    uid = agent_hub.redeem_pairing_code(code)
+    if uid is None:
         return jsonify({"error": "配对码无效或已过期"}), 403
+    token = agent_hub.issue_agent_token(uid)
     return jsonify({"token": token})
 
 @app.route('/agent-jobs')
