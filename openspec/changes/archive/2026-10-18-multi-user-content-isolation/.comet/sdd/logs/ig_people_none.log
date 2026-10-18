@@ -1,0 +1,12 @@
+
+---STDERR---
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_ig_people.py", line 1355, in <module>
+    SECTIONS[name]()
+  File "D:\git3\Insights\scripts\check_ig_people.py", line 247, in section_none
+    graph, result = sig_of(lambda ig: call(ig))
+  File "D:\git3\Insights\scripts\check_ig_people.py", line 114, in sig_of
+    graph, ig, restore = g.install_fake_graph()
+  File "D:\git3\Insights\scripts\_ig_people_gate.py", line 93, in install_fake_graph
+    import instagram_client
+ModuleNotFoundError: No module named 'instagram_client'

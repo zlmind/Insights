@@ -1,0 +1,11 @@
+briefs with no sources draft from model knowledge; all-duplicates still skips; failures surface as errors
+BRIEF_FALLBACK_OK
+
+--ERR--
+2026-10-18 00:41:52,490 [ERROR] knowledge-based article generation failed for brief 4
+Traceback (most recent call last):
+  File "D:\git3\Insights\content_agent.py", line 407, in run_brief
+    content = insights.generate_article(
+  File "D:\git3\Insights\scripts\check_brief_fallback.py", line 104, in dead_article
+    raise RuntimeError("model 400")
+RuntimeError: model 400

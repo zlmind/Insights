@@ -1,0 +1,10 @@
+
+---STDERR---
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_manual_posts.py", line 803, in <module>
+    SECTIONS[name]()
+  File "D:\git3\Insights\scripts\check_manual_posts.py", line 92, in section_route
+    rows = [dict(database.get_standalone_post(i, db_path=database.DB_PATH)) for i in body["post_ids"]]
+  File "D:\git3\Insights\scripts\check_manual_posts.py", line 92, in <listcomp>
+    rows = [dict(database.get_standalone_post(i, db_path=database.DB_PATH)) for i in body["post_ids"]]
+TypeError: get_standalone_post() missing 1 required positional argument: 'user_id'

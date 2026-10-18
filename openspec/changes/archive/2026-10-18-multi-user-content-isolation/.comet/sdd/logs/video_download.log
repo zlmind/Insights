@@ -1,0 +1,4 @@
+the downloader streams to disk within its cap, refuses unsafe or non-video URLs at every hop, and cleans up
+VIDEO_DOWNLOAD_OK
+
+---STDERR---

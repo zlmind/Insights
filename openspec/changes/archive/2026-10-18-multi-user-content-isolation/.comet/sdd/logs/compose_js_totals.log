@@ -1,0 +1,12 @@
+
+---STDERR---
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_compose_js.py", line 324, in <module>
+    SECTIONS[name]()
+  File "D:\git3\Insights\scripts\check_compose_js.py", line 248, in section_totals
+    source = "\n".join(rendered_scripts())
+  File "D:\git3\Insights\scripts\check_compose_js.py", line 43, in rendered_scripts
+    install_fake_clients(publisher, web)
+  File "D:\git3\Insights\scripts\_accounts_gate.py", line 177, in install_fake_clients
+    publisher.get_linkedin_client = lambda: clients["linkedin"]
+AttributeError: 'NoneType' object has no attribute 'get_linkedin_client'

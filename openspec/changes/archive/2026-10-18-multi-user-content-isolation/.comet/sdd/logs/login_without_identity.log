@@ -1,0 +1,6 @@
+
+---STDERR---
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_login_without_identity.py", line 34, in <module>
+    "linkedin": database.get_linkedin_token,
+AttributeError: module 'database' has no attribute 'get_linkedin_token'

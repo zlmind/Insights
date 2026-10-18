@@ -1,0 +1,4 @@
+video_url persists, upgrades an old database in place, and groups cards
+VIDEO_SCHEMA_OK
+
+--ERR--

@@ -1,0 +1,14 @@
+
+--ERR--
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_queue_groups.py", line 1257, in <module>
+    SECTIONS[name]()
+  File "D:\git3\Insights\scripts\check_queue_groups.py", line 606, in section_edit
+    w, s = standard_world()
+  File "D:\git3\Insights\scripts\check_queue_groups.py", line 94, in standard_world
+    w = World()
+  File "D:\git3\Insights\scripts\check_queue_groups.py", line 54, in __init__
+    install_fake_clients(self.publisher, self.web)
+  File "D:\git3\Insights\scripts\_accounts_gate.py", line 177, in install_fake_clients
+    publisher.get_linkedin_client = lambda: clients["linkedin"]
+AttributeError: 'NoneType' object has no attribute 'get_linkedin_client'

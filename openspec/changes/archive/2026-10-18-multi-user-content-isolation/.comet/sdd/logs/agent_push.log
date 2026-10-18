@@ -1,0 +1,8 @@
+
+---STDERR---
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_agent_push.py", line 126, in <module>
+    main()
+  File "D:\git3\Insights\scripts\check_agent_push.py", line 23, in main
+    post_id = database.add_standalone_post("freeform", "gate-seed", "wechat",
+TypeError: add_standalone_post() missing 1 required positional argument: 'user_id'

@@ -2,6 +2,8 @@
 comet_change: multi-user-content-isolation
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-10-18-multi-user-content-isolation
+status: final
 ---
 
 # 多用户内容隔离 — 技术设计

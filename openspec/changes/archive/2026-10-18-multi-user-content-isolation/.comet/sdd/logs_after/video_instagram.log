@@ -1,0 +1,10 @@
+
+--ERR--
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_video.py", line 1384, in <module>
+    SECTIONS[name]()
+  File "D:\git3\Insights\scripts\check_video.py", line 710, in section_instagram
+    account = connect(database, "instagram", "ig-1", "brandco")
+  File "D:\git3\Insights\scripts\_accounts_gate.py", line 233, in connect
+    database.save_instagram_token(
+AttributeError: module 'database' has no attribute 'save_instagram_token'

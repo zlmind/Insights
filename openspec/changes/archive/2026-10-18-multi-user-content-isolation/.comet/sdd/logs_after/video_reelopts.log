@@ -1,0 +1,8 @@
+
+--ERR--
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_video.py", line 1384, in <module>
+    SECTIONS[name]()
+  File "D:\git3\Insights\scripts\check_video.py", line 1272, in section_reelopts
+    import instagram_client as igc
+ModuleNotFoundError: No module named 'instagram_client'

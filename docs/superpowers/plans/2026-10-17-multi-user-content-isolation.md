@@ -2,6 +2,7 @@
 change: multi-user-content-isolation
 design-doc: docs/superpowers/specs/2026-10-17-multi-user-content-isolation-design.md
 base-ref: 3d6cecefb68bc10cdb09ad7864c78ff48d34a129
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 # 多用户内容隔离 实施计划
@@ -45,6 +46,7 @@ base-ref: 3d6cecefb68bc10cdb09ad7864c78ff48d34a129
 4. **worker 产 NULL 孤儿**——任何绕过 `_require_user` 的新写路径（后续开发）会被 gate 扫描挡住；本期由 scan section 保证 12 表 INSERT 全带 user_id 列。→ Task 15 scan section。
 5. **非 admin 用 `?user_id=` / `?scope=all` 越权看他人用量/活动**——参数被静默忽略、渲染本人数据。→ Task 11 验证命令 + Task 16 E2E 断言。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 0: 提交计划与 change 产物
@@ -77,6 +79,7 @@ Expected: 恰好 6 个文件，无其他文件混入；`git log -1 --format=%B` 
 
 对应 tasks.md：无（计划产物）。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 1: 迁移——11 表加 user_id 列 + 三表重建为 (url, user_id) 复合唯一
@@ -172,6 +175,7 @@ git commit -m "迁移：内容域 11 表加可空 user_id 列，feeds/episodes/u
 
 对应 tasks.md：1.1、1.2（无回填：本任务未写任何 `UPDATE ... SET user_id = ...`，Step 3/4 断言行数与内容不变）。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 2: 数据层 feeds/episodes 作用域
@@ -238,6 +242,7 @@ git commit -m "数据层：feeds/episodes 按 user 作用域，写入口强制�
 
 对应 tasks.md：2.1、2.5（feeds/episodes 部分）。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 3: 数据层 articles/social_posts 作用域
@@ -290,6 +295,7 @@ git commit -m "数据层：articles/social_posts 按 user 作用域，批量替�
 
 对应 tasks.md：2.2（articles/social_posts 部分）、2.5。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 4: 数据层 standalone_posts 与 recent prompts 作用域
@@ -337,6 +343,7 @@ git commit -m "数据层：standalone_posts 与 recent prompts 按 user 作用�
 
 对应 tasks.md：2.2（standalone_posts 部分）、2.3（recent prompts）、2.5。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 5: 数据层 url_sources/uploaded_images/prompt_library/generated_thumbnails 作用域
@@ -390,6 +397,7 @@ git commit -m "数据层：url_sources/上传图/prompt 库/生成封面按 user
 
 对应 tasks.md：2.3、2.5。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 6: 数据层 content_briefs/content_brief_runs/scheduled_posts 作用域
@@ -443,6 +451,7 @@ git commit -m "数据层：content_briefs/runs/scheduled_posts 按 user 作用�
 
 对应 tasks.md：2.4、2.5。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 7: Web 层——源与文章路由按 current_user 过滤与校验
@@ -509,6 +518,7 @@ git commit -m "Web 层：源/文章/episode 路由按 current_user 过滤，跨�
 
 对应 tasks.md：3.1。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 8: Web 层——compose 列表/过滤/prompt/图库路由
@@ -558,6 +568,7 @@ git commit -m "Web 层：Compose 列表/搜索/prompt/图库路由按 current_us
 
 对应 tasks.md：3.2（前半）。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 9: Web 层——compose 生成/卡片/导入/媒体/推送路由
@@ -619,6 +630,7 @@ git commit -m "Web 层：Compose 生成/导入/媒体/推送路由写入当前�
 
 对应 tasks.md：3.2（后半）、2.5（路由侧落实）。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 10: Web 层——sources/thumbnails/briefs/schedule 路由
@@ -681,6 +693,7 @@ git commit -m "Web 层：sources/thumbnails/briefs/schedule 路由按 current_us
 
 对应 tasks.md：3.3。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 11: /activity 与 /usage 的 admin 视角收口
@@ -743,6 +756,7 @@ git commit -m "活动页收口：非 admin 固定本人视角，忽略 user_id �
 
 对应 tasks.md：3.4。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 12: episode worker 与 feed 元数据刷新的归属
@@ -788,6 +802,7 @@ git commit -m "worker：episode 落库与状态更新按入队者归属，元数
 
 对应 tasks.md：4.1（episode 部分）。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 13: content_agent / research_engine / brief 定时跑批的归属
@@ -840,6 +855,7 @@ git commit -m "内容代理与跑批：产物按 brief 主人归属，research �
 
 对应 tasks.md：4.1（content_agent 部分）、4.2。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 14: 修复既有 gate 脚本的数据层调用点
@@ -867,6 +883,7 @@ git commit -m "gate 脚本适配数据层 user 归属签名"
 
 对应 tasks.md：5.1（前置）。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 15: check_content_isolation.py gate（schema / data / scan）并入 run_all_gates
@@ -914,6 +931,7 @@ git commit -m "门禁：内容隔离 schema/数据/静态扫描三 gate 并入�
 
 对应 tasks.md：5.1。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ### Task 16: 端到端双账号验收 gate（e2e 节）
@@ -955,6 +973,7 @@ git commit -m "门禁：多用户内容隔离双账号端到端验收"
 
 对应 tasks.md：5.2。
 
+archived-with: 2026-10-18-multi-user-content-isolation
 ---
 
 ## 开放问题（实现中发现，不扩大范围）

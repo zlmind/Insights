@@ -1,0 +1,12 @@
+
+---STDERR---
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_brief_fallback.py", line 125, in <module>
+    main()
+  File "D:\git3\Insights\scripts\check_brief_fallback.py", line 66, in main
+    bid = database.create_content_brief(
+  File "D:\git3\Insights\database.py", line 4170, in create_content_brief
+    uid = _require_user(user_id)
+  File "D:\git3\Insights\database.py", line 852, in _require_user
+    raise ValueError("user_id is required for content operations")
+ValueError: user_id is required for content operations

@@ -1,0 +1,6 @@
+adapters: GPT-6/Claude 5 requests are translated, older models untouched, prices resolve
+LLM_ADAPTERS_OK
+
+--ERR--
+Could not extract JSON from prompt generation
+Could not extract JSON from prompt generation

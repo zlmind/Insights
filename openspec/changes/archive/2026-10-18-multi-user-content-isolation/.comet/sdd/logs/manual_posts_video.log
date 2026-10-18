@@ -1,0 +1,8 @@
+
+---STDERR---
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_manual_posts.py", line 803, in <module>
+    SECTIONS[name]()
+  File "D:\git3\Insights\scripts\check_manual_posts.py", line 518, in section_video
+    rows = [dict(r) for r in database.list_standalone_posts(db_path=database.DB_PATH)
+TypeError: list_standalone_posts() missing 1 required positional argument: 'user_id'

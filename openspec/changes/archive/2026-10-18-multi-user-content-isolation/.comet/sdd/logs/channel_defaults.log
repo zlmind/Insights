@@ -1,0 +1,8 @@
+
+---STDERR---
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_channel_defaults.py", line 39, in <module>
+    main()
+  File "D:\git3\Insights\scripts\check_channel_defaults.py", line 29, in main
+    article_id = database.add_article(None, "gate topic", "style", "gate body")
+TypeError: add_article() missing 1 required positional argument: 'user_id'

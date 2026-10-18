@@ -1,0 +1,14 @@
+
+---STDERR---
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_ig_people.py", line 1355, in <module>
+    SECTIONS[name]()
+  File "D:\git3\Insights\scripts\check_ig_people.py", line 826, in section_publish
+    database, web, publisher, client, ids, ig = rig()
+  File "D:\git3\Insights\scripts\check_ig_people.py", line 71, in rig
+    ids = [connect(database, "instagram", f"ig-{n}", f"brand{n}") for n in range(1, accounts + 1)]
+  File "D:\git3\Insights\scripts\check_ig_people.py", line 71, in <listcomp>
+    ids = [connect(database, "instagram", f"ig-{n}", f"brand{n}") for n in range(1, accounts + 1)]
+  File "D:\git3\Insights\scripts\_accounts_gate.py", line 233, in connect
+    database.save_instagram_token(
+AttributeError: module 'database' has no attribute 'save_instagram_token'

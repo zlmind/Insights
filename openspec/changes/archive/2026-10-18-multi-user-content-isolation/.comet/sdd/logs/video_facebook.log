@@ -1,0 +1,8 @@
+
+---STDERR---
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_video.py", line 1376, in <module>
+    SECTIONS[name]()
+  File "D:\git3\Insights\scripts\check_video.py", line 625, in section_facebook
+    import facebook_client
+ModuleNotFoundError: No module named 'facebook_client'

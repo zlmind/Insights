@@ -1,0 +1,4 @@
+video: the tab validates, excludes file/URL, sends the video instead of the image, and the route takes it
+MANUAL_POSTS_VIDEO_OK
+
+--ERR--

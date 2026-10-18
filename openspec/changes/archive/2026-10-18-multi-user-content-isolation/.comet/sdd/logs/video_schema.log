@@ -1,0 +1,8 @@
+
+---STDERR---
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_video.py", line 1376, in <module>
+    SECTIONS[name]()
+  File "D:\git3\Insights\scripts\check_video.py", line 68, in section_schema
+    pid = database.add_standalone_post("manual", "gate", "linkedin", "Copy", video_url=VIDEO, db_path=P)
+TypeError: add_standalone_post() missing 1 required positional argument: 'user_id'

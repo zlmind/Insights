@@ -1,0 +1,8 @@
+
+---STDERR---
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_ig_people.py", line 1355, in <module>
+    SECTIONS[name]()
+  File "D:\git3\Insights\scripts\check_ig_people.py", line 641, in section_persist
+    sid = database.add_scheduled_post("2099-01-01T00:00:00", "standalone", standalone_post_id=1,
+TypeError: add_scheduled_post() missing 1 required positional argument: 'user_id'

@@ -1,0 +1,14 @@
+
+---STDERR---
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_compose_paging.py", line 844, in <module>
+    SECTIONS[name]()
+  File "D:\git3\Insights\scripts\check_compose_paging.py", line 468, in section_loadall
+    html, script = compose_script()
+  File "D:\git3\Insights\scripts\check_compose_paging.py", line 161, in compose_script
+    database, web, client = seeded_app(**kw)
+  File "D:\git3\Insights\scripts\check_compose_paging.py", line 45, in seeded_app
+    install_fake_clients(publisher, web)
+  File "D:\git3\Insights\scripts\_accounts_gate.py", line 177, in install_fake_clients
+    publisher.get_linkedin_client = lambda: clients["linkedin"]
+AttributeError: 'NoneType' object has no attribute 'get_linkedin_client'

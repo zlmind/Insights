@@ -1,0 +1,8 @@
+
+--ERR--
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_accounts_model.py", line 19, in <module>
+    work = connect(database, "linkedin", "li-work", "Work")
+  File "D:\git3\Insights\scripts\_accounts_gate.py", line 209, in connect
+    database.save_linkedin_token(
+AttributeError: module 'database' has no attribute 'save_linkedin_token'

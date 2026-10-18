@@ -1,0 +1,12 @@
+
+---STDERR---
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_bulk_platform.py", line 903, in <module>
+    SECTIONS[name]()
+  File "D:\git3\Insights\scripts\check_bulk_platform.py", line 310, in section_add
+    rig = Rig()
+  File "D:\git3\Insights\scripts\check_bulk_platform.py", line 69, in __init__
+    install_fake_clients(self.publisher, self.web)
+  File "D:\git3\Insights\scripts\_accounts_gate.py", line 177, in install_fake_clients
+    publisher.get_linkedin_client = lambda: clients["linkedin"]
+AttributeError: 'NoneType' object has no attribute 'get_linkedin_client'

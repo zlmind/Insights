@@ -1,0 +1,8 @@
+
+---STDERR---
+Traceback (most recent call last):
+  File "D:\git3\Insights\scripts\check_video.py", line 1376, in <module>
+    SECTIONS[name]()
+  File "D:\git3\Insights\scripts\check_video.py", line 403, in section_twitter
+    import twitter_client
+ModuleNotFoundError: No module named 'twitter_client'
