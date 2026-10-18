@@ -61,10 +61,14 @@ def main():
     check('账号登录' in html, "the strip's title uses the fixed vocabulary")
 
     # --- online: the same button is enabled and login dots show up ---
-    agent_hub.record_heartbeat({"tools": {"wechatsync": {
-        "available": True,
-        "platforms": [{"id": "wechat", "logged_in": True},
-                      {"id": "zhihu", "logged_in": False}]}}})
+    # Online state is built through the endpoint, never by reaching into
+    # record_heartbeat: the endpoint is the stable seam across refactors.
+    database.create_agent_token(uid, "ui-token")
+    client.post("/agent/heartbeat", headers={"Authorization": "Bearer ui-token"},
+                json={"tools": {"wechatsync": {
+                    "available": True,
+                    "platforms": [{"id": "wechat", "logged_in": True},
+                                  {"id": "zhihu", "logged_in": False}]}}})
     html = client.get("/compose").get_data(as_text=True)
     check('推送离线' not in html
           and '检测离线：发布助手未连接，去发布队列页恢复' not in html,
@@ -79,7 +83,8 @@ def main():
     # A finished job shows per-platform results on the queue page.
     jid = database.enqueue_agent_job(
         "article_sync",
-        json.dumps({"title": "T", "items": [{"target": "wechat", "content": "x"}]}))
+        json.dumps({"title": "T", "items": [{"target": "wechat", "content": "x"}]}),
+        user_id=uid)
     database.record_agent_job_event(jid, {
         "type": "done",
         "results": [{"platform": "wechat", "success": True, "draft": True,

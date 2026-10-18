@@ -84,8 +84,13 @@ def _payload_for(row, db_path=None) -> dict:
     return payload
 
 
-def enqueue_card_push(row, *, run_after=None, created_by=None, db_path=None):
+def enqueue_card_push(row, *, run_after=None, created_by=None, user_id,
+                      db_path=None):
     """Queue one card row for the agent; idempotent while a job is in flight.
+
+    ``user_id`` owns the resulting job: only that user's token can claim it
+    and only their pages can read it, and the in-flight dedupe is scoped the
+    same way so two users pushing the same bytes stay two lanes.
 
     Idempotence is per lane class: an immediate push and a scheduled push of
     the same card are different requests, so a 9:30 schedule never satisfies
@@ -104,15 +109,16 @@ def enqueue_card_push(row, *, run_after=None, created_by=None, db_path=None):
             WHERE kind = 'article_sync' AND payload = ?
               AND status IN ('pending', 'claimed', 'running')
               AND (run_after IS NULL) = (? IS NULL)  -- same lane class
+              AND user_id = ?
             ORDER BY id DESC LIMIT 1
             """,
-            (payload, run_after),
+            (payload, run_after, user_id),
         ).fetchone()
     if existing:
         return {"job_id": existing[0], "already": True}
     job_id = database.enqueue_agent_job(
         "article_sync", payload, run_after=run_after,
         article_id=row["article_id"] if "article_id" in row.keys() else None,
-        created_by=created_by, **kwargs,
+        created_by=created_by, user_id=user_id, **kwargs,
     )
     return {"job_id": job_id, "already": False}

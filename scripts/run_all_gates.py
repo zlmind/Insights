@@ -322,6 +322,9 @@ CHANNEL_GATES = [
     ("check_channel_isolation.py", "CHANNEL_ISOLATION_SCHEMA_OK",
      "agent_tokens 建表与存量全局密钥一次性映射 admin，吊销即失效",
      ("schema",)),
+    ("check_channel_isolation.py", "CHANNEL_ISOLATION_TOKENS_OK",
+     "token 解析用户：claim/events/读路径只认本人，跨用户与不存在同响应体",
+     ("tokens",)),
 ]
 
 # check_*.py files that are deliberately not gates, with the reason. Empty is the

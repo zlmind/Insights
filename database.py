@@ -634,6 +634,7 @@ def init_db(db_path: str = DB_PATH) -> None:
                 claimed_at TEXT,
                 article_id INTEGER,
                 created_by INTEGER,
+                user_id INTEGER,
                 created_at TEXT,
                 updated_at TEXT
             )
@@ -642,6 +643,22 @@ def init_db(db_path: str = DB_PATH) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_agent_jobs_queue "
             "ON agent_jobs(status, run_after, id)"
+        )
+
+        # Ownership for agent jobs: every job belongs to the user whose token
+        # enqueued it, so claim/report/read can be scoped. An upgraded
+        # database gets the column in place; its pre-user rows are assigned
+        # to the oldest account — a NULL owner is a job nobody can claim or
+        # read, which is a silent stall, not a neutral state.
+        job_cols = [r[1] for r in conn.execute(
+            "PRAGMA table_info(agent_jobs)").fetchall()]
+        if job_cols and "user_id" not in job_cols:
+            conn.execute("ALTER TABLE agent_jobs ADD COLUMN user_id INTEGER")
+        conn.execute(
+            """
+            UPDATE agent_jobs SET user_id = (SELECT MIN(id) FROM users)
+            WHERE user_id IS NULL AND EXISTS (SELECT 1 FROM users)
+            """
         )
 
         # Per-user agent tokens for the /agent/* door and browser extension.
@@ -4685,19 +4702,28 @@ def count_social_accounts(platform: str | None = None, db_path: str = DB_PATH) -
 _BACKOFF_SECONDS = (60, 300, 900, 3600)
 
 def enqueue_agent_job(kind, payload, *, run_after=None, max_attempts=5,
-                      article_id=None, created_by=None, db_path=DB_PATH):
-    """Queue one job for the local agent; ``payload`` is a JSON string."""
+                      article_id=None, created_by=None, user_id=None,
+                      db_path=DB_PATH):
+    """Queue one job for the local agent; ``payload`` is a JSON string.
+
+    ``user_id`` is the job's owner, the same write-inlet convention as the
+    content tables. It is required: a NULL owner is a job no token can claim
+    and no page can read, which would sit pending forever — failing loudly at
+    the inlet beats a silent stall in the queue.
+    """
+    if user_id is None:
+        raise ValueError("enqueue_agent_job requires user_id")
     now = datetime.utcnow().isoformat(timespec="seconds")
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
             """
             INSERT INTO agent_jobs (kind, payload, status, run_after,
                                     max_attempts, article_id, created_by,
-                                    created_at, updated_at)
-            VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?)
+                                    user_id, created_at, updated_at)
+            VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)
             """,
             (kind, payload, run_after, max_attempts, article_id, created_by,
-             now, now),
+             user_id, now, now),
         )
     return cur.lastrowid
 
@@ -4723,9 +4749,10 @@ def _job_matches_executor(payload_text, executor, platforms):
                if isinstance(i, dict)]
     return bool(targets) and all(t in platforms for t in targets)
 
-def claim_agent_job(*, kinds=("article_sync",), agent="", stale_minutes=15,
-                    executor=None, platforms=None, db_path=DB_PATH):
-    """Hand the oldest due job to one agent, exactly once.
+def claim_agent_job(*, user_id, kinds=("article_sync",), agent="",
+                    stale_minutes=15, executor=None, platforms=None,
+                    db_path=DB_PATH):
+    """Hand the oldest due job belonging to ``user_id`` to one agent.
 
     A claim older than ``stale_minutes`` is recycled first, so a killed agent
     cannot pin a job forever. The same rule covers ``running`` rows:
@@ -4763,10 +4790,11 @@ def claim_agent_job(*, kinds=("article_sync",), agent="", stale_minutes=15,
                     SELECT id, payload FROM agent_jobs
                     WHERE status = 'pending' AND kind IN ({marks})
                       AND (run_after IS NULL OR run_after <= ?)
+                      AND user_id = ?
                       AND id > ?
                     ORDER BY id LIMIT 100
                     """,
-                    (*kinds, now, last_id),
+                    (*kinds, now, user_id, last_id),
                 ).fetchall()
                 if not rows:
                     break
@@ -4867,13 +4895,23 @@ def get_agent_job(job_id, *, db_path=DB_PATH):
         ).fetchone()
     return dict(row) if row else None
 
-def list_agent_jobs(*, limit=100, db_path=DB_PATH):
-    """Agent jobs, newest first."""
+def list_agent_jobs(*, limit=100, user_id=None, db_path=DB_PATH):
+    """Agent jobs, newest first.
+
+    ``user_id`` scopes the listing to one owner; None means every owner and
+    is for the gates and internal tooling only — page routes must pass the
+    viewer's own id.
+    """
+    sql = "SELECT * FROM agent_jobs"
+    params: list = []
+    if user_id is not None:
+        sql += " WHERE user_id = ?"
+        params.append(user_id)
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT * FROM agent_jobs ORDER BY id DESC LIMIT ?", (limit,)
-        ).fetchall()
+        rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
 

@@ -22,6 +22,9 @@ def main():
     directory, database, web, publisher, client = isolated_app()
     import agent_hub
     database.set_setting("AGENT_TOKEN", "secret-token")
+    # The bearer door resolves tokens from agent_tokens, so the setting above
+    # only becomes usable through init_db's one-time legacy migration.
+    database.init_db(database.DB_PATH)
 
     # --- no heartbeat at all: every platform offline, urls still present ---
     data = client.get("/agent/login-states.json").get_json()

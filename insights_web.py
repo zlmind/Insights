@@ -6132,14 +6132,18 @@ def compose_push_post(post_id: int):
             return jsonify({"error": "时间格式不对"}), 400
     elif not agent_hub.agent_online():
         return jsonify({"error": "推送离线：请启动浏览器扩展（Insights 发布助手），或本机 agent"}), 409
-    outcome = domestic_publisher.enqueue_card_push(post, run_after=run_after)
+    outcome = domestic_publisher.enqueue_card_push(post, run_after=run_after,
+                                                    user_id=uid)
     return jsonify({"job_id": outcome["job_id"], "already": outcome["already"],
                     "platform": target})
 
 @app.route('/agent-jobs/<int:job_id>.json')
 def agent_job_json(job_id: int):
+    uid = current_user()['id']
     job = database.get_agent_job(job_id)
-    if not job:
+    # Another user's row and a missing row answer the same bytes, so the id
+    # space leaks no ownership facts.
+    if not job or job.get("user_id") != uid:
         return jsonify({"error": "not found"}), 404
     return jsonify(job)
 
@@ -6194,7 +6198,7 @@ def agent_jobs_page():
     are turned back into words — the platforms a job was for carry their
     display names, and each platform's own outcome stands on its own line.
     """
-    jobs = database.list_agent_jobs(limit=100)
+    jobs = database.list_agent_jobs(limit=100, user_id=current_user()['id'])
     for job in jobs:
         payload = json.loads(job['payload'] or '{}')
         job['targets'] = '、'.join(
@@ -6207,15 +6211,20 @@ def agent_jobs_page():
 
 @app.route("/agent/heartbeat", methods=["POST"])
 def agent_heartbeat():
-    if not agent_hub.check_agent_auth():
+    creds = agent_hub.agent_credentials()
+    if creds is None:
         return jsonify({"error": "unauthorized"}), 401
     agent_hub.record_heartbeat(request.get_json(silent=True) or {})
+    # The beat doubles as proof of life for the token itself.
+    database.touch_agent_token(creds[1])
     return jsonify({"ok": True})
 
 @app.route("/agent/jobs/claim", methods=["POST"])
 def agent_claim():
-    if not agent_hub.check_agent_auth():
+    creds = agent_hub.agent_credentials()
+    if creds is None:
         return jsonify({"error": "unauthorized"}), 401
+    uid = creds[0]
     # The body carries only the agent-name hint, so a foreign client posting a
     # truthy non-object (a bare list, say) is tolerated as {} rather than
     # blown up by `.get` into a 500 — unlike /events, where the body is the
@@ -6230,6 +6239,7 @@ def agent_claim():
         platforms = None
     raw_executor = body.get("executor")
     job = database.claim_agent_job(
+        user_id=uid,
         kinds=("article_sync", "video_publish"),
         agent=body.get("agent", ""),
         executor=raw_executor if isinstance(raw_executor, str) else None,
@@ -6241,8 +6251,16 @@ def agent_claim():
 
 @app.route("/agent/jobs/<int:job_id>/events", methods=["POST"])
 def agent_job_events(job_id: int):
-    if not agent_hub.check_agent_auth():
+    creds = agent_hub.agent_credentials()
+    if creds is None:
         return jsonify({"error": "unauthorized"}), 401
+    # Ownership comes before the protocol checks: a foreign reporter learns
+    # nothing about the job — not even whether it exists — and the same 404
+    # bytes answer a job that is simply not there. Unknown event types stay a
+    # 400, but only for the owner.
+    job = database.get_agent_job(job_id)
+    if not job or job.get("user_id") != creds[0]:
+        return jsonify({"error": "not found"}), 404
     event = request.get_json(silent=True) or {}
     if not isinstance(event, dict):
         return jsonify({"error": "event must be an object"}), 400

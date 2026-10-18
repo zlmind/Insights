@@ -22,6 +22,11 @@ def main():
     directory, database, web, publisher, client = isolated_app()
     import agent_hub
     database.set_setting("AGENT_TOKEN", "secret-token")
+    # The bearer door resolves tokens from agent_tokens, not the setting: the
+    # legacy AGENT_TOKEN above only becomes claimable through init_db's
+    # one-time migration, which is exactly the upgrade path real installs take.
+    database.init_db(database.DB_PATH)
+    uid = database.get_user_by_username("gate")["id"]
 
     # --- auth: every endpoint rejects a bad or missing token ---
     for method, path in (("post", "/agent/heartbeat"), ("post", "/agent/jobs/claim")):
@@ -45,7 +50,8 @@ def main():
                       json=[{"agent": "x"}]).status_code == 204,
           "a JSON list body claims cleanly instead of a 500")
     jid = database.enqueue_agent_job(
-        "article_sync", json.dumps({"items": [{"target": "wechat", "content": "x"}]}))
+        "article_sync", json.dumps({"items": [{"target": "wechat", "content": "x"}]}),
+        user_id=uid)
     r = client.post("/agent/jobs/claim", headers=AUTH)
     check(r.status_code == 200 and r.get_json()["id"] == jid,
           "claim returns the pending job as JSON")
@@ -74,9 +80,10 @@ def main():
     # each other's jobs, even though they share one queue ---
     ext_job = database.enqueue_agent_job(
         "article_sync", json.dumps({"items": [{"target": "wechat", "content": "x"}],
-                                    "executor": "extension"}))
+                                    "executor": "extension"}), user_id=uid)
     old_job = database.enqueue_agent_job(
-        "article_sync", json.dumps({"items": [{"target": "zhihu", "content": "x"}]}))
+        "article_sync", json.dumps({"items": [{"target": "zhihu", "content": "x"}]}),
+        user_id=uid)
     r = client.post("/agent/jobs/claim", headers=AUTH,
                     json={"agent": "insights-ext", "executor": "extension",
                           "platforms": ["wechat"]})
@@ -91,7 +98,7 @@ def main():
     # never pick it up, extension offline or not.
     database.enqueue_agent_job(
         "article_sync", json.dumps({"items": [{"target": "zhihu", "content": "x"}],
-                                    "executor": "extension"}))
+                                    "executor": "extension"}), user_id=uid)
     r = client.post("/agent/jobs/claim", headers=AUTH,
                     json={"agent": "insights-ext", "executor": "extension",
                           "platforms": ["wechat"]})
@@ -99,7 +106,7 @@ def main():
           "a stamped job beyond the claimant's platforms is held")
 
     # A candidate with a broken payload must be skipped, not fatal.
-    database.enqueue_agent_job("article_sync", "{not json")
+    database.enqueue_agent_job("article_sync", "{not json", user_id=uid)
     r = client.post("/agent/jobs/claim", headers=AUTH, json={"agent": "layne-win"})
     check(r.status_code == 204,
           "a broken payload in the candidate window is skipped, not a 500")
@@ -109,9 +116,10 @@ def main():
     for _ in range(120):
         database.enqueue_agent_job(
             "article_sync", json.dumps({"items": [{"target": "wechat", "content": "x"}],
-                                        "executor": "extension"}))
+                                        "executor": "extension"}), user_id=uid)
     tail_job = database.enqueue_agent_job(
-        "article_sync", json.dumps({"items": [{"target": "zhihu", "content": "x"}]}))
+        "article_sync", json.dumps({"items": [{"target": "zhihu", "content": "x"}]}),
+        user_id=uid)
     r = client.post("/agent/jobs/claim", headers=AUTH, json={"agent": "layne-win"})
     check(r.status_code == 200 and r.get_json()["id"] == tail_job,
           "a matching job behind 120 other-lane jobs is still claimed")

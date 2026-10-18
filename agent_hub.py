@@ -1,17 +1,17 @@
 """The server side of the local publishing agent.
 
 The agent is not a browser session: it is a small process on the owner's
-machine that polls in over HTTPS with one shared bearer token. That makes
-three things true here. Auth is a constant-time token compare, not the login
-wall. The heartbeat is an in-process timestamp, not a table, because its only
-readers are the compose page and these endpoints in the same single app
-process. And every queue mutation goes through ``database`` so the gate can
-exercise the same functions the routes do.
+machine that polls in over HTTPS with a per-user bearer token. That makes
+three things true here. Auth resolves the token to its user through the
+agent_tokens table, not the login wall. The heartbeat is an in-process
+timestamp, not a table, because its only readers are the compose page and
+these endpoints in the same single app process. And every queue mutation goes
+through ``database`` so the gate can exercise the same functions the routes
+do.
 """
 
 from __future__ import annotations
 
-import hmac
 import time
 
 import database
@@ -27,27 +27,35 @@ HEARTBEAT_WINDOW_SECONDS = 60
 
 
 def agent_token(db_path=None) -> str:
-    """The configured shared token; empty means the agent door is closed."""
+    """The configured shared token; empty means the agent door is closed.
+
+    Legacy-migration semantics only: init_db reads this value once to seed the
+    admin's first per-user agent_tokens row. New tokens come from
+    ``database.create_agent_token``; nothing here gates a request anymore.
+    """
     if db_path is None:
         import appconfig
         return appconfig.get("AGENT_TOKEN") or ""
     return database.get_setting("AGENT_TOKEN", "", db_path=db_path) or ""
 
 
-def check_agent_auth() -> bool:
-    """True when the request carries exactly the configured bearer token."""
+def agent_credentials() -> tuple[int, str] | None:
+    """``(user_id, token)`` for the request's bearer token, or None.
+
+    The token is looked up by its sha256 in agent_tokens, so a missing, wrong
+    or revoked token all read the same way: None. The raw token travels back
+    with the id so the heartbeat endpoint can refresh the row's last_seen
+    without parsing the header a second time.
+    """
     from flask import request
-    expected = agent_token()
-    if not expected:
-        return False
     header = request.headers.get("Authorization", "")
     if not header.startswith("Bearer "):
-        return False
-    # compare_digest is bytes-only: a header is decoded as latin-1, so any
-    # non-ASCII byte in it would raise TypeError and turn the rejection into
-    # a 500 unless both sides are compared as utf-8.
-    return hmac.compare_digest(header[len("Bearer "):].encode("utf-8"),
-                               expected.encode("utf-8"))
+        return None
+    token = header[len("Bearer "):]
+    user_id = database.find_agent_user_by_token(token)
+    if user_id is None:
+        return None
+    return (user_id, token)
 
 
 def record_heartbeat(payload: dict) -> None:

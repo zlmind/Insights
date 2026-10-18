@@ -18,12 +18,13 @@ from _accounts_gate import isolated_app, check  # noqa: E402
 
 def main():
     directory, database, web, publisher, client = isolated_app()
+    gate_uid = database.get_user_by_username("gate")["id"]
 
     # --- enqueue + get ---
     jid = database.enqueue_agent_job(
         "article_sync",
         json.dumps({"title": "t", "items": [{"target": "wechat", "content": "hi"}]}),
-        created_by=None,
+        created_by=None, user_id=gate_uid,
     )
     check(isinstance(jid, int) and jid > 0, "enqueue returns a job id")
     job = database.get_agent_job(jid)
@@ -32,10 +33,10 @@ def main():
           "payload round-trips as JSON")
 
     # --- claim is exclusive ---
-    first = database.claim_agent_job(agent="a1")
+    first = database.claim_agent_job(user_id=gate_uid, agent="a1")
     check(first and first["id"] == jid and first["status"] == "claimed",
           "first claim takes the pending job")
-    second = database.claim_agent_job(agent="a2")
+    second = database.claim_agent_job(user_id=gate_uid, agent="a2")
     check(second is None, "second claim finds nothing — claims are exclusive")
 
     # --- started event ---
@@ -55,7 +56,7 @@ def main():
 
     # --- retryable failure: backoff then terminal ---
     j2 = database.enqueue_agent_job("article_sync", json.dumps({"items": []}),
-                                    max_attempts=2)
+                                    max_attempts=2, user_id=gate_uid)
     database.record_agent_job_event(j2, {"type": "started"})
     job = database.record_agent_job_event(
         j2, {"type": "failed", "error": "timeout", "retryable": True})
@@ -68,19 +69,22 @@ def main():
           "attempts exhausted lands as terminal failed")
 
     # --- non-retryable failure is terminal at once ---
-    j3 = database.enqueue_agent_job("article_sync", json.dumps({"items": []}))
+    j3 = database.enqueue_agent_job("article_sync", json.dumps({"items": []}),
+                                   user_id=gate_uid)
     job = database.record_agent_job_event(
         j3, {"type": "failed", "error": "no tool", "retryable": False})
     check(job["status"] == "failed", "non-retryable failure is terminal")
 
     # --- stale reclaim ---
-    j4 = database.enqueue_agent_job("article_sync", json.dumps({"items": []}))
-    database.claim_agent_job(agent="dead-agent")
+    j4 = database.enqueue_agent_job("article_sync", json.dumps({"items": []}),
+                                   user_id=gate_uid)
+    database.claim_agent_job(user_id=gate_uid, agent="dead-agent")
     row = database.get_agent_job(j4)
     with sqlite3.connect(database.DB_PATH) as conn:
         conn.execute("UPDATE agent_jobs SET claimed_at = ? WHERE id = ?",
                      ("2000-01-01T00:00:00", j4))
-    revived = database.claim_agent_job(agent="a2", stale_minutes=15)
+    revived = database.claim_agent_job(user_id=gate_uid, agent="a2",
+                                        stale_minutes=15)
     check(revived and revived["id"] == j4,
           "a claim older than stale_minutes is handed out again")
 
@@ -88,8 +92,10 @@ def main():
     # claimed_at survives the started event, so the same staleness rule that
     # recovers a killed claim recovers a killed run; otherwise the row would
     # sit running forever and its dedupe lane would block every re-push.
-    j6 = database.enqueue_agent_job("article_sync", json.dumps({"items": []}))
-    check(database.claim_agent_job(agent="a1")["id"] == j6,
+    j6 = database.enqueue_agent_job("article_sync", json.dumps({"items": []}),
+                                   user_id=gate_uid)
+    check(database.claim_agent_job(user_id=gate_uid,
+                                    agent="a1")["id"] == j6,
           "the fresh job is the one claimed")
     database.record_agent_job_event(j6, {"type": "started"})
     check(database.get_agent_job(j6)["status"] == "running",
@@ -97,7 +103,8 @@ def main():
     with sqlite3.connect(database.DB_PATH) as conn:
         conn.execute("UPDATE agent_jobs SET claimed_at = ? WHERE id = ?",
                      ("2000-01-01T00:00:00", j6))
-    revived = database.claim_agent_job(agent="a4", stale_minutes=15)
+    revived = database.claim_agent_job(user_id=gate_uid, agent="a4",
+                                        stale_minutes=15)
     check(revived and revived["id"] == j6 and revived["status"] == "claimed",
           "a running job past its claim deadline is handed out again")
 
@@ -116,12 +123,16 @@ def main():
 
     # --- run_after gates claiming ---
     j5 = database.enqueue_agent_job("article_sync", json.dumps({"items": []}),
-                                    run_after="2099-01-01T00:00:00")
-    check(database.claim_agent_job(agent="a1") is None,
+                                    run_after="2099-01-01T00:00:00",
+                                    user_id=gate_uid)
+    check(database.claim_agent_job(user_id=gate_uid,
+                                    agent="a1") is None,
           "a future run_after is not claimable yet")
 
     # --- the events door refuses a body that is not an object ---
-    database.set_setting("AGENT_TOKEN", "gate-token", db_path=database.DB_PATH)
+    # The bearer door takes a per-user token from agent_tokens, not the setting.
+    database.create_agent_token(gate_uid, "gate-token",
+                                db_path=database.DB_PATH)
     r = client.post(f"/agent/jobs/{j6}/events", json=["not", "an", "object"],
                     headers={"Authorization": "Bearer gate-token"})
     check(r.status_code == 400, "a non-object event body is a 400, not a 500")

@@ -65,11 +65,19 @@ def main():
           "a UTC browser's 09:30 lands as 09:30Z")
 
     # --- online: enqueues, dedupes, returns the job ---
-    agent_hub.record_heartbeat({"tools": {"wechatsync": {"available": True}}})
+    # Online state is built through the endpoint, never by reaching into
+    # record_heartbeat: the endpoint is the stable seam across refactors.
+    database.create_agent_token(uid, "push-gate-token")
+    agent = web.app.test_client()
+    agent.post("/agent/heartbeat",
+               headers={"Authorization": "Bearer push-gate-token"},
+               json={"tools": {"wechatsync": {"available": True}}})
     r = client.post(f"/compose/post/{post_id}/push", data={"target": "wechat"})
     body = r.get_json()
     check(r.status_code == 200 and body["job_id"] > 0 and
           body["already"] is False, "an online push enqueues a job")
+    check(database.get_agent_job(body["job_id"])["user_id"] == uid,
+          "the pushed job belongs to the pushing user")
     r2 = client.post(f"/compose/post/{post_id}/push", data={"target": "wechat"})
     check(r2.get_json()["already"] is True and
           r2.get_json()["job_id"] == body["job_id"],
