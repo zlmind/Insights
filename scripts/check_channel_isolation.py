@@ -1,9 +1,11 @@
 """Multi-user publishing channel gate: schema / data / ... sections.
 
-    python scripts/check_channel_isolation.py schema   CHANNEL_ISOLATION_SCHEMA_OK
-    python scripts/check_channel_isolation.py tokens   CHANNEL_ISOLATION_TOKENS_OK
+    python scripts/check_channel_isolation.py schema    CHANNEL_ISOLATION_SCHEMA_OK
+    python scripts/check_channel_isolation.py tokens    CHANNEL_ISOLATION_TOKENS_OK
     python scripts/check_channel_isolation.py heartbeat CHANNEL_ISOLATION_HEARTBEAT_OK
-    python scripts/check_channel_isolation.py accounts CHANNEL_ISOLATION_ACCOUNTS_OK
+    python scripts/check_channel_isolation.py accounts  CHANNEL_ISOLATION_ACCOUNTS_OK
+    python scripts/check_channel_isolation.py publish   CHANNEL_ISOLATION_PUBLISH_OK
+    python scripts/check_channel_isolation.py e2e       CHANNEL_ISOLATION_E2E_OK
 
 ``schema`` pins the agent_tokens table and the legacy global token migration;
 ``tokens`` pins the /agent/* door's per-user identity: claim, events and the
@@ -13,7 +15,11 @@ the per-user heartbeat buckets: login states, the online pill and the compose
 selector read the viewer's own bucket and nobody else's; ``accounts`` pins
 social_accounts' per-user isolation: the widened unique key, the legacy rows
 settling with admin, the per-user account list and page, and the token
-manager's revocation rules.
+manager's revocation rules. ``e2e`` walks the whole story once over the real
+routes: two users pair their own extensions, jobs and events and reads stay
+in lane, a revoked token dies at once, an offline owner's push waits with a
+reason instead of borrowing the other user's channel, and two extension
+instances each claim, report and finish their own user's job.
 """
 
 import json
@@ -753,12 +759,247 @@ def section_publish():
     print("CHANNEL_ISOLATION_PUBLISH_OK")
 
 
+def section_e2e():
+    """The whole story, once, over the real routes: two users, two extensions.
+
+    A (the gate's own admin) and B each mint a pairing code and each redeem it
+    from an anonymous client; every token belongs to its minter. A queues a
+    job — B's claim is a 204, B's event on A's job is the same 404 as a
+    missing one, and A's wechat-ok report lights nobody's strip or accounts
+    page but A's. B revoking one of its own tokens kills exactly that token.
+    With B online and A offline, A's instant push is the 409, a scheduled push
+    waits under A's id with the queue page naming why, and B's token still
+    cannot take it. Finally two extension instances — two sessionless clients,
+    each holding only its own bearer token — claim, report and finish, each
+    strictly in its own lane, both jobs ending succeeded.
+    """
+    directory, database, web, publisher, client = isolated_app()
+    db_path = database.DB_PATH
+    uid_a = database.get_user_by_username("gate")["id"]
+    uid_b = database.create_user("e2e_b", generate_password_hash("p"),
+                                 db_path=db_path)
+    client_b = web.app.test_client()
+    with client_b.session_transaction() as session:
+        session["user_id"] = uid_b
+    # The /agent/* door is outside the session wall, so two sessionless
+    # clients are the two extension instances' honest stand-ins.
+    ext_a = web.app.test_client()
+    ext_b = web.app.test_client()
+    import agent_hub
+
+    # wechat is graduated to the extension lane, so the push route stamps the
+    # payload with the executor the extension's claim declares.
+    database.set_setting("DOMESTIC_EXECUTORS",
+                         json.dumps({"wechat": "extension"}), db_path=db_path)
+    CLAIM = {"agent": "insights-ext", "executor": "extension",
+             "platforms": ["wechat"]}
+
+    # --- 场景 1: 各自配对 → token 各归各 --------------------------------
+    code_a = client.post("/agent-jobs/pair-code").get_json()["code"]
+    token_a = ext_a.post("/agent/pair", json={"code": code_a}).get_json()["token"]
+    code_b = client_b.post("/agent-jobs/pair-code").get_json()["code"]
+    token_b = ext_b.post("/agent/pair", json={"code": code_b}).get_json()["token"]
+    check(isinstance(token_a, str) and isinstance(token_b, str)
+          and token_a != token_b, "the two pairings mint two distinct tokens")
+    check(database.find_agent_user_by_token(token_a, db_path=db_path) == uid_a,
+          "A's minted token resolves to A, its minter")
+    check(database.find_agent_user_by_token(token_b, db_path=db_path) == uid_b,
+          "B's minted token resolves to B, its minter")
+    r = ext_a.post("/agent/jobs/claim",
+                   headers={"Authorization": "Bearer not-a-token"}, json=CLAIM)
+    check(r.status_code == 401,
+          "a 401 is for unknown or revoked tokens only — pairing is not one")
+    A = {"Authorization": f"Bearer {token_a}"}
+    B = {"Authorization": f"Bearer {token_b}"}
+
+    # --- 场景 2: A 入队 → B 认领 204、A 认领 200；B 回报 404 同体 --------
+    jid_a = database.enqueue_agent_job(
+        "article_sync",
+        json.dumps({"title": "e2e-a-title", "executor": "extension",
+                    "items": [{"target": "wechat", "content": "A 的正文"}]}),
+        user_id=uid_a, db_path=db_path)
+    r = ext_b.post("/agent/jobs/claim", headers=B, json=CLAIM)
+    check(r.status_code == 204,
+          "B's token claiming A's job is a 204, never a handover")
+    r = ext_a.post("/agent/jobs/claim", headers=A, json=CLAIM)
+    check(r.status_code == 200 and r.get_json()["id"] == jid_a,
+          "A's token claims A's own queued job")
+    r_cross = ext_b.post(f"/agent/jobs/{jid_a}/events", headers=B,
+                         json={"type": "started", "agent": "insights-ext"})
+    r_missing = ext_b.post("/agent/jobs/999999/events", headers=B,
+                           json={"type": "started", "agent": "insights-ext"})
+    check(r_cross.status_code == 404 and r_missing.status_code == 404,
+          "B reporting on A's job and on a missing job are both 404")
+    check(r_cross.get_data() == r_missing.get_data(),
+          "the two event 404 bodies are byte-for-byte identical")
+
+    # --- 场景 3: A 上报 wechat ok → B 的登录态与账号页全程看不到 ---------
+    r = ext_a.post(f"/agent/jobs/{jid_a}/events", headers=A,
+                   json={"type": "done", "results": [
+                       {"platform": "wechat", "success": True}]})
+    check(r.status_code == 200, "A reports done on its own claimed job")
+    r = ext_a.post("/agent/heartbeat", headers=A, json={
+        "tools": {"extension": {"available": True, "platforms": [
+            {"id": "wechat", "logged_in": True, "probed": True}]}}})
+    check(r.status_code == 200, "A's extension reports wechat logged in")
+    data_b = client_b.get("/agent/login-states.json").get_json()
+    check(data_b["platforms"]["wechat"]["state"] == "offline",
+          "B's strip reads wechat offline: A's report lights nobody else's view")
+    a_tok_id = database.list_agent_tokens(uid_a)[0]["id"]
+    page_b = client_b.get("/accounts").get_data(as_text=True)
+    check(f"/accounts/tokens/{a_tok_id}/revoke" not in page_b,
+          "B's accounts page does not list A's paired extension")
+    b_rows = database.list_agent_tokens(uid_b)
+    check(len(b_rows) == 1
+          and f"/accounts/tokens/{b_rows[0]['id']}/revoke" in page_b,
+          "B's accounts page still manages B's own paired extension")
+    r_cross = client_b.get(f"/agent-jobs/{jid_a}.json")
+    r_missing = client_b.get("/agent-jobs/999999.json")
+    check(r_cross.status_code == 404 and r_missing.status_code == 404
+          and r_cross.get_data() == r_missing.get_data(),
+          "B reading A's job and a missing job are the same 404 bytes")
+    check("e2e-a-title" not in client_b.get("/agent-jobs").get_data(as_text=True),
+          "B's queue page shows none of A's titles")
+    check("e2e-a-title" in client.get("/agent-jobs").get_data(as_text=True),
+          "A's own queue page still shows A's title")
+
+    # --- 场景 4: A 的存量账号对 B 不可见；同 identity 双用户各一行 -------
+    account_a = database.upsert_social_account(
+        "wechat", "e2e-wx-1", display_name="A 公众号", label="A 的号",
+        user_id=uid_a, db_path=db_path)
+    account_b = database.upsert_social_account(
+        "wechat", "e2e-wx-1", display_name="B 公众号", label="B 的号",
+        user_id=uid_b, db_path=db_path)
+    check(account_a != account_b,
+          "the same (platform, external_id) for two users collapsed into one row")
+    with sqlite3.connect(db_path) as conn:
+        both = conn.execute(
+            "SELECT COUNT(*) FROM social_accounts "
+            "WHERE platform = 'wechat' AND external_id = 'e2e-wx-1'"
+        ).fetchone()[0]
+    check(both == 2, "the widened unique key keeps one row per user")
+    check(account_a not in {r["id"] for r in database.list_social_accounts(
+        user_id=uid_b, db_path=db_path)},
+          "B's account list carries none of admin's accounts")
+    page_b = client_b.get("/accounts").get_data(as_text=True)
+    check("A 的号" not in page_b and "A 公众号" not in page_b,
+          "B's accounts page shows neither admin's label nor its display name")
+    check("B 的号" in page_b, "B's accounts page still shows B's own account")
+
+    # --- 场景 6: 吊销 B 的一个 token → 立即 401，另一把不受影响 ----------
+    # B's second token comes the real way: another pairing. The sleep keeps
+    # the two rows' created_at a second apart — list_agent_tokens orders by
+    # it, and the table never hands out a hash to match a plaintext by.
+    time.sleep(1.1)
+    code_b2 = client_b.post("/agent-jobs/pair-code").get_json()["code"]
+    token_b2 = ext_b.post("/agent/pair", json={"code": code_b2}).get_json()["token"]
+    check(database.find_agent_user_by_token(token_b2, db_path=db_path) == uid_b,
+          "B's second pairing mints B a second token")
+    rows_b = database.list_agent_tokens(uid_b)  # created_at DESC: b2, then b
+    check(len(rows_b) == 2, "B now holds two paired extensions")
+    b_first_id = rows_b[-1]["id"]  # the last row is the first pairing
+    r = client_b.post(f"/accounts/tokens/{b_first_id}/revoke")
+    check(r.status_code == 200 and r.get_json() == {"success": True},
+          "B revokes its own first token through the accounts page")
+    check(database.find_agent_user_by_token(token_b, db_path=db_path) is None,
+          "the revoked token resolves to nobody")
+    check(ext_b.post("/agent/jobs/claim", headers=B, json=CLAIM).status_code
+          == 401, "the revoked token is a 401 on its very next call")
+    check(ext_b.post("/agent/heartbeat", headers=B, json={}).status_code == 401,
+          "the revoked token cannot even heartbeat")
+    B2 = {"Authorization": f"Bearer {token_b2}"}
+    check(ext_b.post("/agent/jobs/claim", headers=B2, json=CLAIM).status_code
+          == 204, "B's other token is untouched: still a working, empty claim")
+    check(database.find_agent_user_by_token(token_a, db_path=db_path) == uid_a,
+          "revoking B's token disturbed nobody else's")
+
+    # --- 场景 7: B 在线、A 离线：A 的帖子绝不发到 B 的通道 ---------------
+    r = ext_b.post("/agent/heartbeat", headers=B2, json={
+        "tools": {"extension": {"available": True, "platforms": [
+            {"id": "wechat", "logged_in": True, "probed": True}]}}})
+    check(r.status_code == 200 and agent_hub.agent_online(uid_b) is True,
+          "B's surviving token puts B online")
+    # A's beats from 场景 3 age past the window: A is offline again.
+    stale = time.time() - (agent_hub.HEARTBEAT_WINDOW_SECONDS + 1)
+    agent_hub._LAST_HEARTBEATS[uid_a]["t"] = stale
+    for beat in agent_hub._USER_TOOL_BEATS[uid_a].values():
+        beat["t"] = stale
+    check(agent_hub.agent_online(uid_a) is False, "A is offline again")
+    post_now = database.add_standalone_post("freeform", "e2e-offline-title",
+                                            "wechat", "正文", user_id=uid_a)
+    r = client.post(f"/compose/post/{post_now}/push", data={"target": "wechat"})
+    check(r.status_code == 409 and "推送离线" in r.get_json()["error"],
+          "B online does not unlock A's instant push: A's channel is down")
+    post_sched = database.add_standalone_post("freeform", "e2e-sched-title",
+                                              "wechat", "正文", user_id=uid_a)
+    r = client.post(f"/compose/post/{post_sched}/push",
+                    data={"target": "wechat", "run_at": "2099-01-01T09:30"})
+    body = r.get_json()
+    check(r.status_code == 200 and body.get("job_id"),
+          "the scheduled push queues while A is offline")
+    job = database.get_agent_job(body["job_id"], db_path=db_path)
+    check(job["user_id"] == uid_a and job["status"] == "pending",
+          "the scheduled job waits, under A's own id")
+    page_a = client.get("/agent-jobs").get_data(as_text=True)
+    # A pushed card's queue-page title is the platform fallback label; the
+    # load-bearing part of the narrative is the reason the row waits.
+    check("公众号草稿" in page_a and "平台未连接/登录态异常" in page_a,
+          "A's queue page shows the waiting card and names why it waits")
+    r = ext_b.post("/agent/jobs/claim", headers=B2, json=CLAIM)
+    check(r.status_code == 204,
+          "B's token cannot take A's waiting job — it never reaches B's platforms")
+
+    # --- 场景 8: 两个扩展实例各领各的 job，各回各的，双双 succeeded -------
+    r = ext_a.post("/agent/heartbeat", headers=A, json={
+        "tools": {"extension": {"available": True, "platforms": [
+            {"id": "wechat", "logged_in": True, "probed": True}]}}})
+    check(r.status_code == 200, "A's extension comes back online")
+    post_a2 = database.add_standalone_post("freeform", "e2e-lane-a",
+                                           "wechat", "A 的正文", user_id=uid_a)
+    r = client.post(f"/compose/post/{post_a2}/push", data={"target": "wechat"})
+    jid_a2 = r.get_json()["job_id"]
+    check(r.status_code == 200, "A's own heartbeat unlocks A's instant push")
+    post_b1 = database.add_standalone_post("freeform", "e2e-lane-b",
+                                           "wechat", "B 的正文", user_id=uid_b)
+    r = client_b.post(f"/compose/post/{post_b1}/push", data={"target": "wechat"})
+    jid_b2 = r.get_json()["job_id"]
+    check(r.status_code == 200, "B's instant push queues on B's own channel")
+    # Both instances poll at once: each takes only its own user's due job.
+    r = ext_a.post("/agent/jobs/claim", headers=A, json=CLAIM)
+    check(r.status_code == 200 and r.get_json()["id"] == jid_a2,
+          "instance A claims A's job and nothing else")
+    r = ext_b.post("/agent/jobs/claim", headers=B2, json=CLAIM)
+    check(r.status_code == 200 and r.get_json()["id"] == jid_b2,
+          "instance B claims B's job and nothing else")
+    check(ext_a.post("/agent/jobs/claim", headers=A, json=CLAIM).status_code
+          == 204, "instance A's lane is empty for it afterwards")
+    check(ext_b.post("/agent/jobs/claim", headers=B2, json=CLAIM).status_code
+          == 204, "instance B's lane is empty for it afterwards")
+    for ext, head, jid in ((ext_a, A, jid_a2), (ext_b, B2, jid_b2)):
+        r = ext.post(f"/agent/jobs/{jid}/events", headers=head,
+                     json={"type": "started", "agent": "insights-ext"})
+        check(r.status_code == 200, "the started event lands on its own job")
+        r = ext.post(f"/agent/jobs/{jid}/events", headers=head,
+                     json={"type": "done", "results": [
+                         {"platform": "wechat", "success": True}]})
+        check(r.status_code == 200 and r.get_json()["status"] == "succeeded",
+              "the done event closes its own job as succeeded")
+    check(database.get_agent_job(jid_a2, db_path=db_path)["status"] == "succeeded"
+          and database.get_agent_job(jid_b2, db_path=db_path)["status"]
+          == "succeeded",
+          "both lanes end succeeded, each with its own user's job")
+
+    print("two-user end-to-end route checks passed")
+    print("CHANNEL_ISOLATION_E2E_OK")
+
+
 SECTIONS = {
     "schema": section_schema,
     "tokens": section_tokens,
     "heartbeat": section_heartbeat,
     "accounts": section_accounts,
     "publish": section_publish,
+    "e2e": section_e2e,
 }
 
 if __name__ == "__main__":

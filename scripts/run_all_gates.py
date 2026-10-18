@@ -334,6 +334,9 @@ CHANNEL_GATES = [
     ("check_channel_isolation.py", "CHANNEL_ISOLATION_PUBLISH_OK",
      "即时推送按帖主心跳判定 409，调度入队带帖主归属，他人通道不可用",
      ("publish",)),
+    ("check_channel_isolation.py", "CHANNEL_ISOLATION_E2E_OK",
+     "双用户端到端：配对互不相通、认领/回报/读取不越权、他人在线不解锁推送、双扩展各领各的 job",
+     ("e2e",)),
 ]
 
 # check_*.py files that are deliberately not gates, with the reason. Empty is the
