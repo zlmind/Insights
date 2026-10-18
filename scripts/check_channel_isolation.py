@@ -26,6 +26,7 @@ import json
 import os
 import re
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import time
@@ -1004,6 +1005,21 @@ SECTIONS = {
 
 if __name__ == "__main__":
     name = sys.argv[1] if len(sys.argv) > 1 else ""
+    if name == "":
+        # No section named: run every section in a fresh subprocess each —
+        # the sections share module state (heartbeat buckets, chdir), so
+        # in-process sequencing would leak between them, same reason
+        # run_all_gates spawns one process per gate.
+        failed = []
+        for section_name in SECTIONS:
+            done = subprocess.run(
+                [sys.executable, os.path.abspath(__file__), section_name])
+            if done.returncode != 0:
+                failed.append(section_name)
+        if failed:
+            print(f"FAILED SECTIONS: {' '.join(failed)}")
+            sys.exit(1)
+        sys.exit(0)
     if name not in SECTIONS:
         print(f"usage: check_channel_isolation.py {'|'.join(SECTIONS)}")
         sys.exit(2)
