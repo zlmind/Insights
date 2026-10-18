@@ -2966,11 +2966,15 @@ def _account_lookup():
     """Every connected account by id, read once per request.
 
     A page of cards asks for the same handful of accounts over and over, so the
-    lookup is cached on the request rather than costing a query per chip.
+    lookup is cached on the request rather than costing a query per chip. The
+    pool is the session user's logins only: another user's account is never a
+    chip to tick, a label to show or a default to resolve to.
     """
     cached = getattr(g, '_social_accounts', None)
     if cached is None:
-        cached = {row['id']: row for row in list_social_accounts()}
+        user = current_user()
+        cached = ({row['id']: row for row in
+                   list_social_accounts(user_id=user['id'])} if user else {})
         g._social_accounts = cached
     return cached
 

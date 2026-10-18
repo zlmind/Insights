@@ -559,11 +559,135 @@ def section_accounts():
     print("CHANNEL_ISOLATION_ACCOUNTS_OK")
 
 
+def section_publish():
+    """The push route judges offline on the post owner's own heartbeat.
+
+    Another user's online agent never unlocks my push, a scheduled push queues
+    regardless of anyone's heartbeat and under the owner's id, and the compose
+    target chips / default account resolution only ever see the viewer's own
+    connected accounts.
+    """
+    directory, database, web, publisher, client = isolated_app()
+    db_path = database.DB_PATH
+    uid = database.get_user_by_username("gate")["id"]
+    uid_b = database.create_user("pub_b", generate_password_hash("p"),
+                                db_path=db_path)
+    client_b = web.app.test_client()
+    with client_b.session_transaction() as session:
+        session["user_id"] = uid_b
+    # The heartbeat door is outside the session wall, so a sessionless
+    # client is the extension's honest stand-in.
+    agent = web.app.test_client()
+
+    database.create_agent_token(uid, "token-a", db_path=db_path)
+    database.create_agent_token(uid_b, "token-b", db_path=db_path)
+    A = {"Authorization": "Bearer token-a"}
+    B = {"Authorization": "Bearer token-b"}
+
+    post_id = database.add_standalone_post("freeform", "pub-seed", "wechat",
+                                            "正文", user_id=uid)
+
+    # --- A offline while B heartbeats: A's push is still the 409 ---
+    r = agent.post("/agent/heartbeat", headers=B, json={
+        "tools": {"wechatsync": {"available": True}}})
+    check(r.status_code == 200, "token-b posts a heartbeat")
+    r = client.post(f"/compose/post/{post_id}/push", data={"target": "wechat"})
+    check(r.status_code == 409 and "推送离线" in r.get_json()["error"],
+          "another user's online agent does not unlock the owner's push (409)")
+
+    # --- a scheduled push queues while the owner is offline ---
+    sched_id = database.add_standalone_post("freeform", "pub-seed-sched",
+                                            "wechat", "正文", user_id=uid)
+    r = client.post(f"/compose/post/{sched_id}/push",
+                    data={"target": "wechat", "run_at": "2099-01-01T09:30"})
+    body = r.get_json()
+    check(r.status_code == 200 and body.get("job_id"),
+          "a scheduled push queues while the owner has no heartbeat")
+    job = database.get_agent_job(body["job_id"], db_path=db_path)
+    check(job["user_id"] == uid,
+          "the scheduled push's job carries the owner's id")
+    r = agent.post("/agent/jobs/claim", headers=B, json={"agent": "b"})
+    check(r.status_code == 204,
+          "token-b claims the owner's scheduled job is a 204, never a handover")
+
+    # --- A online through its own heartbeat: the instant push queues ---
+    r = agent.post("/agent/heartbeat", headers=A, json={
+        "tools": {"wechatsync": {"available": True}}})
+    check(r.status_code == 200, "token-a posts a heartbeat")
+    r = client.post(f"/compose/post/{post_id}/push", data={"target": "wechat"})
+    body = r.get_json()
+    check(r.status_code == 200 and body.get("job_id"),
+          "the owner's own heartbeat unlocks the push")
+    job = database.get_agent_job(body["job_id"], db_path=db_path)
+    check(job["user_id"] == uid,
+          "the instant push's job carries the owner's id")
+    r = agent.post("/agent/jobs/claim", headers=B, json={"agent": "b"})
+    check(r.status_code == 204,
+          "token-b claims the owner's instant job is a 204, never a handover")
+
+    # --- the compose target chips and default resolution are per user -------
+    account_admin = database.upsert_social_account(
+        "wechat", "pub-wx-1", display_name="Admin 公众号", label="Admin 推送号",
+        user_id=uid, db_path=db_path)
+    # A second admin login on the same platform, so the visible labelled chip
+    # (show_label) renders on admin's page and not only the JSON payload.
+    database.upsert_social_account(
+        "wechat", "pub-wx-2", display_name="Admin 小号", label="Admin 小号",
+        user_id=uid, db_path=db_path)
+    account_b = database.upsert_social_account(
+        "wechat", "pub-wx-b", display_name="B 公众号", label="B 推送号",
+        user_id=uid_b, db_path=db_path)
+    # A platform only admin holds an account on.
+    database.upsert_social_account("zhihu", "pub-zh-1", label="Admin 知乎号",
+                                   user_id=uid, db_path=db_path)
+
+    def _targets_of(page):
+        m = re.search(r"const PUBLISH_TARGETS = (.*?);", page)
+        return json.loads(m.group(1)) if m else None
+
+    page_a = client.get("/compose").get_data(as_text=True)
+    check("Admin 推送号" in page_a and "Admin 小号" in page_a,
+          "admin's compose renders its own labelled account chips")
+    targets_a = _targets_of(page_a)
+    check(targets_a is not None
+          and {t["account_id"] for t in targets_a} >= {account_admin}
+          and account_b not in {t["account_id"] for t in targets_a},
+          "admin's compose offers only admin's account chips")
+    page_b = client_b.get("/compose").get_data(as_text=True)
+    check("Admin 推送号" not in page_b and "Admin 小号" not in page_b
+          and "Admin 知乎号" not in page_b,
+          "B's compose renders neither admin's account label nor its chip")
+    targets_b = _targets_of(page_b)
+    check(targets_b is not None
+          and account_admin not in {t["account_id"] for t in targets_b},
+          "B's compose offers neither admin's account label nor its chip value")
+    check(account_b in {t["account_id"] for t in targets_b},
+          "B's compose still offers B's own account chip")
+
+    from flask import session as flask_session
+    with web.app.test_request_context("/compose"):
+        flask_session["user_id"] = uid_b
+        check(web._default_account_for("wechat") == account_b,
+              "B's own default account still resolves for B")
+        check(web._default_account_for("zhihu") is None,
+              "a platform only admin holds resolves to no account for B")
+    with web.app.test_request_context("/compose"):
+        flask_session["user_id"] = uid
+        check(web._default_account_for("zhihu") is not None,
+              "admin still resolves its own zhihu account")
+        check(web._default_account_for("wechat") == account_admin,
+              "admin resolves its own default wechat account")
+
+    print("publish route owner-scoped 409/queue and target chip checks passed")
+    print("CHANNEL_ISOLATION_PUBLISH_OK")
+
+
 SECTIONS = {
     "schema": section_schema,
     "tokens": section_tokens,
     "heartbeat": section_heartbeat,
     "accounts": section_accounts,
+    "publish": section_publish,
 }
 
 if __name__ == "__main__":

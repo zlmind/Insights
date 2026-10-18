@@ -29,6 +29,18 @@ def main():
     check(r.status_code == 409 and "离线" in r.get_json()["error"],
           "pushing while the agent is offline is a 409 with a hint")
 
+    # --- another user's online agent does not unlock this user's push ---
+    from werkzeug.security import generate_password_hash
+    uid_b = database.create_user('push_other', generate_password_hash('p'))
+    database.create_agent_token(uid_b, 'push-other-token')
+    web.app.test_client().post(
+        "/agent/heartbeat",
+        headers={"Authorization": "Bearer push-other-token"},
+        json={"tools": {"wechatsync": {"available": True}}})
+    r = client.post(f"/compose/post/{post_id}/push", data={"target": "wechat"})
+    check(r.status_code == 409 and "离线" in r.get_json()["error"],
+          "another user's online agent does not unlock this user's push")
+
     # --- but a scheduled push queues even while offline ---
     r = client.post(f"/compose/post/{post_id}/push",
                     data={"target": "wechat",

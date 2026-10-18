@@ -331,6 +331,9 @@ CHANNEL_GATES = [
     ("check_channel_isolation.py", "CHANNEL_ISOLATION_ACCOUNTS_OK",
      "social_accounts 遗留数据隔离：唯一键放宽、存量归 admin、列表/吊销只认本人",
      ("accounts",)),
+    ("check_channel_isolation.py", "CHANNEL_ISOLATION_PUBLISH_OK",
+     "即时推送按帖主心跳判定 409，调度入队带帖主归属，他人通道不可用",
+     ("publish",)),
 ]
 
 # check_*.py files that are deliberately not gates, with the reason. Empty is the
