@@ -815,7 +815,7 @@ def init_db(db_path: str = DB_PATH) -> None:
                     now = datetime.utcnow().isoformat(timespec="seconds")
                     conn.execute(
                         """
-                        INSERT INTO agent_tokens
+                        INSERT OR IGNORE INTO agent_tokens
                             (token_hash, user_id, label, created_at, revoked)
                         VALUES (?, ?, ?, ?, 0)
                         """,
