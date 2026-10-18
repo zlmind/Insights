@@ -1,5 +1,5 @@
 workflow: hotfix
-phase: build
+phase: archive
 context_compression: off
 build_mode: direct
 build_pause: null
@@ -7,14 +7,15 @@ subagent_dispatch: null
 tdd_mode: direct
 review_mode: off
 isolation: branch
-verify_mode: light
+verify_mode: full
 auto_transition: true
 base_ref: 45f6d201e581c220230621fa198e11b3e60c24bf
 design_doc: null
 plan: null
-verify_result: pending
-verification_report: null
-branch_status: pending
+verify_result: pass
+verification_report: docs/superpowers/reports/2026-10-18-self-host-static-assets-verify.md
+branch_status: handled
 created_at: 2026-10-18
-verified_at: null
-archived: false
+verified_at: 2026-10-18
+archived: true
+build_command: venv/Scripts/python.exe scripts/check_vendor_assets.py

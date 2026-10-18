@@ -1,10 +1,9 @@
-# Delta Spec: frontend-vendor-assets
+# frontend-vendor-assets Specification
 
 ## Purpose
-
 前端关键第三方资源（样式框架、交互脚本、markdown 渲染库）由应用本地静态目录提供，使页面在无外网或公网 CDN 不可达的环境下样式与交互完整可用。
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: 关键前端资源本地提供
 
