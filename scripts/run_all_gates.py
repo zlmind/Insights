@@ -317,6 +317,13 @@ ISOLATION_GATES = [
      ("e2e",)),
 ]
 
+# Per-user agent tokens for the browser extension and /agent/* door.
+CHANNEL_GATES = [
+    ("check_channel_isolation.py", "CHANNEL_ISOLATION_SCHEMA_OK",
+     "agent_tokens 建表与存量全局密钥一次性映射 admin，吊销即失效",
+     ("schema",)),
+]
+
 # check_*.py files that are deliberately not gates, with the reason. Empty is the
 # healthy state: a script that is not a gate should not carry the check_ prefix.
 NOT_GATES = {
@@ -325,7 +332,7 @@ NOT_GATES = {
 
 ALL_GATES = (ACCOUNT_GATES + ACCOUNT_JS_GATES + SETTINGS_GATES
              + X_FETCH_GATES + USAGE_GATES + BRIEF_GATES + AGENT_GATES + COMPOSE_GATES + VIDEO_GATES + MANUAL_POST_GATES
-             + QUEUE_GATES + PAGING_GATES + IG_PEOPLE_GATES + ISOLATION_GATES)
+             + QUEUE_GATES + PAGING_GATES + IG_PEOPLE_GATES + ISOLATION_GATES + CHANNEL_GATES)
 
 
 def _unpack(entry):

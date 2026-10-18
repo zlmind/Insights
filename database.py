@@ -6,7 +6,9 @@ web interface. Each function wraps a query so callers don't need to know SQL.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
 import secrets
 import sqlite3
@@ -642,6 +644,26 @@ def init_db(db_path: str = DB_PATH) -> None:
             "ON agent_jobs(status, run_after, id)"
         )
 
+        # Per-user agent tokens for the /agent/* door and browser extension.
+        # Plaintext tokens are never stored; only sha256 hashes land here.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token_hash TEXT NOT NULL UNIQUE,
+                user_id INTEGER NOT NULL,
+                label TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                last_seen TEXT,
+                revoked INTEGER DEFAULT 0
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_agent_tokens_hash "
+            "ON agent_tokens(token_hash)"
+        )
+
         # An instance upgraded from before admins existed has no admin yet;
         # the oldest account is the one that set the instance up.
         if user_columns:
@@ -736,6 +758,34 @@ def init_db(db_path: str = DB_PATH) -> None:
             )
             """
         )
+
+        # One-time migration: a legacy global AGENT_TOKEN becomes the admin's
+        # first per-user token.  It is idempotent: re-running only inserts when
+        # the hash is absent.
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?", ("AGENT_TOKEN",)
+        ).fetchone()
+        legacy_token = (row[0] if row else None) or os.environ.get("AGENT_TOKEN")
+        if legacy_token:
+            admin_row = conn.execute("SELECT MIN(id) FROM users").fetchone()
+            admin_id = admin_row[0] if admin_row else None
+            if admin_id is not None:
+                token_hash = hash_agent_token(legacy_token)
+                existing = conn.execute(
+                    "SELECT 1 FROM agent_tokens WHERE token_hash = ?",
+                    (token_hash,),
+                ).fetchone()
+                if not existing:
+                    now = datetime.utcnow().isoformat(timespec="seconds")
+                    conn.execute(
+                        """
+                        INSERT INTO agent_tokens
+                            (token_hash, user_id, label, created_at, revoked)
+                        VALUES (?, ?, ?, ?, 0)
+                        """,
+                        (token_hash, admin_id, "存量全局密钥", now),
+                    )
+
         conn.commit()
 
 # ── Instance settings (admin-editable replacements for .env entries) ──────
@@ -4825,3 +4875,88 @@ def list_agent_jobs(*, limit=100, db_path=DB_PATH):
             "SELECT * FROM agent_jobs ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def hash_agent_token(token: str) -> str:
+    """sha256 hexdigest of a plaintext agent token."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def create_agent_token(user_id: int, token: str, label: str = "",
+                       db_path: str = DB_PATH) -> int:
+    """Store the hash of ``token`` for ``user_id`` and return the new row id.
+
+    The plaintext ``token`` is never persisted; callers should hand it to the
+    user exactly once, usually in the issuance response.
+    """
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO agent_tokens (token_hash, user_id, label, created_at, revoked)
+            VALUES (?, ?, ?, ?, 0)
+            """,
+            (hash_agent_token(token), user_id, label, now),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def find_agent_user_by_token(token: str, db_path: str = DB_PATH) -> Optional[int]:
+    """Return the user_id for an active (not revoked) token, or None."""
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT user_id FROM agent_tokens
+            WHERE token_hash = ? AND revoked = 0
+            """,
+            (hash_agent_token(token),),
+        ).fetchone()
+    return row[0] if row else None
+
+
+def touch_agent_token(token: str, db_path: str = DB_PATH) -> None:
+    """Update ``last_seen`` for the active token matching ``token``."""
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            UPDATE agent_tokens SET last_seen = ?
+            WHERE token_hash = ? AND revoked = 0
+            """,
+            (now, hash_agent_token(token)),
+        )
+        conn.commit()
+
+
+def list_agent_tokens(user_id: int, db_path: str = DB_PATH) -> List[dict]:
+    """Return a user's tokens as dicts with id/label/created_at/last_seen/revoked.
+
+    Plaintext tokens and their hashes are never included.
+    """
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT id, label, created_at, last_seen, revoked
+            FROM agent_tokens
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def revoke_agent_token(token_id: int, user_id: int, db_path: str = DB_PATH) -> bool:
+    """Revoke one of ``user_id``'s tokens. Returns True if a row was updated."""
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.execute(
+            """
+            UPDATE agent_tokens SET revoked = 1
+            WHERE id = ? AND user_id = ?
+            """,
+            (token_id, user_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
