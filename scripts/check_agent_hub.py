@@ -132,17 +132,17 @@ def main():
         "agent": "insights-ext", "tools": {"extension": {
             "available": True, "version": "0.1.0",
             "platforms": [{"id": "wechat", "logged_in": True}]}}})
-    state = agent_hub.platform_login_states().get("wechat") or {}
+    state = agent_hub.platform_login_states(uid).get("wechat") or {}
     check(state.get("logged_in") is True and state.get("probed") is True,
           "a platform entry without probed still reads as a real probe")
     # A tools-less heartbeat is not a wipe: the extension's still-fresh
     # report keeps counting until its own window runs out.
     client.post("/agent/heartbeat", headers=AUTH, json={"agent": "x"})
-    wechat = agent_hub.platform_login_states().get("wechat") or {}
+    wechat = agent_hub.platform_login_states(uid).get("wechat") or {}
     check(wechat.get("logged_in") is True,
           "a tools-less heartbeat leaves a fresh tool report standing")
-    agent_hub._TOOL_BEATS["extension"]["t"] = time.time() - 120
-    check(agent_hub.platform_login_states() == {},
+    agent_hub._USER_TOOL_BEATS[uid]["extension"]["t"] = time.time() - 120
+    check(agent_hub.platform_login_states(uid) == {},
           "a tool whose beat passed the window drops out of the view")
 
     # A probed report beats an unprobed one even when it is older.
@@ -154,7 +154,7 @@ def main():
         "agent": "layne-win", "tools": {"wechatsync": {
             "available": True,
             "platforms": [{"id": "zhihu", "logged_in": True, "probed": False}]}}})
-    zhihu = agent_hub.platform_login_states().get("zhihu") or {}
+    zhihu = agent_hub.platform_login_states(uid).get("zhihu") or {}
     check(zhihu.get("logged_in") is False and zhihu.get("probed") is True,
           "a probed report wins over a fresher unprobed one")
 
@@ -164,13 +164,14 @@ def main():
             "available": True,
             "platforms": [{"id": "wechat", "logged_in": True}]}}})
     check(r.status_code == 200, "heartbeat is accepted")
-    snap = agent_hub.heartbeat_snapshot()
+    snap = agent_hub.heartbeat_snapshot(uid)
     check(snap and snap["age"] < 5 and
           snap["tools"]["wechatsync"]["platforms"][0]["id"] == "wechat",
           "snapshot carries tools and a fresh age")
-    check(agent_hub.agent_online(window=60) is True, "a fresh heartbeat is online")
-    agent_hub._LAST_HEARTBEAT["t"] = time.time() - 120
-    check(agent_hub.agent_online(window=60) is False,
+    check(agent_hub.agent_online(uid, window=60) is True,
+          "a fresh heartbeat is online")
+    agent_hub._LAST_HEARTBEATS[uid]["t"] = time.time() - 120
+    check(agent_hub.agent_online(uid, window=60) is False,
           "a heartbeat older than the window is offline")
 
     # The agent polls every few seconds; its requests must not fill the

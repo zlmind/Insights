@@ -2320,7 +2320,9 @@ def accounts_page():
         'zhihu':       {'label': '知乎',   'color': '#0084FF'},
         'toutiao':     {'label': '头条号', 'color': '#ED1C24'},
     }
-    login = agent_hub.login_states_view()
+    user = current_user()
+    uid = user['id'] if user else None
+    login = agent_hub.login_states_view(uid)
     states = login.get('platforms', {})
     accounts = list_social_accounts()
     platforms = []
@@ -2358,7 +2360,7 @@ def accounts_page():
         elif pl['state'] in ('unknown', 'offline'): summary['unknown'] += 1
     return render_template('accounts.html', platforms=platforms,
                            summary=summary,
-                           agent_online=agent_hub.agent_online())
+                           agent_online=agent_hub.agent_online(uid))
 
 @app.route('/schedule')
 def schedule_page():
@@ -3007,14 +3009,18 @@ def _inject_publish_targets():
     same way: whether the local agent is online and which of its platforms are
     logged in is a property of this moment, not of the route that rendered.
     """
+    # The heartbeat view is per user: the strip and the push buttons read the
+    # current viewer's own bucket, never another session's lights.
+    user = current_user()
+    uid = user['id'] if user else None
     return {'PUBLISH_TARGETS': _publish_target_options(),
             'DRAFT_ONLY_PLATFORMS': DRAFT_ONLY_PLATFORMS,
             'push_platforms': {
                 p: {"label": domestic_publisher.display_name(p),
                     "enabled": p in domestic_publisher.enabled_platforms()}
                 for p in domestic_publisher.DOMESTIC_ARTICLE_PLATFORMS},
-            'agent_online': agent_hub.agent_online(),
-            'login_states': agent_hub.login_states_view()}
+            'agent_online': agent_hub.agent_online(uid),
+            'login_states': agent_hub.login_states_view(uid)}
 
 def _row_account_label(row):
     """What to call the account a card row publishes as, or None.
@@ -3174,8 +3180,8 @@ def compose_page():
             p: {"label": domestic_publisher.display_name(p),
                 "enabled": p in domestic_publisher.enabled_platforms()}
             for p in domestic_publisher.DOMESTIC_ARTICLE_PLATFORMS},
-        agent_online=agent_hub.agent_online(),
-        login_states=agent_hub.login_states_view(),
+        agent_online=agent_hub.agent_online(uid),
+        login_states=agent_hub.login_states_view(uid),
         page_size=POSTS_PAGE_SIZE,
         max_batch=POSTS_MAX_BATCH,
         brief_filter_options=brief_filter_options,
@@ -6130,7 +6136,7 @@ def compose_push_post(post_id: int):
                 tzinfo=timezone.utc).isoformat(timespec='seconds')
         except (ValueError, OverflowError):
             return jsonify({"error": "时间格式不对"}), 400
-    elif not agent_hub.agent_online():
+    elif not agent_hub.agent_online(uid):
         return jsonify({"error": "推送离线：请启动浏览器扩展（Insights 发布助手），或本机 agent"}), 409
     outcome = domestic_publisher.enqueue_card_push(post, run_after=run_after,
                                                     user_id=uid)
@@ -6149,18 +6155,26 @@ def agent_job_json(job_id: int):
 
 @app.route('/agent/login-states.json')
 def agent_login_states_json():
-    """The compose strip's data: one merged per-platform login view."""
-    return jsonify(agent_hub.login_states_view())
+    """The compose strip's data: one merged per-platform login view.
+
+    The viewer's own bucket only: another user's heartbeat is another
+    browser and never lights this strip.
+    """
+    user = current_user()
+    uid = user['id'] if user else None
+    return jsonify(agent_hub.login_states_view(uid))
 
 @app.route('/agent/status.json')
 def agent_status_json():
     """One boolean for the queue page's connection pill: is the助手 alive.
 
-    age is seconds since the last heartbeat the process saw, null when none
+    age is seconds since the viewer's own last heartbeat, null when none
     ever arrived — the pill's tooltip reads it as「N 秒前有心跳」.
     """
-    snap = agent_hub.heartbeat_snapshot()
-    return jsonify({"online": agent_hub.agent_online(),
+    user = current_user()
+    uid = user['id'] if user else None
+    snap = agent_hub.heartbeat_snapshot(uid)
+    return jsonify({"online": agent_hub.agent_online(uid),
                     "age": None if snap is None else snap.get("age")})
 
 @app.route("/agent-jobs/pair-code", methods=["POST"])
@@ -6211,14 +6225,14 @@ def agent_jobs_page():
         job['title'] = payload.get('title') or ''
         job['results'] = json.loads(job['result'] or '[]')
     return render_template('agent_jobs.html', jobs=jobs,
-                           agent_online=agent_hub.agent_online())
+                           agent_online=agent_hub.agent_online(current_user()['id']))
 
 @app.route("/agent/heartbeat", methods=["POST"])
 def agent_heartbeat():
     creds = agent_hub.agent_credentials()
     if creds is None:
         return jsonify({"error": "unauthorized"}), 401
-    agent_hub.record_heartbeat(request.get_json(silent=True) or {})
+    agent_hub.record_heartbeat(creds[0], request.get_json(silent=True) or {})
     # The beat doubles as proof of life for the token itself.
     database.touch_agent_token(creds[1])
     return jsonify({"ok": True})

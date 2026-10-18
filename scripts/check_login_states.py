@@ -2,9 +2,10 @@
 
     python scripts/check_login_states.py    LOGIN_STATES_OK
 
-The strip's data merges every executor's heartbeat: probed reports beat
-unprobed ones, the freshest wins within a class, and a dead heartbeat turns
-every platform offline — never a stale "logged in".
+The strip's data merges every executor's heartbeat of the viewer's own
+bucket: probed reports beat unprobed ones, the freshest wins within a class,
+and a dead heartbeat turns every platform offline — never a stale "logged
+in". Another user's heartbeat is another browser and lights nobody's strip.
 """
 
 import json
@@ -14,6 +15,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _accounts_gate import isolated_app, check  # noqa: E402
+from werkzeug.security import generate_password_hash  # noqa: E402
 
 AUTH = {"Authorization": "Bearer secret-token"}
 
@@ -25,6 +27,7 @@ def main():
     # The bearer door resolves tokens from agent_tokens, so the setting above
     # only becomes usable through init_db's one-time legacy migration.
     database.init_db(database.DB_PATH)
+    uid = database.get_user_by_username("gate")["id"]
 
     # --- no heartbeat at all: every platform offline, urls still present ---
     data = client.get("/agent/login-states.json").get_json()
@@ -67,7 +70,7 @@ def main():
 
     # Online with no tool report anywhere: unknown everywhere, still not
     # offline — "no data" and "nobody connected" are different sentences.
-    agent_hub._TOOL_BEATS.clear()
+    agent_hub._USER_TOOL_BEATS.pop(uid, None)
     data = client.get("/agent/login-states.json").get_json()
     check(all(e["state"] == "unknown" for e in data["platforms"].values()),
           "online with no tool reports yields unknown everywhere")
@@ -78,16 +81,40 @@ def main():
         "agent": "insights-ext", "tools": {"extension": {
             "available": True,
             "platforms": [{"id": "wechat", "logged_in": True, "probed": True}]}}})
-    agent_hub._LAST_HEARTBEAT["t"] = time.time() - 59.5
+    agent_hub._LAST_HEARTBEATS[uid]["t"] = time.time() - 59.5
     check(client.get("/agent/login-states.json").get_json()
           ["platforms"]["wechat"]["state"] == "ok",
           "59.5s-old heartbeat is still online")
-    agent_hub._LAST_HEARTBEAT["t"] = time.time() - 60.5
+    agent_hub._LAST_HEARTBEATS[uid]["t"] = time.time() - 60.5
     data = client.get("/agent/login-states.json").get_json()
     check(all(e["state"] == "offline" for e in data["platforms"].values()),
           "60.5s-old heartbeat turns every platform offline")
     check(client.get("/agent/login-states.json").get_json()["checked_at"] is None,
           "an offline heartbeat nulls checked_at")
+
+    # --- login states are per user: another user's beat is invisible ---
+    # A's beat just expired above, so A's strip is offline; a fresh beat from
+    # B lights B's strip and must not light A's.
+    uid_b = database.create_user("ls_b", generate_password_hash("p"),
+                                 db_path=database.DB_PATH)
+    database.create_agent_token(uid_b, "token-ls-b", db_path=database.DB_PATH)
+    client_b = web.app.test_client()
+    with client_b.session_transaction() as session:
+        session["user_id"] = uid_b
+    web.app.test_client().post("/agent/heartbeat",
+                               headers={"Authorization": "Bearer token-ls-b"},
+                               json={"agent": "insights-ext",
+                                     "tools": {"extension": {
+                                         "available": True,
+                                         "platforms": [{"id": "wechat",
+                                                        "logged_in": True,
+                                                        "probed": True}]}}})
+    data_b = client_b.get("/agent/login-states.json").get_json()
+    check(data_b["platforms"]["wechat"]["state"] == "ok",
+          "B's own heartbeat reads ok on B's strip")
+    data_a = client.get("/agent/login-states.json").get_json()
+    check(data_a["platforms"]["wechat"]["state"] == "offline",
+          "B's fresh heartbeat does not light A's strip")
 
     print("LOGIN_STATES_OK")
 

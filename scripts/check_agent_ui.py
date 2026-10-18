@@ -104,9 +104,10 @@ def main():
     check(status.get("online") is True and isinstance(status.get("age"), float),
           "status.json reads online with the heartbeat age")
 
-    for stale in list(agent_hub._TOOL_BEATS):
-        agent_hub._TOOL_BEATS[stale]["t"] = 0
-    agent_hub._LAST_HEARTBEAT["t"] = 0
+    for stale in agent_hub._USER_TOOL_BEATS.get(uid, {}).values():
+        stale["t"] = 0
+    agent_hub._LAST_HEARTBEATS.setdefault(
+        uid, {"t": None, "payload": {}})["t"] = 0
     page = client.get("/agent-jobs").get_data(as_text=True)
     check('conn-pill is-off' in page and '发布助手未连接' in page,
           "a stale heartbeat paints the pill red with 未连接")

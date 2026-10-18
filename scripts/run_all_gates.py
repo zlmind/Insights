@@ -325,6 +325,9 @@ CHANNEL_GATES = [
     ("check_channel_isolation.py", "CHANNEL_ISOLATION_TOKENS_OK",
      "token 解析用户：claim/events/读路径只认本人，跨用户与不存在同响应体",
      ("tokens",)),
+    ("check_channel_isolation.py", "CHANNEL_ISOLATION_HEARTBEAT_OK",
+     "心跳按用户分桶：登录态互不可见、离线互不影响、过期整桶清理、compose 按本人可选平台",
+     ("heartbeat",)),
 ]
 
 # check_*.py files that are deliberately not gates, with the reason. Empty is the

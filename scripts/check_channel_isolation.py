@@ -2,15 +2,19 @@
 
     python scripts/check_channel_isolation.py schema   CHANNEL_ISOLATION_SCHEMA_OK
     python scripts/check_channel_isolation.py tokens   CHANNEL_ISOLATION_TOKENS_OK
+    python scripts/check_channel_isolation.py heartbeat CHANNEL_ISOLATION_HEARTBEAT_OK
 
 ``schema`` pins the agent_tokens table and the legacy global token migration;
 ``tokens`` pins the /agent/* door's per-user identity: claim, events and the
 read paths only ever serve the token's own user, and cross-user reads answer
-with the same bytes as reads of things that do not exist.
+with the same bytes as reads of things that do not exist; ``heartbeat`` pins
+the per-user heartbeat buckets: login states, the online pill and the compose
+selector read the viewer's own bucket and nobody else's.
 """
 
 import json
 import os
+import re
 import sqlite3
 import sys
 import tempfile
@@ -342,9 +346,109 @@ def section_tokens():
     print("CHANNEL_ISOLATION_TOKENS_OK")
 
 
+def section_heartbeat():
+    """Heartbeats live in per-user buckets: login states, the online pill and
+    the compose selector only ever read the viewer's own bucket. Two users,
+    two tokens: A's report never moves B's lights, one going stale leaves the
+    other untouched, and a bucket whose every beat expired is deleted outright
+    so a stale user's platforms leak into nobody's view.
+    """
+    directory, database, web, publisher, client = isolated_app()
+    db_path = database.DB_PATH
+    uid = database.get_user_by_username("gate")["id"]
+    uid_b = database.create_user("hb_b", generate_password_hash("p"),
+                                 db_path=db_path)
+    client_b = web.app.test_client()
+    with client_b.session_transaction() as session:
+        session["user_id"] = uid_b
+    # The heartbeat door is outside the session wall, so a sessionless
+    # client is the extension's honest stand-in.
+    agent = web.app.test_client()
+    import agent_hub
+
+    database.create_agent_token(uid, "token-a", db_path=db_path)
+    database.create_agent_token(uid_b, "token-b", db_path=db_path)
+    A = {"Authorization": "Bearer token-a"}
+    B = {"Authorization": "Bearer token-b"}
+
+    # --- A's report drives A's view; B, without its own beat, is all offline ---
+    r = agent.post("/agent/heartbeat", headers=A, json={
+        "tools": {"extension": {"available": True, "platforms": [
+            {"id": "wechat", "logged_in": True, "probed": True}]}}})
+    check(r.status_code == 200, "token-a posts a heartbeat")
+    data = client.get("/agent/login-states.json").get_json()
+    check(data["platforms"]["wechat"]["state"] == "ok",
+          "A's session reads its own report: wechat ok")
+    data_b = client_b.get("/agent/login-states.json").get_json()
+    check(all(e["state"] == "offline" for e in data_b["platforms"].values()),
+          "B's session, without its own heartbeat, reads every platform offline")
+
+    # --- one user going stale leaves the other untouched ---
+    stale = time.time() - (agent_hub.HEARTBEAT_WINDOW_SECONDS + 1)
+    agent_hub._LAST_HEARTBEATS[uid]["t"] = stale
+    for beat in agent_hub._USER_TOOL_BEATS[uid].values():
+        beat["t"] = stale
+    check(agent_hub.agent_online() is False,
+          "agent_online(None) is False: no identity, no state")
+    check(agent_hub.agent_online(uid) is False,
+          "A's own bucket decides A is offline")
+    r = agent.post("/agent/heartbeat", headers=B, json={
+        "tools": {"extension": {"available": True, "platforms": [
+            {"id": "zhihu", "logged_in": True, "probed": True}]}}})
+    check(r.status_code == 200, "token-b posts a heartbeat")
+    check(agent_hub.agent_online(uid_b) is True,
+          "B's own bucket decides B is online while A is stale")
+    data_b = client_b.get("/agent/login-states.json").get_json()
+    check(data_b["platforms"]["zhihu"]["state"] == "ok",
+          "B's view follows B's fresh report, not A's staleness")
+    check("wechat" not in agent_hub.platform_login_states(uid_b),
+          "B's platform states do not contain the platform A reported")
+    check(agent_hub.platform_login_states() == {},
+          "platform_login_states(None) is the empty view, not everyone's")
+
+    # --- expiry empties the whole bucket and deletes the user key ---
+    check(agent_hub.platform_login_states(uid) == {},
+          "A's every beat past the window leaves A's platform states empty")
+    check(uid not in agent_hub._USER_TOOL_BEATS,
+          "the emptied bucket is deleted: no stale per-user leak")
+
+    # --- the compose selector follows the viewer's own login states ---
+    r = agent.post("/agent/heartbeat", headers=A, json={
+        "tools": {"extension": {"available": True, "platforms": [
+            {"id": "wechat", "logged_in": True, "probed": True}]}}})
+    check(r.status_code == 200, "token-a heartbeats again before the page read")
+    wechat_a = re.search(r'id="platform-wechat"[^>]*>',
+                         client.get("/compose").get_data(as_text=True))
+    check(wechat_a and "disabled" not in wechat_a.group(0),
+          "A's compose leaves the wechat checkbox enabled (A's wechat ok)")
+    wechat_b = re.search(r'id="platform-wechat"[^>]*>',
+                         client_b.get("/compose").get_data(as_text=True))
+    check(wechat_b and "disabled" in wechat_b.group(0),
+          "B's compose disables the wechat checkbox (B has no heartbeat)")
+
+    # --- status.json reports the session user's own online state ---
+    status_a = client.get("/agent/status.json").get_json()
+    check(status_a["online"] is True and status_a["age"] < 5,
+          "A's status.json reads online with A's heartbeat age")
+    status_b = client_b.get("/agent/status.json").get_json()
+    check(status_b["online"] is True and status_b["age"] < 5,
+          "B's status.json reads online with B's heartbeat age")
+    agent_hub._LAST_HEARTBEATS[uid]["t"] = stale
+    status_a = client.get("/agent/status.json").get_json()
+    check(status_a["online"] is False,
+          "A's status.json follows A's own bucket going stale")
+    status_b = client_b.get("/agent/status.json").get_json()
+    check(status_b["online"] is True,
+          "B's status.json is untouched by A going stale")
+
+    print("heartbeat per-user bucket checks passed")
+    print("CHANNEL_ISOLATION_HEARTBEAT_OK")
+
+
 SECTIONS = {
     "schema": section_schema,
     "tokens": section_tokens,
+    "heartbeat": section_heartbeat,
 }
 
 if __name__ == "__main__":

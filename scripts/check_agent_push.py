@@ -121,7 +121,10 @@ def main():
           "the compose page renders checkboxes for the new platforms")
 
     # --- the scheduled-push entry renders for domestic article platforms ---
-    agent_hub._LAST_HEARTBEAT["t"] = None          # back to offline
+    # Back to offline for the gate user's own bucket (create the bucket if a
+    # beat never landed, so the shape still reads).
+    agent_hub._LAST_HEARTBEATS.setdefault(
+        uid, {"t": None, "payload": {}})["t"] = None
     html = client.get("/compose").get_data(as_text=True)
     check('btn-agent-schedule' in html,
           "the scheduled push entry renders next to the push button")
