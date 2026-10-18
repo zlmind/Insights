@@ -90,23 +90,23 @@ base-ref: c1421e379e10d2b1679d3d111c05ab4736475c85
   - `list_agent_tokens(user_id: int, db_path: str = DB_PATH) -> List[dict]`（返回 id/label/created_at/last_seen/revoked，不含明文与哈希）
   - `revoke_agent_token(token_id: int, user_id: int, db_path: str = DB_PATH) -> bool`（WHERE id=? AND user_id=?，只能吊销本人）
 
-- [ ] **Step 1: 写失败测试**——新建 `scripts/check_channel_isolation.py`，骨架照 `check_content_isolation.py`（UTF-8 reconfigure、`_accounts_gate` 导入、按 `sys.argv[1]` 分节、每节末打印 `CHANNEL_ISOLATION_<SECTION>_OK`）。section `schema` 断言：
+- [x] **Step 1: 写失败测试**——新建 `scripts/check_channel_isolation.py`，骨架照 `check_content_isolation.py`（UTF-8 reconfigure、`_accounts_gate` 导入、按 `sys.argv[1]` 分节、每节末打印 `CHANNEL_ISOLATION_<SECTION>_OK`）。section `schema` 断言：
   - 临时库 `init_db` 连跑两遍不抛错（幂等）；`agent_tokens` 表存在且含列 `token_hash/user_id/label/created_at/last_seen/revoked`，`token_hash` UNIQUE；
   - `set_setting("AGENT_TOKEN", "legacy-secret")` 后再跑一遍 `init_db` → 恰好出现一行，`find_agent_user_by_token("legacy-secret") == admin_uid`（admin = isolated_app 里 `create_user` 返回的首号）、`find_agent_user_by_token("wrong") is None`；再跑一遍 init_db 仍恰好一行（不重复签发）；
   - 不设 AGENT_TOKEN 的全新库 → `agent_tokens` 零行；
   - `create_agent_token(uid, "t2", "B 的浏览器")` → `find_agent_user_by_token("t2") == uid`；`revoke_agent_token(该行 id, uid)` 后 `find_agent_user_by_token("t2") is None`；`revoke_agent_token(该行 id, 其他用户 id) is False`；
   - `touch_agent_token("t2")` 后 `list_agent_tokens(uid)` 该行 `last_seen` 非空；`list_agent_tokens` 不返回任何等于 "t2" 或其 sha256 的字段（明文/哈希不出现在列表里）。
 
-- [ ] **Step 2: 跑测试确认失败**——`venv/Scripts/python.exe scripts/check_channel_isolation.py schema`，预期 FAIL（表不存在）。
+- [x] **Step 2: 跑测试确认失败**——`venv/Scripts/python.exe scripts/check_channel_isolation.py schema`，预期 FAIL（表不存在）。
 
-- [ ] **Step 3: 实现**——`database.py`：
+- [x] **Step 3: 实现**——`database.py`：
   - init_db 内按 D2 原文建表（`token_hash TEXT NOT NULL UNIQUE`、`user_id INTEGER NOT NULL`、`label TEXT DEFAULT ''`、`created_at TEXT NOT NULL`、`last_seen TEXT`、`revoked INTEGER DEFAULT 0`）；
   - 迁移（同一条连接内，幂等）：`SELECT value FROM app_settings WHERE key='AGENT_TOKEN'`，为空回退 `os.environ.get("AGENT_TOKEN")`；值非空且 `SELECT MIN(id) FROM users` 非 NULL 且该 sha256 无行时，INSERT `(hash, admin, '存量全局密钥', now)`；
   - 六个函数按 Interfaces 签名实现（均为一次 `with sqlite3.connect` 的直查，无缓存）。
 
-- [ ] **Step 4: 跑测试确认通过**——同 Step 2 命令，预期打印 `CHANNEL_ISOLATION_SCHEMA_OK`。注册进 run_all_gates.py（`("check_channel_isolation.py", "CHANNEL_ISOLATION_SCHEMA_OK", "agent_tokens 建表与存量全局密钥一次性映射 admin，吊销即失效", ("schema",))`）。
+- [x] **Step 4: 跑测试确认通过**——同 Step 2 命令，预期打印 `CHANNEL_ISOLATION_SCHEMA_OK`。注册进 run_all_gates.py（`("check_channel_isolation.py", "CHANNEL_ISOLATION_SCHEMA_OK", "agent_tokens 建表与存量全局密钥一次性映射 admin，吊销即失效", ("schema",))`）。
 
-- [ ] **Step 5: 全量 gate + commit**
+- [x] **Step 5: 全量 gate + commit**
 
 ```bash
 venv/Scripts/python.exe scripts/run_all_gates.py
@@ -137,7 +137,7 @@ tasks.md 1.3 + D5 + D9.2（events 归属、读路径过滤）+ 3.2 数据层 + 3
   - `agent_hub.agent_credentials() -> tuple[int, str] | None`（读请求 Bearer → sha256 → `database.find_agent_user_by_token`；命中返回 `(user_id, 原始token)`，否则 None。替换 `check_agent_auth`，后者删除。返回原始 token 供 heartbeat 端点调 `database.touch_agent_token(token)` 刷新 last_seen，避免二次解析请求头）。
   - `domestic_publisher.enqueue_card_push(row, *, run_after=None, created_by=None, user_id: int, db_path=None)`——`user_id` 必填 keyword，透传入队；幂等去重 SELECT 追加 `AND user_id = ?`。
 
-- [ ] **Step 1: 写失败测试**——`check_channel_isolation.py` 增加 section `tokens`。双用户：admin（isolated_app 自带）+ `create_user("b", ...)` 得 `uid_b`，`client_b` 用 `session_transaction` 登录 B；`database.create_agent_token(uid, "token-a")`、`create_agent_token(uid_b, "token-b")`。断言：
+- [x] **Step 1: 写失败测试**——`check_channel_isolation.py` 增加 section `tokens`。双用户：admin（isolated_app 自带）+ `create_user("b", ...)` 得 `uid_b`，`client_b` 用 `session_transaction` 登录 B；`database.create_agent_token(uid, "token-a")`、`create_agent_token(uid_b, "token-b")`。断言：
   - 无/错/吊销 token 打 `/agent/heartbeat`、`/agent/jobs/claim`、`/agent/jobs/<id>/events` 均 401 且 `{"error": "unauthorized"}`；非 ASCII Bearer（`tøken`）是 JSON 401 不是 500；
   - `enqueue_agent_job("article_sync", payload, user_id=uid)` 后：token-a claim 200 拿到该 job；token-b claim 204（认领不到他人 job）；`enqueue_agent_job(..., user_id=None)` 抛 ValueError；
   - events 归属：token-b 对 uid 的 job POST events → 404；对不存在的 job id → 404；两响应体逐字节相等；
@@ -145,21 +145,21 @@ tasks.md 1.3 + D5 + D9.2（events 归属、读路径过滤）+ 3.2 数据层 + 3
   - push 链路带归属：seed 一张 uid 的 standalone 卡片；在线状态一律经 `POST /agent/heartbeat`（带 token-a）构造，**不直调 `record_heartbeat`**（Task 4 会改它的签名为 `(user_id, payload)`，端点路径则两阶段都成立）→ push 200 且 `database.get_agent_job(job_id)["user_id"] == uid`；
   - heartbeat 端点 200 后 `list_agent_tokens(uid)` 对应行 `last_seen` 被刷新（touch 生效）。
 
-- [ ] **Step 2: 跑测试确认失败**——`venv/Scripts/python.exe scripts/check_channel_isolation.py tokens`，预期 FAIL。
+- [x] **Step 2: 跑测试确认失败**——`venv/Scripts/python.exe scripts/check_channel_isolation.py tokens`，预期 FAIL。
 
-- [ ] **Step 3: 实现**——
+- [x] **Step 3: 实现**——
   - `database.py`：agent_jobs 新库 DDL 加 `user_id INTEGER`；老库 `PRAGMA table_info` 探测后 `ALTER TABLE agent_jobs ADD COLUMN user_id INTEGER`（照抄 `_CONTENT_TABLES` 循环的模式，:657-664）；迁移回填 `UPDATE agent_jobs SET user_id=(SELECT MIN(id) FROM users) WHERE user_id IS NULL AND EXISTS(SELECT 1 FROM users)`（D7 存量划归 admin，NULL 守卫天然幂等）；`enqueue`/`claim`/`list_agent_jobs` 按 Interfaces 改签名。
   - `agent_hub.py`：删 `check_agent_auth`（`agent_token()` :29 保留——其值已被 Task 1 迁移读走，本任务只把 docstring 注释改为「仅存量迁移语义」，函数体不动），新增 `agent_credentials()`。
   - `insights_web.py`：三个 `/agent/*` 端点改 `creds = agent_hub.agent_credentials()`，None → `jsonify({"error": "unauthorized"}), 401`，`uid = creds[0]`；heartbeat 端点加 `database.touch_agent_token(creds[1])`；events 端点先 `database.get_agent_job(job_id)` 归属校验（不存在或 `user_id != uid` → 同一个 `jsonify({"error": "not found"}), 404`）再 `record_agent_job_event`（未知事件类型仍 400，排在归属校验之后）；`agent_job_json` 同样归属校验；`agent_jobs_page` 改 `list_agent_jobs(limit=100, user_id=uid)`。
   - `domestic_publisher.py` + `compose_push_post`：按 Interfaces 传 `user_id=uid`；`compose_push_post` 的 409 在线判定本任务**不动**（Task 6 改为按本人）。
 
-- [ ] **Step 4: 适配既有 gate 并全绿**——
+- [x] **Step 4: 适配既有 gate 并全绿**——
   - `check_agent_hub.py`：`set_setting("AGENT_TOKEN", ...)` 之后补一行 `database.init_db(database.DB_PATH)` 触发迁移（顺带钉迁移语义），`Bearer secret-token` 经迁移继续生效；直接 `enqueue_agent_job` 的调用全部补 `user_id=`（gate 用户）。
   - `check_agent_jobs.py`：去掉对 `set_setting("AGENT_TOKEN", "gate-token", ...)` 的依赖（:124），改 `database.create_agent_token(gate_uid, "gate-token")`；所有 `enqueue_agent_job` 补 `user_id=`、所有 `claim_agent_job` 补 `user_id=gate_uid`。
   - `check_agent_ui.py` :80 的 enqueue 补 `user_id=`；`check_domestic_publisher.py` 对 `enqueue_card_push` 的调用补 `user_id=`；`check_agent_push.py` 的 push 路由断言补归属检查。
-- [ ] **Step 5: 跑 tokens 节确认通过**，注册 `("check_channel_isolation.py", "CHANNEL_ISOLATION_TOKENS_OK", "token 解析用户：claim/events/读路径只认本人，跨用户与不存在同响应体", ("tokens",))`。
+- [x] **Step 5: 跑 tokens 节确认通过**，注册 `("check_channel_isolation.py", "CHANNEL_ISOLATION_TOKENS_OK", "token 解析用户：claim/events/读路径只认本人，跨用户与不存在同响应体", ("tokens",))`。
 
-- [ ] **Step 6: 全量 gate + commit**
+- [x] **Step 6: 全量 gate + commit**
 
 ```bash
 venv/Scripts/python.exe scripts/run_all_gates.py
@@ -186,21 +186,21 @@ tasks.md 1.2，决策 D1/D3/D8。
   - `agent_hub.redeem_pairing_code(code) -> int | None`（返回铸造者 user_id；语义失败仍 None）
   - `agent_hub.issue_agent_token(user_id: int, label: str = "") -> str`——`secrets.token_urlsafe(32)` → `database.create_agent_token` → 只在此刻返回明文
 
-- [ ] **Step 1: 写失败测试**（tokens 节追加）：
+- [x] **Step 1: 写失败测试**（tokens 节追加）：
   - A（admin 会话）`POST /agent-jobs/pair-code` 得 8 位码；匿名客户端 `POST /agent/pair {"code": ...}` → 200 且 `{"token": <43字符左右明文>}`；`find_agent_user_by_token(该 token) == A 的 uid`（谁配对归谁，D1/D3）；
   - 同一码二次兑换 403；大小写/空格容忍保留；5 次错码烧码、过期码 403（现状语义不变）；
   - 响应体无 `user_id` 等新键（协议形状不变，D8）；`agent_tokens` 表里查不到明文（只存哈希）；
   - B 铸码兑换 → 得到的是 B 的 token，与 A 的 token 互不相同且 `find_agent_user_by_token` 各归各。
 
-- [ ] **Step 2: 跑测试确认失败**——`venv/Scripts/python.exe scripts/check_channel_isolation.py tokens`。
+- [x] **Step 2: 跑测试确认失败**——`venv/Scripts/python.exe scripts/check_channel_isolation.py tokens`。
 
-- [ ] **Step 3: 实现**——`_PENDING_PAIRING` 增加 `user_id` 键；`create_pairing_code(user_id)` 存铸造者；`redeem_pairing_code` 成功分支返回 `_PENDING_PAIRING["user_id"]`（不再 `return agent_token()`）；pair 路由 `token = agent_hub.issue_agent_token(uid)` 后原样 `jsonify({"token": token})`；pair-code 路由传 `current_user()["id"]`。
+- [x] **Step 3: 实现**——`_PENDING_PAIRING` 增加 `user_id` 键；`create_pairing_code(user_id)` 存铸造者；`redeem_pairing_code` 成功分支返回 `_PENDING_PAIRING["user_id"]`（不再 `return agent_token()`）；pair 路由 `token = agent_hub.issue_agent_token(uid)` 后原样 `jsonify({"token": token})`；pair-code 路由传 `current_user()["id"]`。
 
-- [ ] **Step 4: 适配 `check_agent_hub.py` 配对段**——`redeem` 返回的不再是 `"secret-token"` 而是新签发 token：断言改为「200 + token 能 resolve 回 gate 用户 + 二次 403」；其余 TTL/烧码断言不变。
+- [x] **Step 4: 适配 `check_agent_hub.py` 配对段**——`redeem` 返回的不再是 `"secret-token"` 而是新签发 token：断言改为「200 + token 能 resolve 回 gate 用户 + 二次 403」；其余 TTL/烧码断言不变。
 
-- [ ] **Step 5: 跑 tokens 节 + 全量 gate 确认通过**——`venv/Scripts/python.exe scripts/run_all_gates.py`。
+- [x] **Step 5: 跑 tokens 节 + 全量 gate 确认通过**——`venv/Scripts/python.exe scripts/run_all_gates.py`。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add agent_hub.py insights_web.py scripts/check_agent_hub.py scripts/check_channel_isolation.py
@@ -229,7 +229,7 @@ tasks.md 2.1 + 3.1（compose 选择器按本人登录态），决策 D4。
   - `agent_hub.login_states_view(user_id: int | None = None) -> dict`
   - `_LAST_HEARTBEATS: dict[int, dict]`、`_USER_TOOL_BEATS: dict[int, dict[str, dict]]`（旧两个全局名删除）
 
-- [ ] **Step 1: 写失败测试**（section `heartbeat`）：
+- [x] **Step 1: 写失败测试**（section `heartbeat`）：
   - token-a 上报 `{"tools": {"extension": {"platforms": [{"id": "wechat", "logged_in": True, "probed": True}]}}}` → 登录会话 A 的 `GET /agent/login-states.json` 中 wechat 为 `ok`；切换 B 会话 → 全平台 `offline`（登录态互不可见，场景 3）；
   - A 离线（桶内 beat 时间戳拨老）不影响 B 的在线显示；`platform_login_states(uid_b)` 不含 A 上报的平台；
   - `agent_online(None) is False`；`agent_online(uid_a)` 按桶判定过期；
@@ -237,15 +237,15 @@ tasks.md 2.1 + 3.1（compose 选择器按本人登录态），决策 D4。
   - compose 选择器按本人（tasks 3.1）：A 会话 `GET /compose` 页里 wechat 平台 checkbox 不带 `disabled`（A 的 wechat ok），B 会话同页带 `disabled`（B 无心跳）——断言响应 HTML 文本；
   - `GET /agent/status.json` 返回当前会话用户的 online/age。
 
-- [ ] **Step 2: 跑测试确认失败**——`venv/Scripts/python.exe scripts/check_channel_isolation.py heartbeat`。
+- [x] **Step 2: 跑测试确认失败**——`venv/Scripts/python.exe scripts/check_channel_isolation.py heartbeat`。
 
-- [ ] **Step 3: 实现**——按 Interfaces 改五个函数与两个内存结构（合并/清理逻辑整体搬进桶内循环，不重写算法）；`insights_web.py` 各消费端统一取 `user = current_user(); uid = user["id"] if user else None` 后传入；heartbeat 端点改 `record_heartbeat(uid, ...)`。`base.html`/`compose.html`/`post_item.html` **零改动**（读注入值）。
+- [x] **Step 3: 实现**——按 Interfaces 改五个函数与两个内存结构（合并/清理逻辑整体搬进桶内循环，不重写算法）；`insights_web.py` 各消费端统一取 `user = current_user(); uid = user["id"] if user else None` 后传入；heartbeat 端点改 `record_heartbeat(uid, ...)`。`base.html`/`compose.html`/`post_item.html` **零改动**（读注入值）。
 
-- [ ] **Step 4: 适配既有 gate**——`check_login_states.py`：`platform_login_states()` 直调补 uid、`_TOOL_BEATS` 引用（若有）改 `_USER_TOOL_BEATS[uid]`，并补一条双用户互不可见断言；`check_agent_hub.py:119-166` 心跳段同步函数签名；`check_agent_push.py:116` `agent_hub._LAST_HEARTBEAT["t"] = None` 改为对 gate 用户桶置 offline（`_LAST_HEARTBEATS` 键不存在时先置一个再清）；`check_agent_ui.py:102-104` 同理。
+- [x] **Step 4: 适配既有 gate**——`check_login_states.py`：`platform_login_states()` 直调补 uid、`_TOOL_BEATS` 引用（若有）改 `_USER_TOOL_BEATS[uid]`，并补一条双用户互不可见断言；`check_agent_hub.py:119-166` 心跳段同步函数签名；`check_agent_push.py:116` `agent_hub._LAST_HEARTBEAT["t"] = None` 改为对 gate 用户桶置 offline（`_LAST_HEARTBEATS` 键不存在时先置一个再清）；`check_agent_ui.py:102-104` 同理。
 
-- [ ] **Step 5: 跑 heartbeat 节确认通过**，注册 `("check_channel_isolation.py", "CHANNEL_ISOLATION_HEARTBEAT_OK", "心跳按用户分桶：登录态互不可见、离线互不影响、过期整桶清理、compose 按本人可选平台", ("heartbeat",))`。
+- [x] **Step 5: 跑 heartbeat 节确认通过**，注册 `("check_channel_isolation.py", "CHANNEL_ISOLATION_HEARTBEAT_OK", "心跳按用户分桶：登录态互不可见、离线互不影响、过期整桶清理、compose 按本人可选平台", ("heartbeat",))`。
 
-- [ ] **Step 6: 全量 gate + commit**
+- [x] **Step 6: 全量 gate + commit**
 
 ```bash
 venv/Scripts/python.exe scripts/run_all_gates.py
@@ -273,20 +273,20 @@ tasks.md 2.2 + 2.3，决策 D6/D2（吊销 UI）。
   - `upsert_social_account(..., user_id: Optional[int] = None, db_path=...)`——keyword 追加（生产无调用方，D6 已核实；None 存 NULL，NULL 行对任何 user 过滤不可见，自动隔离）。
   - `POST /accounts/tokens/<int:token_id>/revoke`——会话路由；`database.revoke_agent_token(token_id, uid)` False（他人/不存在）→ 404 `{"error": "not found"}`；成功 → `{"success": True}`。
 
-- [ ] **Step 1: 写失败测试**（section `accounts`）：
+- [x] **Step 1: 写失败测试**（section `accounts`）：
   - schema 复用：init_db 二跑后手工 `INSERT INTO social_accounts(platform, external_id, user_id) VALUES ('wechat','wx-1', uid_b)` 与 admin 同 `(platform, external_id)` 不同 user 各一行均成功（唯一键放宽，DB 层验证，场景 4）；旧行（迁移前 seed 的 user_id 为 NULL 的行）升级后 `user_id == admin`；
   - B 会话 `GET /accounts` HTML 不含 admin 存量行的 label/external_id 字样；admin 会话含自己的；
   - B 会话 `list_social_accounts(user_id=uid_b)` 不含 admin 行；
   - 吊销：B `POST /accounts/tokens/<admin 的 token 行 id>/revoke` → 404 与不存在同体；B 吊销自己的 → 200 且该 token 立即 401（衔接 Task 2）、同用户其他 token 不受影响（场景 6）；
   - 页面出现本人 token 列表（label/last_seen 文案）与吊销表单标记。
 
-- [ ] **Step 2: 跑测试确认失败**——`venv/Scripts/python.exe scripts/check_channel_isolation.py accounts`。
+- [x] **Step 2: 跑测试确认失败**——`venv/Scripts/python.exe scripts/check_channel_isolation.py accounts`。
 
-- [ ] **Step 3: 实现**——database.py 三处（DDL/索引/回填 + 两个函数签名）；/accounts 路由 `login_states_view(uid)`（Task 4 已做）之外把 `list_social_accounts()` 改 `list_social_accounts(user_id=uid)`，并新增 token 列表数据 `database.list_agent_tokens(uid)` 传入模板；吊销路由按 Interfaces 实现；`templates/accounts.html` 在平台卡片区块后加「已配对的浏览器扩展」区块：每行 label/created_at/last_seen/吊销按钮（表单 POST），文案中文直写（页面现状全中文，无 i18n 键）。
+- [x] **Step 3: 实现**——database.py 三处（DDL/索引/回填 + 两个函数签名）；/accounts 路由 `login_states_view(uid)`（Task 4 已做）之外把 `list_social_accounts()` 改 `list_social_accounts(user_id=uid)`，并新增 token 列表数据 `database.list_agent_tokens(uid)` 传入模板；吊销路由按 Interfaces 实现；`templates/accounts.html` 在平台卡片区块后加「已配对的浏览器扩展」区块：每行 label/created_at/last_seen/吊销按钮（表单 POST），文案中文直写（页面现状全中文，无 i18n 键）。
 
-- [ ] **Step 4: 跑 accounts 节确认通过**，注册 `("check_channel_isolation.py", "CHANNEL_ISOLATION_ACCOUNTS_OK", "social_accounts 遗留数据隔离：唯一键放宽、存量归 admin、列表/吊销只认本人", ("accounts",))`。
+- [x] **Step 4: 跑 accounts 节确认通过**，注册 `("check_channel_isolation.py", "CHANNEL_ISOLATION_ACCOUNTS_OK", "social_accounts 遗留数据隔离：唯一键放宽、存量归 admin、列表/吊销只认本人", ("accounts",))`。
 
-- [ ] **Step 5: 全量 gate + commit**
+- [x] **Step 5: 全量 gate + commit**
 
 ```bash
 venv/Scripts/python.exe scripts/run_all_gates.py
@@ -309,19 +309,19 @@ tasks.md 3.2 路由层收口 + D9.3 的 run_after 路径（调度路径同一端
 - Consumes: Task 2 `enqueue_card_push(user_id=...)`（已必填）、Task 4 `agent_online(user_id)`。
 - Produces: 行为契约——即时 push 的 409 判定从「任意人在线」改为「帖主本人在线」（409 机制与文案保持不变，D9.1）；`run_at` 调度路径照旧绕过在线判定直接入队，job 归属帖主。
 
-- [ ] **Step 1: 写失败测试**（section `publish`）：
+- [x] **Step 1: 写失败测试**（section `publish`）：
   - A（admin）无心跳、B 有心跳：A 对自己的卡 `POST /compose/post/<id>/push`（无 run_at）→ 409 `推送离线：请启动浏览器扩展…`（他人在线不解锁，Review Focus 5）；
   - A 有心跳 → 200，`get_agent_job["user_id"] == uid_a`；
   - 带 `run_at` 的调度 push 在 A 无心跳时仍 200 入队且 `user_id == uid_a`（D9.3：run_after 路径带帖主，不新建调度器——用 `grep -c "SCHEDULABLE_PLATFORMS: tuple = ()"` 断言无需改动是可选的静态确认，不进 gate）；
   - B token claim A 的调度 job → 204（认领收口已在 Task 2，这里作为链路串测）。
 
-- [ ] **Step 2: 跑测试确认失败**——`venv/Scripts/python.exe scripts/check_channel_isolation.py publish`。
+- [x] **Step 2: 跑测试确认失败**——`venv/Scripts/python.exe scripts/check_channel_isolation.py publish`。
 
-- [ ] **Step 3: 实现**——`compose_push_post` 两处：`elif not agent_hub.agent_online():` → `elif not agent_hub.agent_online(uid):`；`enqueue_card_push(post, run_after=run_after)` → `enqueue_card_push(post, run_after=run_after, user_id=uid)`。（Task 2 已改 enqueue_card_push 签名，此处只补路由实参的确认与 409 判定。）
+- [x] **Step 3: 实现**——`compose_push_post` 两处：`elif not agent_hub.agent_online():` → `elif not agent_hub.agent_online(uid):`；`enqueue_card_push(post, run_after=run_after)` → `enqueue_card_push(post, run_after=run_after, user_id=uid)`。（Task 2 已改 enqueue_card_push 签名，此处只补路由实参的确认与 409 判定。）
 
-- [ ] **Step 4: 跑 publish 节确认通过**，注册 `("check_channel_isolation.py", "CHANNEL_ISOLATION_PUBLISH_OK", "即时推送按帖主心跳判定 409，调度入队带帖主归属，他人通道不可用", ("publish",))`。
+- [x] **Step 4: 跑 publish 节确认通过**，注册 `("check_channel_isolation.py", "CHANNEL_ISOLATION_PUBLISH_OK", "即时推送按帖主心跳判定 409，调度入队带帖主归属，他人通道不可用", ("publish",))`。
 
-- [ ] **Step 5: 全量 gate + commit**
+- [x] **Step 5: 全量 gate + commit**
 
 ```bash
 venv/Scripts/python.exe scripts/run_all_gates.py
@@ -344,19 +344,19 @@ tasks.md 3.3 的「通道不可用保持排队并标注原因」，D9.1 裁定�
 - Consumes: Task 4 `platform_login_states(user_id)`、`domestic_publisher.display_name`。
 - Produces: 模板数据 `job['pending_reasons']: list[str]`——仅 `status == 'pending'` 的 job 计算；对每个 `payload.items[].target`：帖主本人的 `platform_login_states(job['user_id'])` 里缺失该平台或 `logged_in is False` → 追加 `f"{display_name(target)}：平台未连接/登录态异常"`。claimed/running/succeeded 不标注。
 
-- [ ] **Step 1: 写失败测试**（publish 节追加）：
+- [x] **Step 1: 写失败测试**（publish 节追加）：
   - 入队一条 uid_a 的 pending job（wechat/zhihu 两 target），A 无心跳 → `GET /agent-jobs` HTML 含「平台未连接/登录态异常」与「公众号」「知乎」；
   - A 上报 wechat logged_in 心跳后 → HTML 只剩知乎的原因、不再含 wechat 的原因；
   - job 变 `succeeded` 后（events done）不再出现原因标注；
   - B 的心跳（wechat logged_in）不影响 A 页面的原因标注（派生只用帖主桶）。
 
-- [ ] **Step 2: 跑测试确认失败**——`venv/Scripts/python.exe scripts/check_channel_isolation.py publish`。
+- [x] **Step 2: 跑测试确认失败**——`venv/Scripts/python.exe scripts/check_channel_isolation.py publish`。
 
-- [ ] **Step 3: 实现**——`agent_jobs_page` 循环内在既有 `job['targets']` 解析之后按 Interfaces 计算 `job['pending_reasons']`（每 job 至多一次 `platform_login_states(job['user_id'])` 调用，循环外不可缓存跨用户结果）；`agent_jobs.html` 在 pending 行状态区渲染 `{% for reason in job.get('pending_reasons') or [] %}` 一行小字。
+- [x] **Step 3: 实现**——`agent_jobs_page` 循环内在既有 `job['targets']` 解析之后按 Interfaces 计算 `job['pending_reasons']`（每 job 至多一次 `platform_login_states(job['user_id'])` 调用，循环外不可缓存跨用户结果）；`agent_jobs.html` 在 pending 行状态区渲染 `{% for reason in job.get('pending_reasons') or [] %}` 一行小字。
 
-- [ ] **Step 4: 跑 publish 节确认通过**（OK token 不变，断言并入既有注册）。
+- [x] **Step 4: 跑 publish 节确认通过**（OK token 不变，断言并入既有注册）。
 
-- [ ] **Step 5: 全量 gate + commit**
+- [x] **Step 5: 全量 gate + commit**
 
 ```bash
 venv/Scripts/python.exe scripts/run_all_gates.py
@@ -374,13 +374,13 @@ tasks.md 4.1。设计 §2.2 已裁定：配对客户端在**本仓** `extension/
 - Read-only: `extension/src/lib/protocol.ts`、`extension/src/background/orchestrator.ts`
 - 无代码改动（预期零 diff；若实测发现必须改：停在最小说明，等用户确认后再动）
 
-- [ ] **Step 1: 逐项核对清单**（读源码，把结论记进任务报告）：
+- [x] **Step 1: 逐项核对清单**（读源码，把结论记进任务报告）：
   - `pairWithCode`（protocol.ts）POST `/agent/pair` body `{"code"}`、期待响应 `{"token": string}` → Task 3 响应形状未变；
   - token 全程不透明、只进 `Authorization: Bearer` 头 → Task 2 未引入新头/新字段；
   - `buildHeartbeat`（orchestrator.ts:25-40）载荷仅 `tools.extension.platforms[{id, logged_in, probed}]`，无账号身份 → Task 4 分桶只依赖 token，兼容；
   - `claimBody`/claim 204-null/200-Job、`sendEvent` 200/400 → Task 2 行为未变。
 
-- [ ] **Step 2: 跑扩展协议 gate**
+- [x] **Step 2: 跑扩展协议 gate**
 
 ```bash
 venv/Scripts/python.exe scripts/check_extension_tests.py
@@ -389,7 +389,7 @@ venv/Scripts/python.exe scripts/check_extension_protocol.py
 
 预期：`EXTENSION_TESTS_OK`、`EXTENSION_PROTOCOL_OK`（后者经真实 HTTP 驱动编译后的客户端，claim/events/heartbeat 全链路）。确认 `git diff --stat extension/` 为空。
 
-- [ ] **Step 3: Commit（若有文档性微调）或直接在任务报告记录结论**——零改动时本任务无 commit。
+- [x] **Step 3: Commit（若有文档性微调）或直接在任务报告记录结论**——零改动时本任务无 commit。
 
 ---
 
@@ -404,7 +404,7 @@ tasks.md 4.2，设计 §6 场景 1–8（场景 5 迁移幂等已由 Task 1/Task
 **Interfaces:**
 - Consumes: 前八个任务的全部行为契约。
 
-- [ ] **Step 1: 写 e2e 节**——双账号（admin + B）走真路由跑完整叙事，一次性串起场景 1–4、6–8：
+- [x] **Step 1: 写 e2e 节**——双账号（admin + B）走真路由跑完整叙事，一次性串起场景 1–4、6–8：
   1. 各自配对（A 铸码→匿名兑换、B 铸码→匿名兑换）→ `find_agent_user_by_token` 各归各（401 仅对无效/吊销 token；「互不相通」钉在解析身份不同 + claim 互不可见）；
   2. A 入队 → B token claim 204、A token claim 200；B token 对 A job events → 404 同体；
   3. A 上报 wechat ok → B 的 login-states 与 /accounts 均 offline/未登录；`/agent-jobs/<id>.json` 跨用户 404 同体、队列页 B 视角无 A 帖子 title；
@@ -413,9 +413,9 @@ tasks.md 4.2，设计 §6 场景 1–8（场景 5 迁移幂等已由 Task 1/Task
   7. B 在线、A 离线：A 的 push 409；A 带 run_at 入队后 job 停在 pending、队列页出现「平台未连接/登录态异常」、B token claim 拿不到——绝不发到 B 平台；
   8. 扩展零改动：两个「扩展实例」（两个 test client 各持各的 token、body 带 `{"agent": "insights-ext", "executor": "extension", "platforms": ["wechat"]}`）并发 claim，各领各的 job，events 各回各的，双方 job 均到 succeeded。
 
-- [ ] **Step 2: 跑 e2e 节确认通过**——`venv/Scripts/python.exe scripts/check_channel_isolation.py e2e` → `CHANNEL_ISOLATION_E2E_OK`。注册 `("check_channel_isolation.py", "CHANNEL_ISOLATION_E2E_OK", "双用户端到端：配对互不相通、认领/回报/读取不越权、他人在线不解锁推送、双扩展各领各的 job", ("e2e",))`。
+- [x] **Step 2: 跑 e2e 节确认通过**——`venv/Scripts/python.exe scripts/check_channel_isolation.py e2e` → `CHANNEL_ISOLATION_E2E_OK`。注册 `("check_channel_isolation.py", "CHANNEL_ISOLATION_E2E_OK", "双用户端到端：配对互不相通、认领/回报/读取不越权、他人在线不解锁推送、双扩展各领各的 job", ("e2e",))`。
 
-- [ ] **Step 3: 全量 gate 终验 + commit**
+- [x] **Step 3: 全量 gate 终验 + commit**
 
 ```bash
 venv/Scripts/python.exe scripts/run_all_gates.py
