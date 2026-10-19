@@ -2,6 +2,7 @@
 change: multi-user-publishing-channels
 design-doc: docs/superpowers/specs/2026-10-18-multi-user-publishing-channels-design.md
 base-ref: c1421e379e10d2b1679d3d111c05ab4736475c85
+archived-with: 2026-10-19-multi-user-publishing-channels
 ---
 
 # 发布通道按用户隔离（multi-user-publishing-channels）实施计划
@@ -71,6 +72,7 @@ base-ref: c1421e379e10d2b1679d3d111c05ab4736475c85
 | 4.1 扩展零改动验证 | Task 8 |
 | 4.2 端到端验收 | Task 9 |
 
+archived-with: 2026-10-19-multi-user-publishing-channels
 ---
 
 ### Task 1: `agent_tokens` 表、token 存取函数与存量全局密钥迁移
@@ -114,6 +116,7 @@ git add database.py scripts/check_channel_isolation.py scripts/run_all_gates.py
 git commit -m "agent_tokens 表：按用户签发 token 并把存量全局密钥映射给 admin"
 ```
 
+archived-with: 2026-10-19-multi-user-publishing-channels
 ---
 
 ### Task 2: agent_jobs 归属 + token 解析用户 + `/agent/*` 端点与读路径收口
@@ -167,6 +170,7 @@ git add -A
 git commit -m "agent job 归属到用户：token 查表解析身份，认领/回报/读取只认本人"
 ```
 
+archived-with: 2026-10-19-multi-user-publishing-channels
 ---
 
 ### Task 3: 配对码绑定铸造者，兑换签发本人 token
@@ -207,6 +211,7 @@ git add agent_hub.py insights_web.py scripts/check_agent_hub.py scripts/check_ch
 git commit -m "配对码绑定铸造者：兑换签发兑换者专属 token，协议形状不变"
 ```
 
+archived-with: 2026-10-19-multi-user-publishing-channels
 ---
 
 ### Task 4: heartbeat 按用户分桶 + 登录态视图按用户 + 消费端切换
@@ -253,6 +258,7 @@ git add -A
 git commit -m "heartbeat 按用户分桶：登录态视图与状态条只看本人"
 ```
 
+archived-with: 2026-10-19-multi-user-publishing-channels
 ---
 
 ### Task 5: social_accounts 隔离迁移 + /accounts 按用户 + token 管理 UI
@@ -294,6 +300,7 @@ git add -A
 git commit -m "social_accounts 按用户隔离：唯一键放宽、存量归 admin，账号页可管本人 token"
 ```
 
+archived-with: 2026-10-19-multi-user-publishing-channels
 ---
 
 ### Task 6: 发布链路按帖主通道（即时 push 409 按本人 heartbeat）
@@ -329,6 +336,7 @@ git add -A
 git commit -m "即时推送按帖主心跳判定离线，调度入队归属帖主"
 ```
 
+archived-with: 2026-10-19-multi-user-publishing-channels
 ---
 
 ### Task 7: 队列页渲染时派生通道原因（不入库）
@@ -364,6 +372,7 @@ git add -A
 git commit -m "队列页渲染时派生排队原因：帖主通道不可用现场标注，不入库"
 ```
 
+archived-with: 2026-10-19-multi-user-publishing-channels
 ---
 
 ### Task 8: 扩展零改动验证（只读 + 既有 gate）
@@ -391,6 +400,7 @@ venv/Scripts/python.exe scripts/check_extension_protocol.py
 
 - [x] **Step 3: Commit（若有文档性微调）或直接在任务报告记录结论**——零改动时本任务无 commit。
 
+archived-with: 2026-10-19-multi-user-publishing-channels
 ---
 
 ### Task 9: 双用户端到端验收 gate
@@ -423,6 +433,7 @@ git add -A
 git commit -m "双用户发布通道端到端验收 gate"
 ```
 
+archived-with: 2026-10-19-multi-user-publishing-channels
 ---
 
 ## 收尾

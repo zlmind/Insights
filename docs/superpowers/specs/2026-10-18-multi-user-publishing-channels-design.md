@@ -2,6 +2,8 @@
 comet_change: multi-user-publishing-channels
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-10-19-multi-user-publishing-channels
+status: final
 ---
 
 # 技术设计：发布通道按用户隔离（multi-user-publishing-channels）
