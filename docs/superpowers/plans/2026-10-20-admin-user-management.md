@@ -2,6 +2,7 @@
 change: admin-user-management
 design-doc: docs/superpowers/specs/2026-10-20-admin-user-management-design.md
 base-ref: 7569977bb40165d2a7cef2e984af2adad9b00c3f
+archived-with: 2026-10-20-admin-user-management
 ---
 
 # Admin 用户管理 实施计划

@@ -2,6 +2,8 @@
 comet_change: admin-user-management
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-10-20-admin-user-management
+status: final
 ---
 
 # Design Doc: admin-user-management
@@ -42,7 +44,6 @@ OpenSpec delta spec（`openspec/changes/admin-user-management/specs/admin-user-m
    - agent_tokens 删除后该用户扩展配对立即失效
    - activity_log / usage_events：`user_id` 与 `username` 均置 NULL **保留**（审计/用量去身份化；用户裁决 2026-10-20：username 一并置 NULL，否则去身份化名不副实）
    - **本地文件一并删**（用户裁决 2026-10-20）：事务提交后追加文件系统清理——`uploaded_images` 中 storage='local' 行对应 `static/uploads/` 下文件、`generated_thumbnails` 对应 `static/uploads/youtube_thumbnails/` 下文件（路径取自行记录，收集于事务内、提交后 unlink）；cloudinary/unsplash/pexels/external 行无本地文件，跳过。文件清理失败仅记日志，不回滚（DB 已提交，残留文件可手工清）
-   - 不在范围（无 user_id）：schedule_settings、schedule_time_slots、time_slot_platforms、platform_daily_limits、app_settings
    - 不在范围（无 user_id）：schedule_settings、schedule_time_slots、time_slot_platforms、platform_daily_limits、app_settings
 3. **自我保护**：禁删当前登录 admin 自己；禁删最后一个 `is_admin` 账号（先转让再删）。
 4. **重置密码**：表单输入即改（werkzeug 哈希），不校验旧密码、无邮件；被重置者现有 session 保持有效至自然过期（Flask session 无服务端态，接受并注明，强制下线另起 change）。
