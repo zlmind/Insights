@@ -21,7 +21,16 @@
                         <td>{{ u['created_at'] or '—' }}</td>
                         <td>{{ u['last_login_at'] or '—' }}</td>
                         <td>
-                            {# Task 3 加 Reset password 表单；Task 4 加 Delete 按钮 #}
+                            <details class="pd-reset">
+                                <summary class="btn btn-outline btn-sm">Reset password</summary>
+                                <form method="post" action="{{ url_for('admin_reset_password', user_id=u['id']) }}"
+                                      class="field" style="margin-top:.4rem; min-width:14rem">
+                                    <label for="pw-{{ u['id'] }}">New password</label>
+                                    <input class="input" type="password" id="pw-{{ u['id'] }}" name="new_password"
+                                           autocomplete="new-password" required>
+                                    <button class="btn btn-primary btn-sm" type="submit">Reset password</button>
+                                </form>
+                            </details>
                         </td>
                     </tr>
                 {% endfor %}

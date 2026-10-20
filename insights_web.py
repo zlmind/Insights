@@ -25,6 +25,7 @@ from queue import Queue
 from flask import (
     Flask,
     Response,
+    flash,
     request,
     render_template,
     redirect,
@@ -139,6 +140,7 @@ from database import (
     count_users,
     list_users,
     update_last_login,
+    update_user_password,
     # Activity log
     log_activity,
     list_activity,
@@ -314,11 +316,12 @@ def allowed_video_file(filename):
 # Admin endpoints 404-gate themselves (require_admin_or_404) instead of using
 # the global login redirect, so an anonymous or non-admin probe gets the same
 # 404 body as a nonexistent path and learns nothing — spec: 含未登录也 404.
-# Later tasks add admin_user_stats / admin_reset_password / admin_delete_user
-# here as their routes land.
+# Later tasks add admin_user_stats / admin_delete_user here as their routes
+# land.
 PUBLIC_ENDPOINTS = {"login", "signup", "logout", "health",
                     "agent_heartbeat", "agent_claim", "agent_job_events",
-                    "agent_pair", "admin_users_page"}
+                    "agent_pair", "admin_users_page",
+                    "admin_reset_password"}
 
 # Auto-tracking writes a row for every non-GET request, but we suppress
 # rows for these endpoints because they're either covered by an explicit
@@ -715,6 +718,20 @@ def instance_settings():
 @require_admin_or_404
 def admin_users_page():
     return render_template("admin_users.html", users=list_users())
+
+@app.route("/admin/users/<int:user_id>/password", methods=["POST"])
+@require_admin_or_404
+def admin_reset_password(user_id: int):
+    user = get_user_by_id(user_id)
+    if user is None:
+        abort(404)
+    new_password = request.form.get("new_password") or ""
+    if not new_password.strip():
+        flash("New password cannot be empty.")
+        return redirect(url_for("admin_users_page"))
+    update_user_password(user_id, generate_password_hash(new_password))
+    flash(f"Password reset for {user['username']}.")
+    return redirect(url_for("admin_users_page"))
 
 # ── Activity log viewer ───────────────────────────────────────────────────
 

@@ -258,6 +258,8 @@ _E2E_RULES = {
     "Created": "^Created$",
     "Last login": "^Last login$",
     "Actions": "^Actions$",
+    "New password cannot be empty.": "^New password cannot be empty\\.$",
+    "Password reset for victim.": "^Password reset for (.+)\\.$",
 }
 
 
@@ -313,8 +315,72 @@ def section_e2e():
         check(pattern in compiled,
               f"zh.json rules 应含本任务规则 {pattern!r}")
 
+    # ── 重置密码（Task 3）：admin POST 新密码；门控对非 admin/未登录 404。──
+    # POST 逐字节 404 基线：Task 2 只建了 GET 基线，表单场景自建 POST 的。
+    missing_post = client.post("/definitely-not-a-route")
+    check(missing_post.status_code == 404,
+          "POST 404 基线前提：该路径应确实不存在")
+
+    # 1) admin 提交新密码 → 302 回列表，flash 报成功，库中哈希换新。
+    reset = client.post(f"/admin/users/{uid_v}/password",
+                        data={"new_password": "np123"})
+    check(reset.status_code == 302,
+          f"admin 重置密码应 302 回列表，实为 {reset.status_code}")
+    after = client.get(reset.headers["Location"])
+    check("Password reset for victim." in after.get_data(as_text=True),
+          "重置后的列表页应含成功 flash 文案 Password reset for victim.")
+    row = database.get_user_by_id(uid_v, db_path=database.DB_PATH)
+    check(check_password_hash(row["password_hash"], "np123"),
+          "重置后库中哈希应通过新密码 np123 校验")
+    check(not check_password_hash(row["password_hash"], "p"),
+          "重置后旧密码 p 必须失效")
+
+    # 2) 重置不打掉登录态：victim 旧 session 仍有效（钉既定行为不回归）。
+    check(client_v.get("/").status_code == 200,
+          "重置密码后 victim 的旧 session 应仍有效（GET / 应 200）")
+
+    # 3) 空 new_password（空串与纯空格两种）：flash 拒绝文案，哈希不动。
+    hash_before_blank = database.get_user_by_id(
+        uid_v, db_path=database.DB_PATH)["password_hash"]
+    for blank in ("", "   "):
+        blank_page = client.post(f"/admin/users/{uid_v}/password",
+                                 data={"new_password": blank},
+                                 follow_redirects=True)
+        check("New password cannot be empty."
+              in blank_page.get_data(as_text=True),
+              f"空密码 {blank!r} 应 flash New password cannot be empty.")
+    hash_after_blank = database.get_user_by_id(
+        uid_v, db_path=database.DB_PATH)["password_hash"]
+    check(hash_after_blank == hash_before_blank,
+          "空密码提交不得改动库中 password_hash")
+
+    # 4) 不存在的 id：404 且与 POST 不存在路径逐字节一致。
+    gone = client.post("/admin/users/999999999/password",
+                       data={"new_password": "x"})
+    check(gone.status_code == 404,
+          f"对不存在 id 重置密码应 404，实为 {gone.status_code}")
+    check(gone.get_data() == missing_post.get_data(),
+          "不存在 id 的 404 响应体应与 POST 不存在路径逐字节一致")
+
+    # 5) 门控：victim / anon POST 同端点各与自己的 POST 基线逐字节一致。
+    victim_post_baseline = client_v.post("/definitely-not-a-route")
+    r_v = client_v.post(f"/admin/users/{uid_v}/password",
+                        data={"new_password": "np123"})
+    check(r_v.status_code == 404,
+          f"victim POST 重置密码应 404，实为 {r_v.status_code}")
+    check(r_v.get_data() == victim_post_baseline.get_data(),
+          "victim 的 404 响应体应与其 POST 基线逐字节一致")
+    anon_post_baseline = anon.post("/definitely-not-a-route")
+    r_a = anon.post(f"/admin/users/{uid_v}/password",
+                    data={"new_password": "np123"})
+    check(r_a.status_code == 404,
+          f"anon POST 重置密码应 404，实为 {r_a.status_code}")
+    check(r_a.get_data() == anon_post_baseline.get_data(),
+          "anon 的 404 响应体应与其 POST 基线逐字节一致")
+
     print("admin 列表页仅 admin 可见，victim/anon 对 /admin/users 与不存在"
-          "路径拿到逐字节相同的 404，侧边栏入口零泄漏，zh 词条齐且可编译")
+          "路径拿到逐字节相同的 404，侧边栏入口零泄漏，admin 重置密码生效且"
+          "空密码被拒，POST 门控同样逐字节 404，zh 词条齐且可编译")
     print("ADMIN_USER_MANAGEMENT_E2E_OK")
 
 

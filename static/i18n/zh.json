@@ -963,7 +963,11 @@
   {"re": "^Admin$", "to": "管理员"},
   {"re": "^Created$", "to": "创建时间"},
   {"re": "^Last login$", "to": "最近登录"},
-  {"re": "^Actions$", "to": "操作"}
+  {"re": "^Actions$", "to": "操作"},
+  {"re": "^New password$", "to": "新密码"},
+  {"re": "^Reset password$", "to": "重置密码"},
+  {"re": "^New password cannot be empty\\.$", "to": "新密码不能为空。"},
+  {"re": "^Password reset for (.+)\\.$", "to": "已重置 $1 的密码。"}
  ],
  "texts": {
   "\"Connect\"": "“Connect”",
