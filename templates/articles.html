@@ -3,6 +3,12 @@
 {% block header %}Generated Articles{% endblock %}
 {% block subtitle %}<p class="page-subtitle">Articles drafted from your episodes, saved sources and content briefs.</p>{% endblock %}
 {% block content %}
+<style>
+    /* Card preview copy: smaller than the default 1rem body text, muted so the
+       topic carries the hierarchy. */
+    .article-card .card-title { font-size: 1.02rem; }
+    .article-card .card-text { font-size: .875rem; color: var(--muted); line-height: 1.55; }
+</style>
 
 <!-- Filter Bar -->
 <div class="filter-bar">
@@ -65,7 +71,7 @@
 <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
     {% for article in articles %}
     <div class="col">
-        <div class="card h-100 shadow-sm">
+        <div class="card h-100 shadow-sm article-card">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <span class="badge bg-primary">{{ article.style }}</span>

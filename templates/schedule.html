@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}Schedule | Insights{% endblock %}
+{% block header %}日历{% endblock %}
+{% block subtitle %}<p class="page-subtitle">本月发布排期一览，及发布时段与每日限额设置。<b>排期数据来自发布队列</b>——在发布页为帖子勾选平台并入队后，会按定时时间出现在这里。</p>{% endblock %}
+{% block content %}
+{# Jinja macros: ISO weekday to Chinese day name #}
+{% set WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'] %}
+
+<style>
+    /* Calendar grid */
+    .cal-card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+    .cal-head {
+        display: flex; align-items: center; gap: .75rem;
+        padding: .75rem 1rem; border-bottom: 1px solid var(--line);
+    }
+    .cal-month { font-weight: 650; font-size: 1rem; }
+    .cal-nav {
+        display: inline-flex; align-items: center; gap: .25rem;
+    }
+    .cal-nav button {
+        width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line);
+        background: var(--surface); color: var(--muted); cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+        transition: border-color .15s ease, color .15s ease, background-color .15s ease;
+    }
+    .cal-nav button:hover { border-color: var(--brand-300); color: var(--text); background: var(--brand-50); }
+    .cal-nav button:focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
+    .cal-nav button:disabled { opacity: .4; cursor: not-allowed; }
+    .cal-count { margin-left: auto; font-size: .8rem; color: var(--muted); }
+    .cal-week, .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+    .cal-week { border-bottom: 1px solid var(--line); }
+    .cal-week span {
+        font-size: .7rem; font-weight: 600; letter-spacing: .06em; color: var(--muted);
+        text-transform: uppercase; padding: .5rem .75rem; border-left: 1px solid var(--line);
+    }
+    .cal-week span:first-child { border-left: 0; }
+    .cal-grid { }
+    .cal-cell {
+        min-height: 92px; border-left: 1px solid var(--line); border-top: 1px solid var(--line);
+        padding: .4rem .45rem; display: flex; flex-direction: column; gap: .3rem;
+    }
+    .cal-cell:nth-child(7n+1) { border-left: 0; }
+    .cal-cell .d { font-size: .78rem; font-weight: 550; color: var(--muted); }
+    .cal-cell.is-out { background: var(--canvas); }
+    .cal-cell.is-out .d { opacity: .45; }
+    .cal-cell.is-today { background: var(--brand-50); }
+    .cal-cell.is-today .d {
+        color: #fff; background: var(--brand-500); width: 22px; height: 22px;
+        border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .ev {
+        display: flex; align-items: center; gap: .35rem; width: 100%;
+        border-left: 3px solid var(--pc, var(--brand-500));
+        background: var(--canvas); border-radius: 6px; padding: .2rem .4rem;
+        font-size: .74rem; color: var(--ink-800); text-decoration: none;
+    }
+    .ev:hover { background: var(--brand-100); }
+    .ev .ev-time { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--muted); flex: none; }
+    .ev .ev-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ev .ev-chip { flex: none; }
+    .ev-chip {
+        font-size: .62rem; font-weight: 700; color: #fff; border-radius: 4px;
+        padding: .05rem .3rem; letter-spacing: .02em;
+    }
+    .ev.is-posted { opacity: .6; }
+    .ev.is-posted .ev-title { text-decoration: line-through; }
+    .ev-more { font-size: .7rem; color: var(--muted); padding-left: .2rem; }
+    .cal-empty { padding: 2.5rem 1rem; text-align: center; color: var(--muted); font-size: .85rem; }
+
+    /* Below-grid cards */
+    .below { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; margin-top: 1.1rem; }
+    .bot-card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+    .bot-head {
+        display: flex; align-items: center; gap: .6rem; padding: .75rem 1rem;
+        border-bottom: 1px solid var(--line);
+    }
+    .bot-head b { font-size: .95rem; }
+    .bot-body { padding: .75rem 1rem; display: grid; gap: .5rem; }
+    .slot-row { display: flex; align-items: center; gap: .6rem; font-size: .86rem; }
+    .slot-time { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .slot-days { color: var(--muted); font-size: .8rem; }
+    .slot-pills { display: flex; flex-wrap: wrap; gap: .3rem; margin-left: auto; }
+    .spill {
+        font-size: .7rem; font-weight: 600; color: #fff; border-radius: 999px;
+        padding: .08rem .5rem;
+    }
+    .limit-row { display: flex; align-items: center; gap: .6rem; font-size: .86rem; }
+    .limit-row .lbl { min-width: 3.5rem; font-weight: 550; }
+    .limit-meter { flex: 1; height: 8px; border-radius: 99px; background: var(--canvas);
+                    border: 1px solid var(--line); overflow: hidden; }
+    .limit-meter > i { display: block; height: 100%; background: var(--brand-500); border-radius: 99px; }
+    .limit-row .num { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 3.6rem; text-align: right; font-size: .8rem; }
+    .empty-mini { color: var(--muted); font-size: .82rem; padding: .4rem 0; }
+
+    @media (max-width: 900px) {
+        .cal-cell { min-height: 64px; }
+        .ev-title { max-width: 7em; }
+        .below { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 576px) {
+        .ev .ev-time { display: none; }
+        .cal-count { display: none; }
+    }
+</style>
+
+{# Events are passed as a Jinja list; the grid itself is built client-side
+   with the anchor dates (they need real date maths Jinja can't do), and the
+   events are spliced in by date key. #}
+{% set events_json = events | tojson %}
+
+<div class="cal-card">
+    <div class="cal-head">
+        <div class="cal-nav">
+            {% set py = year if month > 1 else year - 1 %}
+            {% set pm = month - 1 if month > 1 else 12 %}
+            {% set ny = year if month < 12 else year + 1 %}
+            {% set nm = month + 1 if month < 12 else 1 %}
+            <a href="?year={{ py }}&month={{ pm }}" title="上月" aria-label="上个月">‹</a>
+            <span class="cal-month">{{ year }} 年 {{ month }} 月</span>
+            <a href="?year={{ ny }}&month={{ nm }}" title="下月" aria-label="下个月">›</a>
+            <a href="?" title="回到本月" aria-label="回到本月" class="cal-today">今天</a>
+        </div>
+        <span class="cal-count">{{ events|length }} 条排期</span>
+    </div>
+    <div class="cal-week" aria-hidden="true">{% for d in WEEKDAYS %}<span>周{{ d }}</span>{% endfor %}</div>
+    <div class="cal-grid" id="calGrid"></div>
+</div>
+
+<div class="below">
+    <div class="bot-card">
+        <div class="bot-head"><b>发布时段</b>
+            <span class="small muted ms-1">{{ slots|length }} 个时段</span></div>
+        <div class="bot-body">
+            {% if slots %}
+                {% for s in slots %}
+                <div class="slot-row">
+                    <span class="slot-time">
+                        {% if s.day_of_week == -1 %}每天{% else %}周{{ WEEKDAYS[s.day_of_week] }}{% endif %} {{ s.time_slot }}
+                    </span>
+                    <span class="slot-pills">
+                        {% if s.platforms %}
+                            {% for p in s.platforms %}
+                            <span class="spill" style="background: {{ platform_meta.get(p, {}).get('color', '#8b93a7') }}">{{ platform_meta.get(p, {}).get('label', p) }}</span>
+                            {% endfor %}
+                        {% else %}
+                            <span class="spill" style="background: #8b93a7">全平台</span>
+                        {% endif %}
+                    </span>
+                </div>
+                {% endfor %}
+            {% else %}
+            <div class="empty-mini">尚未配置发布时段。时段由发布队列调度使用，配置后可让帖子按固定时段自动入队。</div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="bot-card">
+        <div class="bot-head"><b>每日限额</b></div>
+        <div class="bot-body">
+            {% if limits %}
+                {% for l in limits %}
+                <div class="limit-row">
+                    <span class="lbl">{{ platform_meta.get(l.platform, {}).get('label', l.platform) }}</span>
+                    <span class="limit-meter"><i style="width: {{ (l.max and (100 if l.max >= 10 else l.max * 10)) or 0 }}%"></i></span>
+                    <span class="num">{{ l.max or '∞' }} / 天</span>
+                </div>
+                {% endfor %}
+            {% else %}
+            <div class="empty-mini">尚未设置每日限额。限额为 0 或未设置时表示不限制每日发布条数。</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+    var events = {{ events | tojson }};
+    var YEAR = {{ year }};
+    var MONTH = {{ month }};   // 1-based
+
+    var WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
+    function buildGrid() {
+        // First day of month: JS Date month is 0-based
+        var fd = new Date(YEAR, MONTH - 1, 1);
+        // Monday-first index
+        var lead = (fd.getDay() + 6) % 7;
+        var daysInMonth = new Date(YEAR, MONTH, 0).getDate();
+        var grid = document.getElementById('calGrid');
+        grid.innerHTML = '';
+        // today (local) for highlight
+        var now = new Date();
+        var todayY = now.getFullYear(), todayM = now.getMonth() + 1, todayD = now.getDate();
+        // Build 42 cells: some from prev/next month around the edges
+        for (var k = 0; k < 42; k++) {
+            var dayNum = k - lead + 1;
+            var cellDate = new Date(YEAR, MONTH - 1, dayNum);
+            var cell = document.createElement('div');
+            cell.className = 'cal-cell';
+            var inMonth = dayNum >= 1 && dayNum <= daysInMonth;
+            if (!inMonth) cell.classList.add('is-out');
+            if (cellDate.getFullYear() === todayY && cellDate.getMonth() + 1 === todayM && cellDate.getDate() === todayD) {
+                cell.classList.add('is-today');
+            }
+            var d = document.createElement('span');
+            d.className = 'd';
+            d.textContent = cellDate.getDate();
+            cell.appendChild(d);
+            // events for this date
+            var key = cellDate.getFullYear() + '-' + String(cellDate.getMonth() + 1) + '-' + String(cellDate.getDate());
+            var dayEvents = events.filter(function (e) { return e.day === key; });
+            // show up to 3
+            dayEvents.slice(0, 3).forEach(function (e) {
+                var a = document.createElement('a');
+                a.className = 'ev' + (e.status === 'posted' ? ' is-posted' : '');
+                a.href = '?year=' + YEAR + '&month=' + MONTH + '#';
+                a.style.setProperty('--pc', e.color);
+                a.innerHTML = '<span class="ev-time">' + (e.time || '') + '</span>' +
+                    '<span class="ev-chip" style="background:' + e.color + '">' + e.label + '</span>' +
+                    '<span class="ev-title"></span>';
+                a.querySelector('.ev-title').textContent = e.title;
+                cell.appendChild(a);
+            });
+            if (dayEvents.length > 3) {
+                var more = document.createElement('span');
+                more.className = 'ev-more';
+                more.textContent = '+' + (dayEvents.length - 3) + ' 更多';
+                cell.appendChild(more);
+            }
+            grid.appendChild(cell);
+        }
+    }
+    buildGrid();
+})();
+</script>
+{% endblock %}

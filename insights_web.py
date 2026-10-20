@@ -911,6 +911,22 @@ def _usage_scope_user_id():
         return None
     return user["id"] if user else None
 
+def _local_ts(value):
+    """Render a stored UTC timestamp as server-local time for display."""
+    if not value:
+        return value
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
+@app.template_filter("localts")
+def local_ts_filter(value):
+    return _local_ts(value)
+
 @app.route("/usage")
 def usage_page():
     filters = _parse_usage_filters()
@@ -986,7 +1002,7 @@ def usage_csv():
         for row in iter_usage_for_export(**filters, user_id=scope_user_id):
             writer.writerow(
                 [
-                    row["id"], row["ts"], row["mode"], row["category"],
+                    row["id"], _local_ts(row["ts"]), row["mode"], row["category"],
                     row["provider"], row["model"], row["prompt_tokens"],
                     row["completion_tokens"], row["total_tokens"],
                     row["audio_seconds"], row["images"], row["cost_cny"],
@@ -2501,6 +2517,52 @@ def schedule_page():
             'status': status,
         })
     events = [e for e in events if e['day']]
+
+    # Domestic scheduled pushes live in agent_jobs (the compose schedule button
+    # routes there), not scheduled_posts, so the calendar would miss them.
+    # Merge the month's still-pending scheduled article_sync jobs in as events.
+    import json as _json
+    with sqlite3.connect(database.DB_PATH) as aj_conn:
+        aj_conn.row_factory = sqlite3.Row
+        aj_rows = aj_conn.execute(
+            """SELECT id, kind, run_after, payload FROM agent_jobs
+               WHERE user_id = ? AND kind = 'article_sync'
+                 AND status IN ('pending', 'claimed', 'running')
+                 AND run_after IS NOT NULL
+                 AND run_after >= ? AND run_after <= ?""",
+            (uid, first, last + "T23:59:59"),
+        ).fetchall()
+    for aj in aj_rows:
+        when = aj["run_after"] or ""
+        if len(when) < 10 or "T" not in when:
+            continue
+        # run_after is a UTC instant (compose stores datetime+tz); the calendar
+        # grid is local wall-clock, so convert before splitting day/time. Without
+        # a zone suffix treat it as already-local (kept for older rows).
+        aj_when = None
+        try:
+            if when.endswith("+00:00") or when.endswith("Z"):
+                aj_when = datetime.fromisoformat(
+                    when.replace("Z", "+00:00")).astimezone().isoformat(timespec="seconds")
+            else:
+                aj_when = when
+        except ValueError:
+            aj_when = when
+        try:
+            aj_payload = _json.loads(aj["payload"] or "{}")
+        except ValueError:
+            aj_payload = {}
+        aj_items = aj_payload.get("items") or [{}]
+        aj_target = (aj_items[0].get("target") if isinstance(aj_items[0], dict) else None) or ""
+        aj_meta = PLATFORM_META.get(aj_target, {"label": aj_target, "color": "#8b93a7"})
+        aj_title = aj_payload.get("title") or "公众号草稿"
+        events.append({
+            'day': aj_when[:10], 'time': aj_when[11:16],
+            'platform': aj_target, 'label': aj_meta['label'], 'color': aj_meta['color'],
+            'title': (aj_title if len(aj_title) <= 40 else aj_title[:40] + "…"),
+            'status': 'pending', 'kind': 'article_sync',
+        })
+
     slots = database.list_time_slots()
     slots_by_day = {d: [] for d in range(7)}
     for s in slots:

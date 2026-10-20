@@ -81,6 +81,13 @@ SETTINGS: Dict[str, dict] = {
     "OLLAMA_TEXT_MODEL": {
         "group": "ai", "label": "Ollama text model", "default": "llama3.2",
     },
+    "USAGE_COST_MULTIPLIER": {
+        "group": "ai", "label": "Usage cost multiplier",
+        "default": "1.0",
+        "help": "Cost recorded into the database = real model price × this factor "
+                "(e.g. 1.2 stores 20% above list price). Affects events logged "
+                "after the change; existing rows keep their stored price.",
+    },
     # ── 国内渠道（文章推送）──
     "AGENT_TOKEN": {
         "group": "domestic", "label": "Agent 共享密钥", "secret": True,

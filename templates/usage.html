@@ -223,7 +223,7 @@
         <tbody>
             {% for row in rows %}
             <tr>
-                <td style="white-space: nowrap; font-variant-numeric: tabular-nums; color:#6c757d;">{{ row['ts'] }}</td>
+                <td style="white-space: nowrap; font-variant-numeric: tabular-nums; color:#6c757d;">{{ row['ts'] | localts }}</td>
                 <td>{{ mode_badge(row['mode']) }}</td>
                 <td><code>{{ row['category'] }}</code></td>
                 <td style="font-size:0.85em;">

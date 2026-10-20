@@ -89,7 +89,7 @@ export class ProtocolClient {
 }
 
 // The bootstrap that OBTAINS the token, so it carries no bearer header:
-// one live pairing code from the queue page trades for AGENT_TOKEN.
+// one live pairing code from the queue page trades for a per-user token.
 export async function pairWithCode(
   baseUrl: string, code: string, fetchImpl: typeof fetch = fetch,
 ): Promise<string> {

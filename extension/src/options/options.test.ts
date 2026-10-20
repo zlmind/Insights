@@ -15,7 +15,7 @@ describe("originPattern", () => {
 describe("statusText", () => {
   it("renders saved, unauthorized and offline states", () => {
     expect(statusText("ok")).toBe("已连接");
-    expect(statusText("unauthorized")).toBe("密钥被拒绝（401），请核对 AGENT_TOKEN");
+    expect(statusText("unauthorized")).toBe("密钥被拒绝（401）——回发布队列页重新配对");
     expect(statusText("unreachable")).toBe("服务器不可达，请检查地址");
   });
 });
@@ -39,9 +39,13 @@ describe("options.html page contract", () => {
     expect(html).toMatch(/<script\s+src="options\.js"><\/script>/);
   });
   it("wires every button the page renders", () => {
-    for (const id of ["pair", "save"]) {
+    for (const id of ["pair"]) {
       expect(html).toContain(`id="${id}"`);
     }
+  });
+  it("the manual token fallback stays gone — pairing is the only path", () => {
+    expect(html).not.toContain('id="save"');
+    expect(html).not.toContain("agent-token");
   });
 });
 

@@ -1,7 +1,7 @@
 # 真机验收（M1·公众号）
 
-前置：`dist/` 已构建；chrome://extensions 开发者模式加载 `dist/`；扩展选项页填服务器地址与
-AGENT_TOKEN；本浏览器已扫码登录 mp.weixin.qq.com。
+前置：`dist/` 已构建；chrome://extensions 开发者模式加载 `dist/`；扩展选项页用配对码完成
+配对（Insights 发布队列页 →「配对浏览器扩展」生成）；本浏览器已扫码登录 mp.weixin.qq.com。
 
 1. 扩展选项页显示公众号「已登录」。
 2. Insights compose 页对公众号卡片点「推送到公众号草稿箱」。

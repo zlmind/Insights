@@ -4,34 +4,96 @@
   <meta charset="utf-8">
   <title>Insights 发布助手设置</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 30rem; color: #1e293b; }
-    label { display: block; margin: 1rem 0 .25rem; font-weight: 600; }
-    input { width: 100%; box-sizing: border-box; padding: .5rem; }
-    button { margin-top: 1rem; padding: .5rem 1.25rem; }
-    .primary { background: #2563eb; color: #fff; border: none; border-radius: .375rem; }
-    .status { margin-top: 1rem; font-weight: 600; }
-    .login { margin-top: .5rem; color: #475569; }
-    details { margin-top: 1.5rem; color: #475569; }
-    summary { cursor: pointer; }
+    :root {
+      --accent: #2563eb; --accent-strong: #1d4ed8;
+      --ink: #0f172a; --muted: #64748b; --line: #e2e8f0; --field: #f8fafc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      background: linear-gradient(165deg, #eef2ff, #f8fafc 60%); color: var(--ink);
+    }
+    .card {
+      width: 23rem; padding: 1.6rem 1.75rem 1.4rem; background: #fff;
+      border: 1px solid var(--line); border-radius: 14px;
+      box-shadow: 0 12px 32px rgba(15, 23, 42, .08);
+    }
+    .brand { display: flex; align-items: center; gap: .55rem; }
+    .brand i {
+      width: .62rem; height: .62rem; border-radius: 50%; background: var(--accent);
+      box-shadow: 0 0 0 .22rem rgba(37, 99, 235, .14);
+    }
+    h1 { font-size: 1.02rem; margin: 0; }
+    .sub { margin: .5rem 0 1.1rem; font-size: .8rem; line-height: 1.55; color: var(--muted); }
+    label { display: block; margin: .85rem 0 .3rem; font-size: .78rem; font-weight: 600; color: #334155; }
+    input {
+      width: 100%; padding: .55rem .7rem; font-size: .88rem; color: var(--ink);
+      border: 1px solid var(--line); border-radius: 8px; background: var(--field);
+      transition: border-color .15s, box-shadow .15s, background .15s;
+    }
+    input:focus {
+      outline: none; background: #fff; border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .13);
+    }
+    input::placeholder { color: #94a3b8; }
+    button {
+      width: 100%; margin-top: 1.2rem; padding: .58rem; font-size: .9rem; font-weight: 600;
+      color: #fff; background: var(--accent); border: none; border-radius: 8px; cursor: pointer;
+      transition: background .15s, transform .06s;
+    }
+    button:hover { background: var(--accent-strong); }
+    button:active { transform: translateY(1px); }
+    .status {
+      display: flex; align-items: flex-start; gap: .45rem; margin-top: 1rem;
+      min-height: 1.3em; font-size: .8rem; font-weight: 600; color: var(--muted);
+      word-break: break-all;
+    }
+    .status::before {
+      content: ""; flex: none; width: .5rem; height: .5rem; margin-top: .3rem;
+      border-radius: 50%; background: #94a3b8;
+    }
+    .status[data-state="ok"] { color: #15803d; }
+    .status[data-state="ok"]::before { background: #22c55e; }
+    .status[data-state="unauthorized"] { color: #b91c1c; }
+    .status[data-state="unauthorized"]::before { background: #ef4444; }
+    .status[data-state="unreachable"] { color: #b45309; }
+    .status[data-state="unreachable"]::before { background: #f59e0b; }
+    .login {
+      display: flex; align-items: center; gap: .45rem; margin-top: .9rem;
+      padding: .6rem .75rem; font-size: .8rem; color: #475569;
+      background: var(--field); border: 1px solid var(--line); border-radius: 8px;
+    }
+    .login:empty { display: none; }
+    .login::before {
+      content: ""; flex: none; width: .5rem; height: .5rem; border-radius: 50%; background: #94a3b8;
+    }
+    .login[data-state="ok"]::before { background: #22c55e; }
+    .login[data-state="no"]::before { background: #ef4444; }
+    .hint { margin: 1.1rem 0 0; padding-top: .9rem; border-top: 1px dashed var(--line);
+            font-size: .74rem; line-height: 1.7; color: var(--muted); }
+    .hint b { color: #475569; }
   </style>
 </head>
 <body>
-  <h1>Insights 发布助手</h1>
-  <p>把 Insights 的文章推进公众号草稿箱。配对一次即可。</p>
-  <label for="server-url">服务器地址</label>
-  <input id="server-url" type="url" placeholder="http://127.0.0.1:5001">
-  <label for="pair-code">配对码</label>
-  <input id="pair-code" inputmode="latin" maxlength="12" autocomplete="off"
-         placeholder="发布队列页 →「配对浏览器扩展」生成">
-  <button id="pair" type="button" class="primary">一键配对</button>
-  <div class="status" id="status"></div>
-  <div class="login" id="weixin-login"></div>
-  <details>
-    <summary>手动填密钥（备用）</summary>
-    <label for="agent-token">AGENT_TOKEN</label>
-    <input id="agent-token" type="password" placeholder="与服务器设置页一致的共享密钥">
-    <button id="save" type="button">保存并测试</button>
-  </details>
+  <main class="card">
+    <div class="brand"><i></i><h1>Insights 发布助手</h1></div>
+    <p class="sub">把 Insights 的文章推进公众号草稿箱。与服务器配对一次即可。</p>
+
+    <label for="server-url">服务器地址</label>
+    <input id="server-url" type="url" placeholder="http://127.0.0.1:5001">
+
+    <label for="pair-code">配对码</label>
+    <input id="pair-code" inputmode="latin" maxlength="12" autocomplete="off"
+           placeholder="发布队列页 →「配对浏览器扩展」生成">
+
+    <button id="pair" type="button">一键配对</button>
+
+    <div class="status" id="status"></div>
+    <div class="login" id="weixin-login"></div>
+
+    <p class="hint"><b>如何配对：</b>登录 Insights → 打开发布队列页 → 点「配对浏览器扩展」生成配对码（5 分钟内有效，一次一用），填入上方点「一键配对」。</p>
+  </main>
   <script src="options.js"></script>
 </body>
 </html>

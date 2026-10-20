@@ -318,6 +318,15 @@ def _resolve_user():
 
 # ── Recorders ──────────────────────────────────────────────────────────────
 
+def _cost_mult() -> float:
+    """Admin-set multiplier from /settings; real price × this is what gets stored."""
+    try:
+        import appconfig
+        return max(0.0, float(appconfig.get("USAGE_COST_MULTIPLIER") or 1.0))
+    except Exception:
+        return 1.0
+
+
 def _record(
     *,
     category: str,
@@ -346,7 +355,7 @@ def _record(
             total_tokens=pt + ct,
             audio_seconds=float(audio_seconds or 0.0),
             images=int(images or 0),
-            cost_cny=round(float(cost_cny or 0.0), 6),
+            cost_cny=round(float(cost_cny or 0.0) * _cost_mult(), 6),
             user_id=user_id,
             username=username,
             details=details,

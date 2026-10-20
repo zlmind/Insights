@@ -16,12 +16,11 @@ export function originPattern(serverUrl: string): string | null {
 }
 
 export function statusText(
-  state: "ok" | "unauthorized" | "unreachable" | "saving",
+  state: "ok" | "unauthorized" | "unreachable",
 ): string {
   if (state === "ok") return "已连接";
-  if (state === "unauthorized") return "密钥被拒绝（401），请核对 AGENT_TOKEN";
-  if (state === "unreachable") return "服务器不可达，请检查地址";
-  return "保存中…";
+  if (state === "unauthorized") return "密钥被拒绝（401）——回发布队列页重新配对";
+  return "服务器不可达，请检查地址";
 }
 
 // The pairing code is typed by a human from a screen: tolerate stray
@@ -37,8 +36,10 @@ function el(id: string): HTMLElement {
   return node;
 }
 
-function setStatus(state: "ok" | "unauthorized" | "unreachable" | "saving"): void {
-  el("status").textContent = statusText(state);
+function setStatus(state: "ok" | "unauthorized" | "unreachable"): void {
+  const node = el("status");
+  node.dataset.state = state;
+  node.textContent = statusText(state);
 }
 
 function loginProbe(): Promise<{ id: string; logged_in: boolean; probed: boolean }> {
@@ -65,6 +66,7 @@ async function testConnection(): Promise<void> {
   }
   const dot = el("weixin-login");
   const verdict = await checkWeixinVerdict();
+  dot.dataset.state = verdict === "yes" ? "ok" : verdict === "no" ? "no" : "unknown";
   dot.textContent = verdict === "yes" ? "公众号：已登录"
     : verdict === "no" ? "公众号：未登录" : "公众号：检测失败";
 }
@@ -76,10 +78,6 @@ const DEFAULT_SERVER_URL = "http://localhost:5001";
 async function render(): Promise<void> {
   const settings = await loadSettings(chrome.storage.local);
   (el("server-url") as HTMLInputElement).value = settings.serverUrl || DEFAULT_SERVER_URL;
-  // The popup omits the manual token field on purpose — pairing is its only
-  // path onto a token — so this lookup must stay soft where el() would throw.
-  const tokenInput = document.getElementById("agent-token") as HTMLInputElement | null;
-  if (tokenInput) tokenInput.value = settings.token;
   if (configured(settings)) void testConnection();
   else setStatus("unreachable");
 }
@@ -112,8 +110,6 @@ async function onPair(): Promise<void> {
   try {
     const token = await pairWithCode(serverUrl.trim().replace(/\/+$/, ""), code);
     await saveSettings(chrome.storage.local, { serverUrl, token });
-    const tokenInput = document.getElementById("agent-token") as HTMLInputElement | null;
-    if (tokenInput) tokenInput.value = token;
     await testConnection();
   } catch (exc) {
     el("status").textContent = String(exc).includes("403")
@@ -122,23 +118,9 @@ async function onPair(): Promise<void> {
   }
 }
 
-async function onSave(): Promise<void> {
-  const serverUrl = (el("server-url") as HTMLInputElement).value;
-  const tokenInput = document.getElementById("agent-token") as HTMLInputElement | null;
-  const token = tokenInput ? tokenInput.value : "";
-  if (!await ensurePermission(serverUrl)) return;
-  setStatus("saving");
-  await saveSettings(chrome.storage.local, { serverUrl, token });
-  await testConnection();
-}
-
 export function initPairingView(): void {
   el("pair").addEventListener("click", () => {
     void onPair();
-  });
-  const save = document.getElementById("save");
-  save?.addEventListener("click", () => {
-    void onSave();
   });
   void render();
 }
