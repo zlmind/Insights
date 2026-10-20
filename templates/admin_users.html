@@ -21,6 +21,8 @@
                         <td>{{ u['created_at'] or '—' }}</td>
                         <td>{{ u['last_login_at'] or '—' }}</td>
                         <td>
+                            <button type="button" class="btn btn-outline btn-sm"
+                                    onclick="openDelete({{ u['id'] }}, '{{ u['username'] }}')">Delete</button>
                             <details class="pd-reset">
                                 <summary class="btn btn-outline btn-sm">Reset password</summary>
                                 <form method="post" action="{{ url_for('admin_reset_password', user_id=u['id']) }}"
@@ -38,5 +40,39 @@
             </table>
         </div>
     </div>
+    <div class="card" id="delModal" hidden style="position:fixed; inset:0; margin:auto;
+         max-width:30rem; height:fit-content; z-index:1050; box-shadow:0 8px 40px rgba(0,0,0,.25)">
+        <div class="card-head"><b>Delete user</b><span class="spacer"></span>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="delModal.hidden=true">Cancel</button></div>
+        <div class="card-body">
+            <p id="delWho" class="mb-2"></p>
+            <p class="small mb-1">Rows to delete</p>
+            <ul class="small" id="delCounts" style="columns:2"></ul>
+            <div class="field mt-2">
+                <label for="delConfirm">Type the username to confirm:</label>
+                <input class="input" id="delConfirm" autocomplete="off">
+            </div>
+        </div>
+        <div class="card-foot"><span class="spacer"></span>
+            <form method="post" id="delForm">
+                <input type="hidden" name="confirm_username" id="delConfirmField">
+                <button class="btn btn-primary btn-sm" type="submit">Confirm delete</button>
+            </form>
+        </div>
+    </div>
 </div>
+<script>
+async function openDelete(uid, uname) {
+    const s = await fetch(`/admin/users/${uid}/stats`).then(r => r.json());
+    delWho.textContent = `Delete ${s.username}? This cannot be undone.`;
+    delCounts.innerHTML = Object.entries(s.counts)
+        .filter(([, n]) => n > 0)
+        .map(([t, n]) => `<li>${t}: ${n}</li>`).join("")
+        || "<li>no data rows</li>";
+    delConfirmField.value = ""; delConfirm.value = "";
+    delForm.action = `/admin/users/${uid}/delete`;
+    delModal.hidden = false;
+}
+delConfirm.addEventListener("input", () => { delConfirmField.value = delConfirm.value; });
+</script>
 {% endblock %}

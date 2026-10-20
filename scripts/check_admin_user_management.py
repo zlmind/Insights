@@ -11,7 +11,9 @@ generated_thumbnails 指向的本地文件在提交之后 unlink，指向不存�
 is_last_admin 只在目标是 admin 且全实例再无第二个 admin 时为 True——
 目标不存在、非 admin、或仍有并肩 admin 时一律 False。e2e 节钉
 /admin/users 的门控：admin 见列表，victim/anon 拿到与不存在路径
-逐字节一致的 404，侧边栏入口仅 admin 渲染，zh 词条齐且可编译。
+逐字节一致的 404，侧边栏入口仅 admin 渲染，zh 词条齐且可编译；
+删除用户走量级预览与用户名二次确认，禁删自己/末位 admin，正式删除
+清 15 表且 token 与旧 session 立即失效。
 
 本节全程 tempfile.mkdtemp + database.init_db(temp_db)：不起 web、
 不联网、不触碰真实 insights.db。
@@ -260,6 +262,12 @@ _E2E_RULES = {
     "Actions": "^Actions$",
     "New password cannot be empty.": "^New password cannot be empty\\.$",
     "Password reset for victim.": "^Password reset for (.+)\\.$",
+    "You cannot delete your own account.": "^You cannot delete your own account\\.$",
+    "This is the last admin — transfer admin first.":
+        "^This is the last admin — transfer admin first\\.$",
+    "Username confirmation does not match — nothing was deleted.":
+        "^Username confirmation does not match — nothing was deleted\\.$",
+    "Deleted victim and 16 data rows.": "^Deleted (.+) and (\\d+) data rows\\.$",
 }
 
 
@@ -378,9 +386,184 @@ def section_e2e():
     check(r_a.get_data() == anon_post_baseline.get_data(),
           "anon 的 404 响应体应与其 POST 基线逐字节一致")
 
+    # ── 删除用户（Task 4）：量级预览、二次确认、守卫、token/旧 session 失效。
+    # 播种：15 表各 1 行，其中 uploaded_images 两行——cloudinary 一行 +
+    # local 一行指向磁盘上不存在的 /static/uploads/e2e-gone.png（删除经
+    # 路由不得因缺失文件抛错）；审计两表各一行；token 一枚。──
+    feed_v = database.add_feed("https://victim.example/feed.xml", "v feed",
+                               user_id=uid_v, db_path=database.DB_PATH)
+    database.queue_episode("https://victim.example/ep.mp3", "v ep", feed_v,
+                           user_id=uid_v, db_path=database.DB_PATH)
+    art_v = database.add_article(None, "v topic", "blog", "v body",
+                                 user_id=uid_v, db_path=database.DB_PATH)
+    database.add_social_post(art_v, "linkedin", "v post",
+                             user_id=uid_v, db_path=database.DB_PATH)
+    st_v = database.add_standalone_post("freeform", "v prompt", "xiaohongshu",
+                                        "v copy", user_id=uid_v,
+                                        db_path=database.DB_PATH)
+    database.add_url_source("https://victim.example/page", "v page", "d",
+                            "v body", user_id=uid_v, db_path=database.DB_PATH)
+    database.add_uploaded_image("e2e-cloud.png",
+                                "https://res.cloudinary.com/demo/e2e-cloud.png",
+                                "cloudinary", user_id=uid_v,
+                                db_path=database.DB_PATH)
+    database.add_uploaded_image("e2e-gone.png",
+                                "/static/uploads/e2e-gone.png",
+                                "local", user_id=uid_v,
+                                db_path=database.DB_PATH)
+    database.add_generated_thumbnail(
+        "https://www.youtube.com/watch?v=v", "v", "T", "C", "16:9", "s", "p",
+        "static/uploads/youtube_thumbnails/e2e_thumb.png",
+        user_id=uid_v, db_path=database.DB_PATH)
+    database.add_library_prompt("v title", "v body", user_id=uid_v,
+                                db_path=database.DB_PATH)
+    brief_v = database.create_content_brief("v brief", "i", user_id=uid_v,
+                                            db_path=database.DB_PATH)
+    database.create_brief_run(brief_v, user_id=uid_v,
+                              db_path=database.DB_PATH)
+    database.add_scheduled_post(FUTURE, "standalone", uid_v,
+                                standalone_post_id=st_v,
+                                db_path=database.DB_PATH)
+    database.upsert_social_account("wechat", "vx-e2e", user_id=uid_v,
+                                   db_path=database.DB_PATH)
+    database.enqueue_agent_job("article_sync", "{}", user_id=uid_v,
+                               db_path=database.DB_PATH)
+    database.create_agent_token(uid_v, "victim-e2e-token",
+                                db_path=database.DB_PATH)
+    database.log_activity("zx", user_id=uid_v, username="victim",
+                          db_path=database.DB_PATH)
+    database.log_usage(mode="proactive", category="compose", provider="g",
+                       model="m", user_id=uid_v, username="victim",
+                       db_path=database.DB_PATH)
+
+    seeded = {table: 1 for table in _DATA_TABLES}
+    seeded["uploaded_images"] = 2
+
+    # 1) 量级预览：stats 返回 200 JSON，键集与行数与播种一致。
+    stats = client.get(f"/admin/users/{uid_v}/stats")
+    check(stats.status_code == 200,
+          f"admin GET stats 应 200，实为 {stats.status_code}")
+    payload = stats.get_json()
+    check(payload["username"] == "victim",
+          f"stats 应报用户名 victim，实为 {payload.get('username')!r}")
+    check(set(payload["counts"]) == set(_DATA_TABLES),
+          f"stats counts 应恰含 15 表键，实为 {sorted(payload['counts'])}")
+    check(payload["counts"] == seeded,
+          f"stats counts 应与播种一致，实为 {payload['counts']}")
+
+    # 2) 不存在 id：stats 与 delete 都 404 且与各自基线逐字节一致（含
+    # victim 的 GET stats——三个接口全覆盖 404 而非 500）。
+    for probe, label in ((client, "admin"), (client_v, "victim")):
+        r = probe.get("/admin/users/999999999/stats")
+        check(r.status_code == 404,
+              f"{label} GET 不存在 id stats 应 404，实为 {r.status_code}")
+        check(r.get_data() == missing.get_data(),
+              f"{label} GET 不存在 id stats 的 404 应与 GET 基线逐字节一致")
+    gone_del = client.post("/admin/users/999999999/delete")
+    check(gone_del.status_code == 404,
+          f"admin POST 不存在 id delete 应 404，实为 {gone_del.status_code}")
+    check(gone_del.get_data() == missing_post.get_data(),
+          "admin POST 不存在 id delete 的 404 应与 POST 基线逐字节一致")
+
+    # 3) 确认串不匹配：拒绝、库中 victim 行原样。
+    wrong = client.post(f"/admin/users/{uid_v}/delete",
+                        data={"confirm_username": "wrong"})
+    check(wrong.status_code == 302,
+          f"确认串不匹配应 302 回列表，实为 {wrong.status_code}")
+    wrong_page = client.get(wrong.headers["Location"])
+    check("Username confirmation does not match"
+          in wrong_page.get_data(as_text=True),
+          "确认串不匹配应 flash Username confirmation does not match")
+    check(database.count_user_rows(uid_v, db_path=database.DB_PATH) == seeded,
+          "确认串不匹配不得删除任何行")
+
+    # 4) 大小写不符：确认串大小写敏感，同样拒绝、零删除。
+    cased = client.post(f"/admin/users/{uid_v}/delete",
+                        data={"confirm_username": "Victim"},
+                        follow_redirects=True)
+    check("Username confirmation does not match"
+          in cased.get_data(as_text=True),
+          "大小写不符应同样 flash 拒绝文案")
+    check(database.count_user_rows(uid_v, db_path=database.DB_PATH) == seeded,
+          "大小写不符不得删除任何行")
+
+    # 5) 禁删自己：admin 对自己提交（确认串正确）也被拦，users 行数不变
+    # （self 守卫先拦，is_last_admin 是纵深防御，谓词已由 data 节钉死）。
+    with sqlite3.connect(database.DB_PATH) as conn:
+        admin_id = conn.execute(
+            "SELECT id FROM users WHERE username = 'gate'").fetchone()[0]
+        users_before = conn.execute(
+            "SELECT COUNT(*) FROM users").fetchone()[0]
+    self_del = client.post(f"/admin/users/{admin_id}/delete",
+                           data={"confirm_username": "gate"},
+                           follow_redirects=True)
+    check("You cannot delete your own account."
+          in self_del.get_data(as_text=True),
+          "删除自己应 flash You cannot delete your own account.")
+    with sqlite3.connect(database.DB_PATH) as conn:
+        users_after = conn.execute(
+            "SELECT COUNT(*) FROM users").fetchone()[0]
+    check(users_after == users_before, "删除自己被拒后 users 行数不得变化")
+
+    # 6) 正式删除：确认串两侧空白被 strip 宽容；15 表清零、users 无
+    # victim、审计两表去身份保留、token 立即失效。
+    deleted = client.post(f"/admin/users/{uid_v}/delete",
+                          data={"confirm_username": " victim "})
+    check(deleted.status_code == 302,
+          f"正式删除应 302 回列表，实为 {deleted.status_code}")
+    deleted_page = client.get(deleted.headers["Location"])
+    check("Deleted victim and" in deleted_page.get_data(as_text=True),
+          "正式删除应 flash Deleted victim and …")
+    for table in _DATA_TABLES:
+        check(_user_rows(database.DB_PATH, table, uid_v) == 0,
+              f"删除后 {table} 仍残留 victim 行")
+    with sqlite3.connect(database.DB_PATH) as conn:
+        gone_user = conn.execute(
+            "SELECT COUNT(*) FROM users WHERE id = ?",
+            (uid_v,)).fetchone()[0]
+        audit_activity = conn.execute(
+            "SELECT COUNT(*) FROM activity_log WHERE action = 'zx' "
+            "AND user_id IS NULL AND username IS NULL").fetchone()[0]
+        audit_usage = conn.execute(
+            "SELECT COUNT(*) FROM usage_events WHERE model = 'm' "
+            "AND user_id IS NULL AND username IS NULL").fetchone()[0]
+    check(gone_user == 0, "users 表应无 victim 行")
+    check(audit_activity == 1,
+          "activity_log 的 victim 行应保留且 user_id/username 双 NULL")
+    check(audit_usage == 1,
+          "usage_events 的 victim 行应保留且 user_id/username 双 NULL")
+    check(database.find_agent_user_by_token("victim-e2e-token",
+                                            db_path=database.DB_PATH) is None,
+          "victim 的 token 应随删除立即失效")
+
+    # 7) 文件断言：ghost 文件本就不存在，删除全程未抛错即过——真文件的
+    # 清理由 data 节钉死，路由对缺失文件只记日志、不回滚。
+
+    # 8) victim 旧 session 失效：被既有全局中间件弹回登录页。
+    stale = client_v.get("/")
+    check(stale.status_code == 302,
+          f"删除后 victim 旧 session 访问 / 应 302，实为 {stale.status_code}")
+    check("/login" in (stale.headers.get("Location") or ""),
+          "删除后 victim 旧 session 应被弹回 /login")
+
+    # 9) 门控：anon / victim POST delete 与各自 POST 基线逐字节一致
+    # （装饰器先于目标查询触发）。
+    r_anon = anon.post("/admin/users/999999999/delete")
+    check(r_anon.status_code == 404,
+          f"anon POST delete 应 404，实为 {r_anon.status_code}")
+    check(r_anon.get_data() == anon_post_baseline.get_data(),
+          "anon POST delete 的 404 应与其 POST 基线逐字节一致")
+    r_victim = client_v.post("/admin/users/999999999/delete")
+    check(r_victim.status_code == 404,
+          f"victim POST delete 应 404，实为 {r_victim.status_code}")
+    check(r_victim.get_data() == victim_post_baseline.get_data(),
+          "victim POST delete 的 404 应与其 POST 基线逐字节一致")
+
     print("admin 列表页仅 admin 可见，victim/anon 对 /admin/users 与不存在"
           "路径拿到逐字节相同的 404，侧边栏入口零泄漏，admin 重置密码生效且"
-          "空密码被拒，POST 门控同样逐字节 404，zh 词条齐且可编译")
+          "空密码被拒，删除用户量级预览+确认串（strip 宽容、大小写敏感）+"
+          "禁删自己，正式删除清 15 表且 token/旧 session 立即失效，"
+          "POST 门控同样逐字节 404，zh 词条齐且可编译")
     print("ADMIN_USER_MANAGEMENT_E2E_OK")
 
 

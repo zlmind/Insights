@@ -141,6 +141,7 @@ from database import (
     list_users,
     update_last_login,
     update_user_password,
+    is_last_admin,
     # Activity log
     log_activity,
     list_activity,
@@ -316,12 +317,11 @@ def allowed_video_file(filename):
 # Admin endpoints 404-gate themselves (require_admin_or_404) instead of using
 # the global login redirect, so an anonymous or non-admin probe gets the same
 # 404 body as a nonexistent path and learns nothing — spec: 含未登录也 404.
-# Later tasks add admin_user_stats / admin_delete_user here as their routes
-# land.
 PUBLIC_ENDPOINTS = {"login", "signup", "logout", "health",
                     "agent_heartbeat", "agent_claim", "agent_job_events",
                     "agent_pair", "admin_users_page",
-                    "admin_reset_password"}
+                    "admin_reset_password", "admin_user_stats",
+                    "admin_delete_user"}
 
 # Auto-tracking writes a row for every non-GET request, but we suppress
 # rows for these endpoints because they're either covered by an explicit
@@ -731,6 +731,34 @@ def admin_reset_password(user_id: int):
         return redirect(url_for("admin_users_page"))
     update_user_password(user_id, generate_password_hash(new_password))
     flash(f"Password reset for {user['username']}.")
+    return redirect(url_for("admin_users_page"))
+
+@app.route("/admin/users/<int:user_id>/stats", methods=["GET"])
+@require_admin_or_404
+def admin_user_stats(user_id: int):
+    user = get_user_by_id(user_id)
+    if user is None:
+        abort(404)
+    return jsonify({"username": user["username"],
+                    "counts": database.count_user_rows(user_id)})
+
+@app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
+@require_admin_or_404
+def admin_delete_user(user_id: int):
+    user = get_user_by_id(user_id)
+    if user is None:
+        abort(404)
+    if user_id == session["user_id"]:
+        flash("You cannot delete your own account.")
+        return redirect(url_for("admin_users_page"))
+    if is_last_admin(user_id):
+        flash("This is the last admin — transfer admin first.")
+        return redirect(url_for("admin_users_page"))
+    if (request.form.get("confirm_username") or "").strip() != user["username"]:
+        flash("Username confirmation does not match — nothing was deleted.")
+        return redirect(url_for("admin_users_page"))
+    total = sum(database.delete_user(user_id).values())
+    flash(f"Deleted {user['username']} and {total} data rows.")
     return redirect(url_for("admin_users_page"))
 
 # ── Activity log viewer ───────────────────────────────────────────────────

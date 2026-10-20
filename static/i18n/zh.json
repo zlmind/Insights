@@ -967,7 +967,17 @@
   {"re": "^New password$", "to": "新密码"},
   {"re": "^Reset password$", "to": "重置密码"},
   {"re": "^New password cannot be empty\\.$", "to": "新密码不能为空。"},
-  {"re": "^Password reset for (.+)\\.$", "to": "已重置 $1 的密码。"}
+  {"re": "^Password reset for (.+)\\.$", "to": "已重置 $1 的密码。"},
+  {"re": "^Delete$", "to": "删除"},
+  {"re": "^Delete user$", "to": "删除用户"},
+  {"re": "^Cancel$", "to": "取消"},
+  {"re": "^Confirm delete$", "to": "确认删除"},
+  {"re": "^Rows to delete$", "to": "将删除的数据"},
+  {"re": "^Type the username to confirm:$", "to": "输入用户名以确认："},
+  {"re": "^You cannot delete your own account\\.$", "to": "不能删除当前登录的账号。"},
+  {"re": "^This is the last admin — transfer admin first\\.$", "to": "这是最后一个管理员，请先转让后再删除。"},
+  {"re": "^Username confirmation does not match — nothing was deleted\\.$", "to": "用户名确认不一致，未执行删除。"},
+  {"re": "^Deleted (.+) and (\\d+) data rows\\.$", "to": "已删除 $1 及其 $2 行数据。"}
  ],
  "texts": {
   "\"Connect\"": "“Connect”",
