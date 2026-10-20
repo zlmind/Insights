@@ -1,0 +1,14 @@
+{
+  "change": "admin-user-management",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "a31c7bd70255b4f9a6011cea1e3f96fc0ebad2918af32941196762246f8f4670",
+  "files": [
+    { "path": "openspec/changes/admin-user-management/proposal.md", "sha256": "85beed8aadc48914d71808de5e939f8dd4fc48627d25f7b2909d6888d271acf7" },
+    { "path": "openspec/changes/admin-user-management/design.md", "sha256": "6b7f93e4bf1fd2f23a9a8f8d9625623c9184e30902404015b76162779c7850a7" },
+    { "path": "openspec/changes/admin-user-management/tasks.md", "sha256": "820eef14d83838e56346ccfc98b022daea9feafff0fd8e27d01b5bda4b13daac" },
+    { "path": "openspec/changes/admin-user-management/specs/admin-user-management/spec.md", "sha256": "93037d64f8671022066f0340a39fa8ac35345ffd0375c522ce7b0a9898aca7c5" }
+  ]
+}
