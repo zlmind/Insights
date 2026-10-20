@@ -482,7 +482,7 @@ git commit -m "用户管理：admin 重置任意用户密码（werkzeug 哈希�
 - Consumes: Task 1 `database.count_user_rows(user_id, *, db_path)`、`database.delete_user(user_id, *, db_path)`、`is_last_admin(user_id, *, db_path)`、既有 `find_agent_user_by_token(token, db_path)`；`jsonify`（insights_web 已 import）。
 - Produces: 路由 `GET /admin/users/<int:user_id>/stats` → `admin_user_stats`（JSON `{"username": str, "counts": {table: int}}`）；路由 `POST /admin/users/<int:user_id>/delete` → `admin_delete_user`（表单字段 `confirm_username`）；守卫顺序：目标不存在→404，自己→拒，`is_last_admin`→拒，确认串（strip 后）≠目标用户名→拒，全部通过才调 `database.delete_user`。`PUBLIC_ENDPOINTS` 增 `"admin_user_stats"`、`"admin_delete_user"`。
 
-- [ ] **Step 1: 追加 e2e 场景（预期失败）**
+- [x] **Step 1: 追加 e2e 场景（预期失败）**
 
 先为 victim 播数据：15 表各 1 行（同 data 节 helper，`db_path=database.DB_PATH`），`upsert_social_account`/`enqueue_agent_job`/`create_agent_token(victim, "victim-e2e-token")` 各一，`log_activity`/`log_usage` 各一；uploaded_images 播一行 cloudinary + 一行 `storage='local', url='/static/uploads/e2e-gone.png'`（磁盘上不存在——Review Focus 3 经路由复验）。
 
@@ -496,12 +496,12 @@ git commit -m "用户管理：admin 重置任意用户密码（werkzeug 哈希�
 8. victim 旧 session 失效：victim client `GET /` → 302 且 Location 含 `/login`（Review Focus 4：stale session 被既有中间件弹回登录）。
 9. anon `POST /admin/users/999999999/delete` → 404 与 anon POST 基线逐字节一致（装饰器先于目标查询触发）；victim `POST` 同端点 → 404 同基线。
 
-- [ ] **Step 2: 跑 e2e 验证失败**
+- [x] **Step 2: 跑 e2e 验证失败**
 
 Run: `venv/Scripts/python.exe scripts/check_admin_user_management.py e2e`
 Expected: FAIL——场景 1 起 404（stats 路由不存在）。
 
-- [ ] **Step 3: 实现两条路由**
+- [x] **Step 3: 实现两条路由**
 
 import 名单补 `is_last_admin`（`count_user_rows`/`delete_user` 保持 `database.` 前缀调用）；`PUBLIC_ENDPOINTS` 增 `"admin_user_stats"`、`"admin_delete_user"`；`admin_reset_password` 之后：
 
@@ -537,7 +537,7 @@ def admin_delete_user(user_id: int):
 
 （已知取舍：双 admin 并发互删存在极窄窗口，检查在各自事务内读 count，见 Review Focus 5——不加并发防护。）
 
-- [ ] **Step 4: 模板 Delete 按钮 + 确认弹层**
+- [x] **Step 4: 模板 Delete 按钮 + 确认弹层**
 
 Actions 列在 Reset 表单旁加：
 
@@ -586,7 +586,7 @@ async function openDelete(uid, uname) {
 
 （提交前由 `delConfirm` input 事件同步 `delConfirmField` 亦可——实现者可把同步逻辑加在 input 上，二选一，保持字段名 `confirm_username` 不变。）
 
-- [ ] **Step 5: zh.json 词条**
+- [x] **Step 5: zh.json 词条**
 
 rules 末尾追加：
 
@@ -605,12 +605,12 @@ rules 末尾追加：
 
 （4 条 flash 动态规则同步进 e2e 的 zh.json 场景清单。）
 
-- [ ] **Step 6: 跑 e2e / data 验证通过**
+- [x] **Step 6: 跑 e2e / data 验证通过**
 
 Run: `venv/Scripts/python.exe scripts/check_admin_user_management.py e2e` 与 `... data`
 Expected: 两个 token 均打印、退出码 0。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add insights_web.py templates/admin_users.html static/i18n/zh.json scripts/check_admin_user_management.py
