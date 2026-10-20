@@ -391,7 +391,7 @@ git commit -m "用户管理页：require_admin_or_404 门控（未登录/非 adm
 - Consumes: Task 1 `update_user_password(user_id, password_hash, *, db_path)`；既有 `get_user_by_id`（insights_web 已 import）与 `generate_password_hash`（:38 已 import）。
 - Produces: 路由 `POST /admin/users/<int:user_id>/password` → 视图 `admin_reset_password`；表单字段 `new_password`；成功/失败均 `flash()` 后 `redirect(url_for("admin_users_page"))`；`PUBLIC_ENDPOINTS` 增 `"admin_reset_password"`。
 
-- [ ] **Step 1: 追加 e2e 场景（预期失败）**
+- [x] **Step 1: 追加 e2e 场景（预期失败）**
 
 1. admin `POST /admin/users/<uid_v>/password` data `{"new_password": "np123"}` → 302 → follow_redirects 后页面含 flash 文本 `Password reset for victim.`；库中 `check_password_hash(victim 新 hash, "np123")` True、对旧 `"p"` False（`get_user_by_id` 取行验证）。
 2. victim 旧 session 仍有效（spec 场景）：重置后 victim client `GET /` → 200（无服务端会话态的既定行为，钉住不回归）。
@@ -399,12 +399,12 @@ git commit -m "用户管理页：require_admin_or_404 门控（未登录/非 adm
 4. 对不存在 id `POST /admin/users/999999999/password` → 404 且 body 与 `POST /definitely-not-a-route` 基线逐字节一致（Review Focus 1）。
 5. victim `POST` 同端点 → 404 与 POST 基线一致；anon `POST` 同端点 → 404 与 anon 的 POST 基线一致。
 
-- [ ] **Step 2: 跑 e2e 验证失败**
+- [x] **Step 2: 跑 e2e 验证失败**
 
 Run: `venv/Scripts/python.exe scripts/check_admin_user_management.py e2e`
 Expected: FAIL——场景 1 起 404/找不到文本。
 
-- [ ] **Step 3: 实现路由**
+- [x] **Step 3: 实现路由**
 
 flask import 行加 `flash`；`PUBLIC_ENDPOINTS` 增 `"admin_reset_password"`；`admin_users_page` 之后：
 
@@ -426,7 +426,7 @@ def admin_reset_password(user_id: int):
 
 （`update_user_password` 经 `from database import` 加入——本任务起新数据函数逐个补进 import 名单，与既有惯例一致。）
 
-- [ ] **Step 4: 模板 Actions 列加表单**
+- [x] **Step 4: 模板 Actions 列加表单**
 
 `admin_users.html` 的 Actions 单元格替换为（原生 details 折叠，零 JS）：
 
@@ -443,7 +443,7 @@ def admin_reset_password(user_id: int):
 </details>
 ```
 
-- [ ] **Step 5: zh.json 词条**
+- [x] **Step 5: zh.json 词条**
 
 rules 末尾追加：
 
@@ -456,12 +456,12 @@ rules 末尾追加：
 
 并把两条新文案规则加进 e2e 的 zh.json 场景清单（`re.match` 命中对应英文串）。
 
-- [ ] **Step 6: 跑 e2e 验证通过**
+- [x] **Step 6: 跑 e2e 验证通过**
 
 Run: `venv/Scripts/python.exe scripts/check_admin_user_management.py e2e`
 Expected: `ADMIN_USER_MANAGEMENT_E2E_OK`。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add insights_web.py templates/admin_users.html static/i18n/zh.json scripts/check_admin_user_management.py
