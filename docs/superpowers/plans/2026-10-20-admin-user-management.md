@@ -236,7 +236,7 @@ git commit -m "用户管理数据层：delete_user 单事务级联 15 表+users�
   - 后续任务的三个端点名（本任务先占注释不占集合）：`admin_user_stats` / `admin_reset_password` / `admin_delete_user`。
   - gate e2e 基线取法：`missing = client.get("/definitely-not-a-route")`，断言用 `r.get_data() == missing.get_data()`（GET）与 `missing_post = client.post("/definitely-not-a-route")`（POST）。
 
-- [ ] **Step 1: 写 `section_e2e`（列表 + 404 场景，预期失败）**
+- [x] **Step 1: 写 `section_e2e`（列表 + 404 场景，预期失败）**
 
 `check`/`isolated_app` 已在 Task 1 导入。场景：
 
@@ -255,12 +255,12 @@ git commit -m "用户管理数据层：delete_user 单事务级联 15 表+users�
      ("e2e",)),
 ```
 
-- [ ] **Step 2: 跑 e2e 验证失败**
+- [x] **Step 2: 跑 e2e 验证失败**
 
 Run: `venv/Scripts/python.exe scripts/check_admin_user_management.py e2e`
 Expected: FAIL——404（路由不存在时 Flask 默认也是 404，但场景 2/5/6 会先失败：页面/模板/词条缺失）。
 
-- [ ] **Step 3: 实现装饰器与路由**
+- [x] **Step 3: 实现装饰器与路由**
 
 `insights_web.py` 三处：
 
@@ -299,7 +299,7 @@ def admin_users_page():
 
 `list_users` 加入顶部 `from database import (...)` 名单（既有名称走既有惯例）。
 
-- [ ] **Step 4: 实现 `templates/admin_users.html`**
+- [x] **Step 4: 实现 `templates/admin_users.html`**
 
 ```jinja
 {% extends "base.html" %}
@@ -337,7 +337,7 @@ def admin_users_page():
 {% endblock %}
 ```
 
-- [ ] **Step 5: base.html 侧边栏 admin 区块**
+- [x] **Step 5: base.html 侧边栏 admin 区块**
 
 `templates/base.html` 的 `NAV` 集合定义（:589 `] %}`）之后、`on()` 宏之前插（顶层 `{% if %}` 不产生作用域，赋值对后续 sidebar/palette 生效；`users` 图标 :630 已存在）：
 
@@ -351,7 +351,7 @@ def admin_users_page():
 {% endif %}
 ```
 
-- [ ] **Step 6: zh.json 词条（本任务字符串）**
+- [x] **Step 6: zh.json 词条（本任务字符串）**
 
 `static/i18n/zh.json` 的 `rules` 数组**末尾**追加（全部锚定，防与既有泛规则互吞）：
 
@@ -365,12 +365,12 @@ def admin_users_page():
   {"re": "^Actions$", "to": "操作"}
 ```
 
-- [ ] **Step 7: 跑 e2e 与 data 验证通过**
+- [x] **Step 7: 跑 e2e 与 data 验证通过**
 
 Run: `venv/Scripts/python.exe scripts/check_admin_user_management.py e2e` 与 `... data`（data 回归）
 Expected: 各自打印 `ADMIN_USER_MANAGEMENT_E2E_OK` / `ADMIN_USER_MANAGEMENT_DATA_OK`。再跑 `venv/Scripts/python.exe scripts/check_content_isolation.py scan`（database.py 未动则恒过，保险）。
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add insights_web.py templates/admin_users.html templates/base.html static/i18n/zh.json scripts/check_admin_user_management.py scripts/run_all_gates.py
