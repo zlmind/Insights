@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import secrets
@@ -3776,6 +3777,100 @@ def update_last_login(user_id: int, db_path: str = DB_PATH) -> None:
             (user_id,),
         )
         conn.commit()
+
+# 删除级联的 15 表清单：init_db 里的 _CONTENT_TABLES（见上方迁移段）11 表
+# + content_briefs + multi-user-publishing-channels 的通道 3 表。两张清单
+# 必须同步漂移：往 _CONTENT_TABLES 加表时这里也要加。
+_DELETE_USER_TABLES = (
+    "feeds", "episodes", "articles", "social_posts", "standalone_posts",
+    "url_sources", "uploaded_images", "generated_thumbnails", "prompt_library",
+    "content_brief_runs", "scheduled_posts",
+    "content_briefs", "social_accounts", "agent_jobs", "agent_tokens",
+)
+
+def update_user_password(user_id: int, password_hash: str, *,
+                         db_path: str = DB_PATH) -> bool:
+    """Overwrite a user's password hash. True if the row existed."""
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (password_hash, user_id),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+
+def is_last_admin(user_id: int, *, db_path: str = DB_PATH) -> bool:
+    """True only when ``user_id`` is an admin and the instance has no other."""
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT is_admin FROM users WHERE id = ?", (user_id,)).fetchone()
+        if row is None or not row[0]:
+            return False
+        admins = conn.execute(
+            "SELECT COUNT(*) FROM users WHERE is_admin = 1").fetchone()[0]
+        return admins == 1
+
+def count_user_rows(user_id: int, *, db_path: str = DB_PATH) -> Dict[str, int]:
+    """Per-table row counts the delete confirmation dialog previews."""
+    with sqlite3.connect(db_path) as conn:
+        return {
+            table: conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE user_id = ?",
+                (user_id,)).fetchone()[0]
+            for table in _DELETE_USER_TABLES
+        }
+
+def delete_user(user_id: int, *, db_path: str = DB_PATH,
+                files_root: Optional[str] = None) -> Dict[str, int]:
+    """Delete a user and every row they own, in one transaction.
+
+    FKs are never enforced in this project (PRAGMA foreign_keys has never
+    been on), so the cascade is explicit, table by table. activity_log and
+    usage_events rows survive but lose their identity (user_id and username
+    both set to NULL). Local files behind uploaded_images(storage='local')
+    and generated_thumbnails rows are unlinked AFTER the commit; a missing
+    or unremovable file is logged and skipped — the database is already
+    committed and must not roll back for a filesystem side-effect.
+    """
+    if files_root is None:
+        files_root = os.path.dirname(os.path.abspath(__file__))
+    counts: Dict[str, int] = {}
+    pending_files: List[str] = []
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT url FROM uploaded_images "
+            "WHERE user_id = ? AND storage = 'local' AND url IS NOT NULL",
+            (user_id,)).fetchall()
+        for (url,) in rows:
+            # basename() pins the path under static/uploads whatever the row says.
+            pending_files.append(os.path.join(
+                files_root, "static", "uploads", os.path.basename(url)))
+        rows = conn.execute(
+            "SELECT image_relpath FROM generated_thumbnails "
+            "WHERE user_id = ? AND image_relpath IS NOT NULL AND image_relpath != ''",
+            (user_id,)).fetchall()
+        for (relpath,) in rows:
+            path = os.path.normpath(os.path.join(files_root, relpath))
+            if path.startswith(os.path.normpath(files_root)):
+                pending_files.append(path)
+        for table in _DELETE_USER_TABLES:
+            cur = conn.execute(
+                f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
+            counts[table] = cur.rowcount
+        for table in ("activity_log", "usage_events"):
+            conn.execute(
+                f"UPDATE {table} SET user_id = NULL, username = NULL "
+                "WHERE user_id = ?", (user_id,))
+        cur = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        counts["users"] = cur.rowcount
+        conn.commit()
+    for path in pending_files:
+        try:
+            os.remove(path)
+        except OSError as exc:
+            logging.getLogger(__name__).warning(
+                "delete_user: could not remove %s: %s", path, exc)
+    return counts
 
 # ---------------------------------------------------------------------------
 # Activity log

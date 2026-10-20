@@ -1,0 +1,270 @@
+"""Admin 用户管理 gate：data / e2e 节，各打印独立 token。
+
+    python scripts/check_admin_user_management.py data     ADMIN_USER_MANAGEMENT_DATA_OK
+
+``data`` 钉数据层：delete_user 单事务级联清空 15 张归属表加 users 行；
+activity_log 与 usage_events 的行保留但 user_id、username 一并置 NULL
+（审计在，人没了）；uploaded_images(storage='local') 与
+generated_thumbnails 指向的本地文件在提交之后 unlink，指向不存在文件的
+行只记日志、绝不为一个文件系统副作用回滚已提交的库；keeper 的行、token
+与文件一个不动。update_user_password 换哈希即让旧密码失效；
+is_last_admin 只在目标是 admin 且全实例再无第二个 admin 时为 True——
+目标不存在、非 admin、或仍有并肩 admin 时一律 False。e2e 节随路由与
+模板任务追加到本脚本。
+
+本节全程 tempfile.mkdtemp + database.init_db(temp_db)：不起 web、
+不联网、不触碰真实 insights.db。
+"""
+
+import os
+import sqlite3
+import subprocess
+import sys
+import tempfile
+
+# 中文诊断信息按 UTF-8 直出：run_all_gates 以 UTF-8 解码子进程输出，Windows
+# 控制台默认代码页会把中文打成问号。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _accounts_gate import isolated_app, check  # noqa: E402,F401
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from werkzeug.security import check_password_hash, generate_password_hash  # noqa: E402
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+FUTURE = "2099-01-01T00:00:00"
+
+# delete_user 级联的 15 表。gate 自持一份清单，不 import
+# database._DELETE_USER_TABLES——清单本身是被测对象，抄自实现只会自证。
+_DATA_TABLES = (
+    "feeds", "episodes", "articles", "social_posts", "standalone_posts",
+    "url_sources", "uploaded_images", "generated_thumbnails", "prompt_library",
+    "content_brief_runs", "scheduled_posts",
+    "content_briefs", "social_accounts", "agent_jobs", "agent_tokens",
+)
+
+
+def _user_rows(db_path, table, user_id):
+    with sqlite3.connect(db_path) as conn:
+        return conn.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE user_id = ?",
+            (user_id,)).fetchone()[0]
+
+
+# ── data 节 ──────────────────────────────────────────────────────────────────
+
+def section_data():
+    import database
+
+    directory = tempfile.mkdtemp(prefix="admin_user_mgmt_data_")
+    temp_db = os.path.join(directory, "insights.db")
+    database.init_db(temp_db)
+
+    # ── 1) 建号：首号自动 admin；keeper 用 SQL 置 admin；victim 无特权。──
+    gate_id = database.create_user("gate", generate_password_hash("p"),
+                                   db_path=temp_db)
+    victim = database.create_user("victim", generate_password_hash("p"),
+                                  db_path=temp_db)
+    keeper = database.create_user("keeper", generate_password_hash("p"),
+                                  db_path=temp_db)
+    with sqlite3.connect(temp_db) as conn:
+        conn.execute("UPDATE users SET is_admin = 1 WHERE id = ?", (keeper,))
+        conn.commit()
+        flags = {row[0]: row[1] for row in
+                 conn.execute("SELECT username, is_admin FROM users").fetchall()}
+    check(flags == {"gate": 1, "victim": 0, "keeper": 1},
+          f"三个账号的 admin 位应恰为 gate/keeper，实为 {flags}")
+
+    # ── 2) 文件夹：victim 两枚真实文件 + 一枚只存在于库里的 ghost；
+    #    keeper 一枚对照文件。ghost 不落盘——钉缺失文件不抛错。──
+    files_root = os.path.join(directory, "site")
+    uploads = os.path.join(files_root, "static", "uploads")
+    thumbs = os.path.join(uploads, "youtube_thumbnails")
+    os.makedirs(thumbs)
+    victim_local = os.path.join(uploads, "victim_local.png")
+    victim_thumb = os.path.join(thumbs, "victim_thumb.png")
+    keeper_local = os.path.join(uploads, "keeper_local.png")
+    ghost = os.path.join(uploads, "ghost.png")
+    for path in (victim_local, victim_thumb, keeper_local):
+        with open(path, "wb") as fh:
+            fh.write(b"png")
+    check(not os.path.exists(ghost), "ghost.png 前提：本就不得存在")
+
+    # ── 3) victim 在 15 表各播行。uploaded_images 两行：第二行指向不存在的
+    #    ghost.png；keeper 播对照行。──
+    feed_v = database.add_feed("https://victim.example/feed.xml", "v feed",
+                               user_id=victim, db_path=temp_db)
+    database.queue_episode("https://victim.example/ep.mp3", "v ep", feed_v,
+                           user_id=victim, db_path=temp_db)
+    art_v = database.add_article(None, "v topic", "blog", "v body",
+                                 user_id=victim, db_path=temp_db)
+    database.add_social_post(art_v, "linkedin", "v post",
+                             user_id=victim, db_path=temp_db)
+    st_v = database.add_standalone_post("freeform", "v prompt", "xiaohongshu",
+                                        "v copy", user_id=victim,
+                                        db_path=temp_db)
+    database.add_url_source("https://victim.example/page", "v page", "d",
+                            "v body", user_id=victim, db_path=temp_db)
+    database.add_uploaded_image("victim_local.png",
+                                "/static/uploads/victim_local.png",
+                                "local", user_id=victim, db_path=temp_db)
+    database.add_uploaded_image("ghost.png", "/static/uploads/ghost.png",
+                                "local", user_id=victim, db_path=temp_db)
+    database.add_generated_thumbnail(
+        "https://www.youtube.com/watch?v=v", "v", "T", "C", "16:9", "s", "p",
+        "static/uploads/youtube_thumbnails/victim_thumb.png",
+        user_id=victim, db_path=temp_db)
+    database.add_library_prompt("v title", "v body", user_id=victim,
+                                db_path=temp_db)
+    brief_v = database.create_content_brief("v brief", "i", user_id=victim,
+                                            db_path=temp_db)
+    database.create_brief_run(brief_v, user_id=victim, db_path=temp_db)
+    database.add_scheduled_post(FUTURE, "standalone", victim,
+                                standalone_post_id=st_v, db_path=temp_db)
+    database.upsert_social_account("wechat", "vx-1", user_id=victim,
+                                   db_path=temp_db)
+    database.enqueue_agent_job("article_sync", "{}", user_id=victim,
+                               db_path=temp_db)
+    database.create_agent_token(victim, "victim-token", db_path=temp_db)
+    database.add_uploaded_image("keeper_local.png",
+                                "/static/uploads/keeper_local.png",
+                                "local", user_id=keeper, db_path=temp_db)
+    database.create_agent_token(keeper, "keeper-token", db_path=temp_db)
+
+    # ── 4) 审计两表：行保留但去身份。──
+    database.log_activity("zx", user_id=victim, username="victim",
+                          db_path=temp_db)
+    database.log_usage(mode="proactive", category="compose", provider="g",
+                       model="m", user_id=victim, username="victim",
+                       db_path=temp_db)
+
+    # ── 5) 预览计数：15 键齐，行数与播种一致（uploaded_images 是 2）。──
+    before = database.count_user_rows(victim, db_path=temp_db)
+    expected_before = {table: 1 for table in _DATA_TABLES}
+    expected_before["uploaded_images"] = 2
+    check(set(before) == set(_DATA_TABLES),
+          f"count_user_rows 应恰返回 15 表键，实为 {sorted(before)}")
+    check(before == expected_before, f"预览计数应与播种一致，实为 {before}")
+
+    # ── 6) 删除：逐表行数精确（15 表 + users），且不因 ghost.png 抛错。──
+    counts = database.delete_user(victim, db_path=temp_db,
+                                  files_root=files_root)
+    expected_counts = dict(expected_before, users=1)
+    check(counts == expected_counts, f"删除计数应精确，实为 {counts}")
+
+    # ── 7) 库态：15 表清零、users 无 victim、审计行在但已去身份、token
+    #    生死分明、keeper 行幸存。──
+    for table in _DATA_TABLES:
+        check(_user_rows(temp_db, table, victim) == 0,
+              f"删除后 {table} 仍残留 victim 行")
+    with sqlite3.connect(temp_db) as conn:
+        gone = conn.execute("SELECT COUNT(*) FROM users WHERE id = ?",
+                            (victim,)).fetchone()[0]
+        audit_activity = conn.execute(
+            "SELECT COUNT(*) FROM activity_log WHERE action = 'zx' "
+            "AND user_id IS NULL AND username IS NULL").fetchone()[0]
+        audit_usage = conn.execute(
+            "SELECT COUNT(*) FROM usage_events WHERE model = 'm' "
+            "AND user_id IS NULL AND username IS NULL").fetchone()[0]
+        keeper_images = conn.execute(
+            "SELECT COUNT(*) FROM uploaded_images WHERE user_id = ?",
+            (keeper,)).fetchone()[0]
+        keeper_tokens = conn.execute(
+            "SELECT COUNT(*) FROM agent_tokens "
+            "WHERE user_id = ? AND revoked = 0", (keeper,)).fetchone()[0]
+    check(gone == 0, "users 表应无 victim 行")
+    check(audit_activity == 1,
+          "activity_log 的 victim 行应保留且 user_id/username 双 NULL")
+    check(audit_usage == 1,
+          "usage_events 的 victim 行应保留且 user_id/username 双 NULL")
+    check(database.find_agent_user_by_token("victim-token", db_path=temp_db)
+          is None, "victim 的 token 应随删除消失（不是吊销，是行没了）")
+    check(database.find_agent_user_by_token("keeper-token", db_path=temp_db)
+          == keeper, "keeper 的 token 必须幸存且仍解析到 keeper")
+    check(keeper_images == 1, "keeper 的 uploaded_images 行必须幸存")
+    check(keeper_tokens == 1, "keeper 的 agent_tokens 行必须幸存")
+
+    # ── 8) 文件：victim 两枚被清，ghost 本就不存在且全程未抛错，keeper 在。──
+    check(not os.path.exists(victim_local), "victim_local.png 应被 unlink")
+    check(not os.path.exists(victim_thumb), "victim_thumb.png 应被 unlink")
+    check(not os.path.exists(ghost), "ghost.png 不得凭空出现")
+    check(os.path.exists(keeper_local), "keeper_local.png 必须幸存")
+
+    # ── 9) 密码重置：keeper 换新密码，旧密码立即失效。──
+    check(database.update_user_password(999999, generate_password_hash("x"),
+                                        db_path=temp_db) is False,
+          "对不存在的用户重置密码应返回 False")
+    with sqlite3.connect(temp_db) as conn:
+        old_hash = conn.execute(
+            "SELECT password_hash FROM users WHERE id = ?",
+            (keeper,)).fetchone()[0]
+    new_hash = generate_password_hash("np")
+    check(database.update_user_password(keeper, new_hash, db_path=temp_db)
+          is True, "对存在的用户重置密码应返回 True")
+    with sqlite3.connect(temp_db) as conn:
+        stored = conn.execute(
+            "SELECT password_hash FROM users WHERE id = ?",
+            (keeper,)).fetchone()[0]
+    check(stored != old_hash, "库中 password_hash 应已变化")
+    check(check_password_hash(stored, "np"), "新密码应通过校验")
+    check(not check_password_hash(stored, "p"), "旧密码必须失效")
+
+    # ── 10) is_last_admin 真值表。──
+    check(database.is_last_admin(victim, db_path=temp_db) is False,
+          "已删除用户 is_last_admin 应 False")
+    check(database.is_last_admin(999999, db_path=temp_db) is False,
+          "不存在的用户 is_last_admin 应 False")
+    check(database.is_last_admin(gate_id, db_path=temp_db) is False,
+          "双 admin 并存时 gate 不是末位")
+    check(database.is_last_admin(keeper, db_path=temp_db) is False,
+          "双 admin 并存时 keeper 不是末位")
+    with sqlite3.connect(temp_db) as conn:
+        conn.execute("UPDATE users SET is_admin = 0 WHERE id = ?", (keeper,))
+        conn.commit()
+    check(database.is_last_admin(gate_id, db_path=temp_db) is True,
+          "只剩一个 admin 时 is_last_admin 应 True")
+    check(database.is_last_admin(keeper, db_path=temp_db) is False,
+          "被摘掉 admin 的用户 is_last_admin 应 False")
+
+    # ── 11) 边界：删除不存在的用户安静返回全 0。──
+    empty = database.delete_user(999999, db_path=temp_db,
+                                 files_root=files_root)
+    check(set(empty) == set(_DATA_TABLES) | {"users"},
+          "空删除应仍带全部 16 键")
+    check(all(v == 0 for v in empty.values()),
+          f"空删除所有键应为 0，实为 {empty}")
+
+    print("delete_user 单事务级联清 15 表+users，审计两表去身份化保留，"
+          "local 文件清理对缺失文件不抛错，密码重置生效，末位 admin 判定正确")
+    print("ADMIN_USER_MANAGEMENT_DATA_OK")
+
+
+SECTIONS = {
+    "data": section_data,
+}
+
+if __name__ == "__main__":
+    name = sys.argv[1] if len(sys.argv) > 1 else ""
+    if name == "":
+        # No section named: run every section in a fresh subprocess each —
+        # the sections share module state (heartbeat buckets, chdir), so
+        # in-process sequencing would leak between them, same reason
+        # run_all_gates spawns one process per gate.
+        failed = []
+        for section_name in SECTIONS:
+            done = subprocess.run(
+                [sys.executable, os.path.abspath(__file__), section_name])
+            if done.returncode != 0:
+                failed.append(section_name)
+        if failed:
+            print(f"FAILED SECTIONS: {' '.join(failed)}")
+            sys.exit(1)
+        sys.exit(0)
+    if name not in SECTIONS:
+        print(f"usage: check_admin_user_management.py {'|'.join(SECTIONS)}")
+        sys.exit(2)
+    SECTIONS[name]()

@@ -339,6 +339,14 @@ CHANNEL_GATES = [
      ("e2e",)),
 ]
 
+# Admin user management: cascade delete + password reset + admin guards.
+ADMIN_USER_GATES = [
+    ("check_admin_user_management.py", "ADMIN_USER_MANAGEMENT_DATA_OK",
+     "delete_user 单事务级联清 15 表+users，审计两表去身份化保留，local 文件清理，"
+     "密码重置生效，末位 admin 判定正确",
+     ("data",)),
+]
+
 # check_*.py files that are deliberately not gates, with the reason. Empty is the
 # healthy state: a script that is not a gate should not carry the check_ prefix.
 NOT_GATES = {
@@ -347,7 +355,8 @@ NOT_GATES = {
 
 ALL_GATES = (ACCOUNT_GATES + ACCOUNT_JS_GATES + SETTINGS_GATES
              + X_FETCH_GATES + USAGE_GATES + BRIEF_GATES + AGENT_GATES + COMPOSE_GATES + VIDEO_GATES + MANUAL_POST_GATES
-             + QUEUE_GATES + PAGING_GATES + IG_PEOPLE_GATES + ISOLATION_GATES + CHANNEL_GATES)
+             + QUEUE_GATES + PAGING_GATES + IG_PEOPLE_GATES + ISOLATION_GATES + CHANNEL_GATES
+             + ADMIN_USER_GATES)
 
 
 def _unpack(entry):
