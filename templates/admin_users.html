@@ -22,7 +22,7 @@
                         <td>{{ u['last_login_at'] or '—' }}</td>
                         <td>
                             <button type="button" class="btn btn-outline btn-sm"
-                                    onclick="openDelete({{ u['id'] }}, '{{ u['username'] }}')">Delete</button>
+                                    onclick='openDelete({{ u['id'] }}, {{ u['username']|tojson }})'>Delete</button>
                             <details class="pd-reset">
                                 <summary class="btn btn-outline btn-sm">Reset password</summary>
                                 <form method="post" action="{{ url_for('admin_reset_password', user_id=u['id']) }}"

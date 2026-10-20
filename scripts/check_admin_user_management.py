@@ -26,6 +26,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import uuid
 
 # 中文诊断信息按 UTF-8 直出：run_all_gates 以 UTF-8 解码子进程输出，Windows
 # 控制台默认代码页会把中文打成问号。
@@ -98,6 +99,12 @@ def section_data():
         with open(path, "wb") as fh:
             fh.write(b"png")
     check(not os.path.exists(ghost), "ghost.png 前提：本就不得存在")
+    # 同级前缀陷阱：site-evil 与 files_root(=site) 同级且名字是其前缀。
+    # 该文件在 files_root 之外，缩略图路径守卫不得让它被删。
+    sibling = os.path.join(directory, "site-evil", "evil.png")
+    os.makedirs(os.path.dirname(sibling))
+    with open(sibling, "wb") as fh:
+        fh.write(b"png")
 
     # ── 3) victim 在 15 表各播行。uploaded_images 两行：第二行指向不存在的
     #    ghost.png；keeper 播对照行。──
@@ -123,6 +130,11 @@ def section_data():
         "https://www.youtube.com/watch?v=v", "v", "T", "C", "16:9", "s", "p",
         "static/uploads/youtube_thumbnails/victim_thumb.png",
         user_id=victim, db_path=temp_db)
+    # 越界行（纵深防御面）：relpath 经 join+normpath 后落在 files_root 的
+    # 同级前缀目录 site-evil 里——只应被守卫拦下，不应被 unlink。
+    database.add_generated_thumbnail(
+        "https://www.youtube.com/watch?v=evil", "v", "T", "C", "16:9", "s",
+        "p", "../site-evil/evil.png", user_id=victim, db_path=temp_db)
     database.add_library_prompt("v title", "v body", user_id=victim,
                                 db_path=temp_db)
     brief_v = database.create_content_brief("v brief", "i", user_id=victim,
@@ -140,17 +152,32 @@ def section_data():
                                 "local", user_id=keeper, db_path=temp_db)
     database.create_agent_token(keeper, "keeper-token", db_path=temp_db)
 
-    # ── 4) 审计两表：行保留但去身份。──
+    # ── 4) 审计两表：行保留但去身份。另播 login_failed 风格行——登录失败
+    #    时 session 里没有用户，行生来 user_id IS NULL、只有 username；
+    #    删号必须按 username 一并去身份（keeper 的同名风格行不得被殃及）。──
     database.log_activity("zx", user_id=victim, username="victim",
                           db_path=temp_db)
     database.log_usage(mode="proactive", category="compose", provider="g",
                        model="m", user_id=victim, username="victim",
                        db_path=temp_db)
+    with sqlite3.connect(temp_db) as conn:
+        conn.execute(
+            "INSERT INTO activity_log (user_id, username, action) "
+            "VALUES (NULL, 'victim', 'login_failed')")
+        conn.execute(
+            "INSERT INTO usage_events (mode, category, provider, model, "
+            "user_id, username) "
+            "VALUES ('proactive', 'compose', 'g', 'm-noauth', NULL, 'victim')")
+        conn.execute(
+            "INSERT INTO activity_log (user_id, username, action) "
+            "VALUES (NULL, 'keeper', 'login_failed')")
+        conn.commit()
 
     # ── 5) 预览计数：15 键齐，行数与播种一致（uploaded_images 是 2）。──
     before = database.count_user_rows(victim, db_path=temp_db)
     expected_before = {table: 1 for table in _DATA_TABLES}
     expected_before["uploaded_images"] = 2
+    expected_before["generated_thumbnails"] = 2
     check(set(before) == set(_DATA_TABLES),
           f"count_user_rows 应恰返回 15 表键，实为 {sorted(before)}")
     check(before == expected_before, f"预览计数应与播种一致，实为 {before}")
@@ -175,6 +202,15 @@ def section_data():
         audit_usage = conn.execute(
             "SELECT COUNT(*) FROM usage_events WHERE model = 'm' "
             "AND user_id IS NULL AND username IS NULL").fetchone()[0]
+        audit_orphan_activity = conn.execute(
+            "SELECT COUNT(*) FROM activity_log WHERE action = 'login_failed' "
+            "AND user_id IS NULL AND username IS NULL").fetchone()[0]
+        audit_orphan_usage = conn.execute(
+            "SELECT COUNT(*) FROM usage_events WHERE model = 'm-noauth' "
+            "AND user_id IS NULL AND username IS NULL").fetchone()[0]
+        audit_keeper_orphan = conn.execute(
+            "SELECT COUNT(*) FROM activity_log WHERE action = 'login_failed' "
+            "AND username = 'keeper'").fetchone()[0]
         keeper_images = conn.execute(
             "SELECT COUNT(*) FROM uploaded_images WHERE user_id = ?",
             (keeper,)).fetchone()[0]
@@ -186,6 +222,12 @@ def section_data():
           "activity_log 的 victim 行应保留且 user_id/username 双 NULL")
     check(audit_usage == 1,
           "usage_events 的 victim 行应保留且 user_id/username 双 NULL")
+    check(audit_orphan_activity == 1,
+          "login_failed 行（user_id 生来 NULL）应按 username 一并去身份")
+    check(audit_orphan_usage == 1,
+          "usage_events 里只有 username 的行也应随删号去身份")
+    check(audit_keeper_orphan == 1,
+          "keeper 的 login_failed 行不得被 victim 的删号殃及")
     check(database.find_agent_user_by_token("victim-token", db_path=temp_db)
           is None, "victim 的 token 应随删除消失（不是吊销，是行没了）")
     check(database.find_agent_user_by_token("keeper-token", db_path=temp_db)
@@ -193,11 +235,14 @@ def section_data():
     check(keeper_images == 1, "keeper 的 uploaded_images 行必须幸存")
     check(keeper_tokens == 1, "keeper 的 agent_tokens 行必须幸存")
 
-    # ── 8) 文件：victim 两枚被清，ghost 本就不存在且全程未抛错，keeper 在。──
+    # ── 8) 文件：victim 两枚被清，ghost 本就不存在且全程未抛错，keeper 在；
+    #    files_root 之外的同级前缀文件必须幸存（前缀守卫）。──
     check(not os.path.exists(victim_local), "victim_local.png 应被 unlink")
     check(not os.path.exists(victim_thumb), "victim_thumb.png 应被 unlink")
     check(not os.path.exists(ghost), "ghost.png 不得凭空出现")
     check(os.path.exists(keeper_local), "keeper_local.png 必须幸存")
+    check(os.path.exists(sibling),
+          "越界 relpath 不得删掉 files_root 之外的同级前缀文件")
 
     # ── 9) 密码重置：keeper 换新密码，旧密码立即失效。──
     check(database.update_user_password(999999, generate_password_hash("x"),
@@ -279,6 +324,10 @@ def section_e2e():
         conn.commit()
     uid_v = database.create_user("victim", generate_password_hash("p"),
                                  db_path=database.DB_PATH)
+    # 直接 SQL 层建号绕过 signup 白名单：带单引号的用户名钉 onclick 的
+    # tojson 转义（模板若回退成单引号内插即红）。
+    uid_q = database.create_user("q'uote", generate_password_hash("p"),
+                                 db_path=database.DB_PATH)
     client_v = web.app.test_client()
     with client_v.session_transaction() as session:
         session["user_id"] = uid_v
@@ -296,6 +345,15 @@ def section_e2e():
     check("victim" in body and "gate" in body,
           "列表页应含 victim 与 gate 两个用户名")
     check("Username" in body, "列表页应含表头 Username")
+    # onclick 钉安全渲染：用户名经 tojson 以 JSON 字符串进单引号定界的
+    # 属性——naive 单引号内插与双引号属性 + tojson（字面双引号会截断
+    # HTML 属性）两种回退都会在这里红。
+    check(f'openDelete({uid_v}, "victim")' in body,
+          "onclick 应以 JSON 字符串形式传用户名（tojson）")
+    check(f"onclick='openDelete({uid_v}, \"victim\")'" in body,
+          "onclick 属性应以单引号定界")
+    check(f'openDelete({uid_q}, "q\\u0027uote")' in body,
+          "含单引号的用户名应被 tojson 转义为 \\u0027")
 
     for label, probe in (("victim", client_v), ("anon", anon)):
         r = probe.get("/admin/users")
@@ -388,8 +446,12 @@ def section_e2e():
 
     # ── 删除用户（Task 4）：量级预览、二次确认、守卫、token/旧 session 失效。
     # 播种：15 表各 1 行，其中 uploaded_images 两行——cloudinary 一行 +
-    # local 一行指向磁盘上不存在的 /static/uploads/e2e-gone.png（删除经
-    # 路由不得因缺失文件抛错）；审计两表各一行；token 一枚。──
+    # local 一行指向磁盘上不存在的 /static/uploads/<uuid>.png（删除经
+    # 路由不得因缺失文件抛错）；审计两表各一行；token 一枚。
+    # 本地文件名带 uuid4 前缀：路由删除的 files_root 默认是仓库根，固定名
+    # 若撞上仓库真实文件会被 gate 顺手删掉——uuid 让碰撞概率归零。──
+    e2e_gone = f"e2e-gone-{uuid.uuid4().hex}.png"
+    e2e_thumb = f"e2e-thumb-{uuid.uuid4().hex}.png"
     feed_v = database.add_feed("https://victim.example/feed.xml", "v feed",
                                user_id=uid_v, db_path=database.DB_PATH)
     database.queue_episode("https://victim.example/ep.mp3", "v ep", feed_v,
@@ -407,13 +469,13 @@ def section_e2e():
                                 "https://res.cloudinary.com/demo/e2e-cloud.png",
                                 "cloudinary", user_id=uid_v,
                                 db_path=database.DB_PATH)
-    database.add_uploaded_image("e2e-gone.png",
-                                "/static/uploads/e2e-gone.png",
+    database.add_uploaded_image(e2e_gone,
+                                f"/static/uploads/{e2e_gone}",
                                 "local", user_id=uid_v,
                                 db_path=database.DB_PATH)
     database.add_generated_thumbnail(
         "https://www.youtube.com/watch?v=v", "v", "T", "C", "16:9", "s", "p",
-        "static/uploads/youtube_thumbnails/e2e_thumb.png",
+        f"static/uploads/youtube_thumbnails/{e2e_thumb}",
         user_id=uid_v, db_path=database.DB_PATH)
     database.add_library_prompt("v title", "v body", user_id=uid_v,
                                 db_path=database.DB_PATH)

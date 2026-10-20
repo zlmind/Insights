@@ -3827,7 +3827,9 @@ def delete_user(user_id: int, *, db_path: str = DB_PATH,
     FKs are never enforced in this project (PRAGMA foreign_keys has never
     been on), so the cascade is explicit, table by table. activity_log and
     usage_events rows survive but lose their identity (user_id and username
-    both set to NULL). Local files behind uploaded_images(storage='local')
+    both set to NULL; the UPDATE matches user_id or username so username-only
+    rows such as login_failed are covered too). Local files behind
+    uploaded_images(storage='local')
     and generated_thumbnails rows are unlinked AFTER the commit; a missing
     or unremovable file is logged and skipped — the database is already
     committed and must not roll back for a filesystem side-effect.
@@ -3851,16 +3853,23 @@ def delete_user(user_id: int, *, db_path: str = DB_PATH,
             (user_id,)).fetchall()
         for (relpath,) in rows:
             path = os.path.normpath(os.path.join(files_root, relpath))
-            if path.startswith(os.path.normpath(files_root)):
+            # +os.sep：裸前缀会被同级目录名绕过（site-evil 过 site）。
+            if path.startswith(os.path.normpath(files_root) + os.sep):
                 pending_files.append(path)
         for table in _DELETE_USER_TABLES:
             cur = conn.execute(
                 f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
             counts[table] = cur.rowcount
+        # 审计去身份化按 user_id 或 username 双条件匹配：login_failed 行生来
+        # user_id IS NULL、只有 username，单按 user_id 会把用户名永久留在
+        # 审计里。username 必须在删 users 行之前取。
+        row = conn.execute(
+            "SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+        username = row[0] if row else None
         for table in ("activity_log", "usage_events"):
             conn.execute(
                 f"UPDATE {table} SET user_id = NULL, username = NULL "
-                "WHERE user_id = ?", (user_id,))
+                "WHERE user_id = ? OR username = ?", (user_id, username))
         cur = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
         counts["users"] = cur.rowcount
         conn.commit()
