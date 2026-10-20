@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}User Management | Insights{% endblock %}
+{% block header %}User Management{% endblock %}
+{% block content %}
+<div class="pd">
+    {% with msgs = get_flashed_messages() %}
+        {% for m in msgs %}<div class="alert alert-warning">{{ m }}</div>{% endfor %}
+    {% endwith %}
+    <div class="card">
+        <div class="card-head"><b>Users</b><span class="pill">{{ users|length }}</span></div>
+        <div class="card-body" style="padding-top:1rem">
+            <table class="table table-sm align-middle">
+                <thead><tr>
+                    <th>Username</th><th>Admin</th><th>Created</th><th>Last login</th><th>Actions</th>
+                </tr></thead>
+                <tbody>
+                {% for u in users %}
+                    <tr>
+                        <td><strong>{{ u['username'] }}</strong></td>
+                        <td>{% if u['is_admin'] %}<span class="pill">Admin</span>{% else %}<span class="status-pill is-off">—</span>{% endif %}</td>
+                        <td>{{ u['created_at'] or '—' }}</td>
+                        <td>{{ u['last_login_at'] or '—' }}</td>
+                        <td>
+                            {# Task 3 加 Reset password 表单；Task 4 加 Delete 按钮 #}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

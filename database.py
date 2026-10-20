@@ -3765,7 +3765,7 @@ def list_users(db_path: str = DB_PATH) -> List[sqlite3.Row]:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
-            "SELECT id, username, created_at, last_login_at FROM users ORDER BY username ASC"
+            "SELECT id, username, is_admin, created_at, last_login_at FROM users ORDER BY username ASC"
         )
         return cur.fetchall()
 

@@ -956,7 +956,14 @@
   {
    "re": "^next: (.+)$",
    "to": "下次：$1"
-  }
+  },
+  {"re": "^User Management$", "to": "用户管理"},
+  {"re": "^Users$", "to": "用户"},
+  {"re": "^Username$", "to": "用户名"},
+  {"re": "^Admin$", "to": "管理员"},
+  {"re": "^Created$", "to": "创建时间"},
+  {"re": "^Last login$", "to": "最近登录"},
+  {"re": "^Actions$", "to": "操作"}
  ],
  "texts": {
   "\"Connect\"": "“Connect”",

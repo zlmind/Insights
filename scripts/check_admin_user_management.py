@@ -9,14 +9,17 @@ generated_thumbnails 指向的本地文件在提交之后 unlink，指向不存�
 行只记日志、绝不为一个文件系统副作用回滚已提交的库；keeper 的行、token
 与文件一个不动。update_user_password 换哈希即让旧密码失效；
 is_last_admin 只在目标是 admin 且全实例再无第二个 admin 时为 True——
-目标不存在、非 admin、或仍有并肩 admin 时一律 False。e2e 节随路由与
-模板任务追加到本脚本。
+目标不存在、非 admin、或仍有并肩 admin 时一律 False。e2e 节钉
+/admin/users 的门控：admin 见列表，victim/anon 拿到与不存在路径
+逐字节一致的 404，侧边栏入口仅 admin 渲染，zh 词条齐且可编译。
 
 本节全程 tempfile.mkdtemp + database.init_db(temp_db)：不起 web、
 不联网、不触碰真实 insights.db。
 """
 
+import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -243,8 +246,81 @@ def section_data():
     print("ADMIN_USER_MANAGEMENT_DATA_OK")
 
 
+# ── e2e 节 ──────────────────────────────────────────────────────────────────
+
+# 本任务钉进 zh.json 的精确规则 → 模板里的英文原文。字典与模板靠这里不脱钩：
+# 规则不在字典里、或模板字符串改了名，这里都会红。
+_E2E_RULES = {
+    "User Management": "^User Management$",
+    "Users": "^Users$",
+    "Username": "^Username$",
+    "Admin": "^Admin$",
+    "Created": "^Created$",
+    "Last login": "^Last login$",
+    "Actions": "^Actions$",
+}
+
+
+def section_e2e():
+    directory, database, web, publisher, client = isolated_app()
+    with sqlite3.connect(database.DB_PATH) as conn:
+        conn.execute("UPDATE users SET is_admin = 1 WHERE username = ?",
+                     ("gate",))
+        conn.commit()
+    uid_v = database.create_user("victim", generate_password_hash("p"),
+                                 db_path=database.DB_PATH)
+    client_v = web.app.test_client()
+    with client_v.session_transaction() as session:
+        session["user_id"] = uid_v
+    anon = web.app.test_client()
+
+    # 404 基线：真实不存在的路径。admin 视角取一次，所有探测与之逐字节比。
+    missing = client.get("/definitely-not-a-route")
+    check(missing.status_code == 404, "404 基线前提：该路径应确实不存在")
+
+    # admin 看得到列表；victim / anon 拿到与不存在路径同一份字节的 404。
+    page = client.get("/admin/users")
+    check(page.status_code == 200,
+          f"admin GET /admin/users 应 200，实为 {page.status_code}")
+    body = page.get_data(as_text=True)
+    check("victim" in body and "gate" in body,
+          "列表页应含 victim 与 gate 两个用户名")
+    check("Username" in body, "列表页应含表头 Username")
+
+    for label, probe in (("victim", client_v), ("anon", anon)):
+        r = probe.get("/admin/users")
+        check(r.status_code == 404,
+              f"{label} GET /admin/users 应 404，实为 {r.status_code}")
+        check(r.get_data() == missing.get_data(),
+              f"{label} 的 404 响应体应与不存在路径逐字节一致")
+
+    # 侧边栏零泄漏：普通页只对 admin 渲染 admin 入口。
+    check(b"/admin/users" not in client_v.get("/").get_data(),
+          "victim 的普通页不得出现 /admin/users")
+    check(b"/admin/users" in client.get("/").get_data(),
+          "admin 的普通页侧边栏应含 /admin/users 入口")
+
+    # zh.json 完整性：规则全部可编译；本任务每条规则在字典里且命中英文原文。
+    with open(os.path.join(REPO, "static", "i18n", "zh.json"),
+              encoding="utf-8") as fh:
+        rules = json.load(fh)["rules"]
+    for rule in rules:
+        re.compile(rule["re"])
+    compiled = {rule["re"] for rule in rules}
+    for english, pattern in _E2E_RULES.items():
+        check(re.match(pattern, english) is not None,
+              f"规则 {pattern!r} 应命中英文原文 {english!r}")
+        check(pattern in compiled,
+              f"zh.json rules 应含本任务规则 {pattern!r}")
+
+    print("admin 列表页仅 admin 可见，victim/anon 对 /admin/users 与不存在"
+          "路径拿到逐字节相同的 404，侧边栏入口零泄漏，zh 词条齐且可编译")
+    print("ADMIN_USER_MANAGEMENT_E2E_OK")
+
+
 SECTIONS = {
     "data": section_data,
+    "e2e": section_e2e,
 }
 
 if __name__ == "__main__":

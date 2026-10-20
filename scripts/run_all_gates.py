@@ -345,6 +345,9 @@ ADMIN_USER_GATES = [
      "delete_user 单事务级联清 15 表+users，审计两表去身份化保留，local 文件清理，"
      "密码重置生效，末位 admin 判定正确",
      ("data",)),
+    ("check_admin_user_management.py", "ADMIN_USER_MANAGEMENT_E2E_OK",
+     "admin 列表可见，非 admin 与未登录对页面 404 且与不存在逐字节一致，侧边栏仅 admin 渲染",
+     ("e2e",)),
 ]
 
 # check_*.py files that are deliberately not gates, with the reason. Empty is the

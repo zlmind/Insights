@@ -587,6 +587,13 @@
             {'label': 'Accounts', 'ic': 'users', 'desc': 'Platform logins and connection state', 'href': url_for('accounts_page'), 'prefixes': ['/accounts']},
         ]},
     ] %}
+    {% if current_user and current_user['is_admin'] %}
+        {% set NAV = NAV + [{'group': 'Admin', 'items': [
+            {'label': 'User Management', 'ic': 'users',
+             'desc': 'Accounts, passwords, removal',
+             'href': url_for('admin_users_page'), 'prefixes': ['/admin/users']},
+        ]}] %}
+    {% endif %}
     {% macro on(item) -%}
         {%- for pre in item.get('exact', []) %}{% if p == pre %}1{% endif %}{% endfor -%}
         {%- for pre in item.get('prefixes', []) %}{% if p.startswith(pre) %}1{% endif %}{% endfor -%}

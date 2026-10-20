@@ -311,9 +311,14 @@ def allowed_video_file(filename):
 # the health check). Mutating (non-GET) requests are recorded in
 # activity_log via after_request; named auth events use log_event().
 
+# Admin endpoints 404-gate themselves (require_admin_or_404) instead of using
+# the global login redirect, so an anonymous or non-admin probe gets the same
+# 404 body as a nonexistent path and learns nothing — spec: 含未登录也 404.
+# Later tasks add admin_user_stats / admin_reset_password / admin_delete_user
+# here as their routes land.
 PUBLIC_ENDPOINTS = {"login", "signup", "logout", "health",
                     "agent_heartbeat", "agent_claim", "agent_job_events",
-                    "agent_pair"}
+                    "agent_pair", "admin_users_page"}
 
 # Auto-tracking writes a row for every non-GET request, but we suppress
 # rows for these endpoints because they're either covered by an explicit
@@ -629,6 +634,16 @@ def require_admin(view):
         return view(*args, **kwargs)
     return wrapped
 
+def require_admin_or_404(view):
+    """Admin-only like require_admin, but 404s so the page never "exists"."""
+    @functools.wraps(view)
+    def wrapped(*args, **kwargs):
+        user = current_user()
+        if user is None or not user["is_admin"]:
+            abort(404)
+        return view(*args, **kwargs)
+    return wrapped
+
 @app.route("/settings", methods=["GET", "POST"])
 @require_admin
 def instance_settings():
@@ -693,6 +708,13 @@ def instance_settings():
                            saved=request.args.get("saved", type=int),
                            cleared=request.args.get("cleared", type=int),
                            rejected=request.args.get("rejected", type=int))
+
+# ── User management (admin; 404 for everyone else) ────────────────────────
+
+@app.route("/admin/users", methods=["GET"])
+@require_admin_or_404
+def admin_users_page():
+    return render_template("admin_users.html", users=list_users())
 
 # ── Activity log viewer ───────────────────────────────────────────────────
 
