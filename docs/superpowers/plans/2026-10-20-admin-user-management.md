@@ -624,12 +624,12 @@ git commit -m "用户管理：删除用户单事务级联+提交后清文件，�
 **Files:**
 - 无新改动（纯验证；若回归暴露问题，回到对应任务修复后重跑本任务）
 
-- [ ] **Step 1: 新 gate 无参全节跑（子进程隔离）**
+- [x] **Step 1: 新 gate 无参全节跑（子进程隔离）**
 
 Run: `venv/Scripts/python.exe scripts/check_admin_user_management.py`
 Expected: `data`、`e2e` 两节各自子进程通过，退出码 0，无 `FAILED SECTIONS`。
 
-- [ ] **Step 2: 相邻 gate 回归（改过 database.py / insights_web.py / base.html 的面）**
+- [x] **Step 2: 相邻 gate 回归（改过 database.py / insights_web.py / base.html 的面）**
 
 Run:
 ```bash
@@ -643,12 +643,12 @@ venv/Scripts/python.exe scripts/check_accounts_ui.py
 ```
 Expected: 各节 OK token（`CONTENT_ISOLATION_*_OK`、`CHANNEL_ISOLATION_*_OK`、settings/accounts UI gate 通过）——base.html 是公共骨架，凡断言侧边栏/页面结构的 gate 都必须过。
 
-- [ ] **Step 3: gate inventory 终检**
+- [x] **Step 3: gate inventory 终检**
 
 Run: `venv/Scripts/python.exe -c "import sys; sys.path.insert(0, 'scripts'); from run_all_gates import gate_inventory_problems; print(gate_inventory_problems())"`
 Expected: `([], [])`。
 
-- [ ] **Step 4: 手工验收点（转述给 owner，不阻塞提交）**
+- [x] **Step 4: 手工验收点（转述给 owner，不阻塞提交）**
 
 - 被重置密码者旧 session 有效至自然过期（设计已接受并注明）。
 - 「先转让再删」逃生门：`UPDATE users SET is_admin=1 WHERE username=?`（手工 SQL，已写入设计裁决 7）。
